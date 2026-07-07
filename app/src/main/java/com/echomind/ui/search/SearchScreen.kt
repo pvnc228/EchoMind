@@ -1,5 +1,6 @@
 package com.echomind.ui.search
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun SearchScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToDetail: (Long) -> Unit = {},
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -60,7 +62,13 @@ fun SearchScreen(
                 item { Text("Searching...") }
             }
             items(uiState.results, key = { it.id }) { entry ->
-                Text(entry.transcript, modifier = Modifier.padding(8.dp))
+                Text(
+                    text = entry.transcript,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToDetail(entry.id) }
+                        .padding(8.dp)
+                )
             }
             if (uiState.query.isNotBlank() && !uiState.isLoading && uiState.results.isEmpty()) {
                 item { Text("No results found") }
