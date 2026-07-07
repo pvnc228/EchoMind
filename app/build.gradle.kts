@@ -99,6 +99,15 @@ dependencies {
     // ExoPlayer for audio playback
     implementation(libs.exoplayer.core)
 
+    // Testing
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.turbine)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.core.testing)
+    androidTestImplementation(libs.androidx.ui.test.junit4)
+    androidTestImplementation(libs.androidx.ui.test.manifest)
+
     // SQLCipher for database encryption
     implementation(libs.sqlcipher)
     implementation(libs.androidx.sqlite.ktx)

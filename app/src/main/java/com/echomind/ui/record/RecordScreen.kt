@@ -4,6 +4,15 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -89,6 +99,16 @@ fun RecordScreen(
                     }
                 }
                 RecordingState.RECORDING -> {
+                    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                    val pulseAlpha by infiniteTransition.animateFloat(
+                        initialValue = 0.3f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(600),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "pulse_alpha"
+                    )
                     Column(
                         modifier = Modifier.fillMaxSize().padding(32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -99,11 +119,22 @@ fun RecordScreen(
                             modifier = Modifier.fillMaxWidth().height(120.dp)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Recording...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.error.copy(alpha = pulseAlpha),
+                                        CircleShape
+                                    )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Recording...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(onClick = { viewModel.stopRecording() }) {
                             Text("Stop Recording")

@@ -42,6 +42,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.EntryCategory
+import com.echomind.ui.theme.HomeSkeleton
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -82,12 +83,7 @@ fun HomeScreen(
         }
     ) { padding ->
         if (uiState.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Loading...", style = MaterialTheme.typography.bodyLarge)
-            }
+            HomeSkeleton()
         } else if (uiState.entries.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),

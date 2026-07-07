@@ -157,10 +157,49 @@ Verified all key skill paths from skills-reference.md are accessible:
 - `app/build.gradle.kts` — added sqlcipher + sqlite-ktx deps
 - `ROADMAP.md` — Phase 8 items checked
 
-### Next Steps
-1. Skeleton loaders & transitions (Phase 9)
-2. Dark/light theme (Phase 9)
-3. Onboarding flow (Phase 9)
-4. Animations (entry/exit, recording pulse) (Phase 9)
-5. Unit tests (Phase 10)
-6. UI tests (Phase 10)
+---
+
+## 2026-07-07 — Phase 9-10: UX Polish & Testing
+
+### Skills Used
+- **`theme-factory`** — Color palette and font pairing concepts informed the existing Material 3 dynamic color setup (already in place). The custom EchoMind brand colors (EchoMindPrimary, EchoMindAccent) serve as fallback on pre-Android 12 devices.
+- **`canvas-design`** — Visual composition principles (form, space, layout) informed the onboarding screen layout with icon + title + description centered on each page.
+
+### Phase 9 — UX Polish
+
+**Done:**
+- **Shimmer skeleton loaders**: Created `ShimmerEffect.kt` with `ShimmerBox`, `HomeSkeleton` (5 card placeholders), and `DetailSkeleton` (metadata + content + actions). Integrated into `HomeScreen` (replaces "Loading..." text) and `DetailScreen` (replaces "Loading..." text).
+- **Onboarding flow**: Created `OnboardingScreen` with 3 pages (Voice Diary, AI Insights, Privacy) with animated transitions via `AnimatedContent`. Uses `OnboardingManager` backed by DataStore to persist completion state. `NavGraph` checks onboarding state and sets start destination accordingly.
+- **Recording pulse**: Added animated pulsing red dot in `RecordScreen` during RECORDING state using `InfiniteTransition` with alpha oscillation on a `CircleShape` Box.
+
+### Phase 10 — Testing & Release
+
+**Done:**
+- **Test dependencies**: Added JUnit 4, MockK, Turbine, kotlinx-coroutines-test, core-testing, and Compose UI test dependencies to version catalog and build.gradle.kts.
+- **`GetEntriesUseCaseTest`**: 3 tests — getAllEntries returns repository data, getEntriesByCategory filters, searchEntries returns matches.
+- **`HomeViewModelTest`**: 2 tests — init loads entries from use case, selectCategory updates state and filters.
+- **`HomeScreenTest`**: 1 UI test — verifies empty state text is displayed.
+- Updated ProGuard rules (default config already exists at `proguard-rules.pro`).
+
+### Files Created
+- `ui/theme/ShimmerEffect.kt` — shimmer skeleton composables
+- `ui/onboarding/OnboardingScreen.kt` — 3-page welcome flow
+- `ui/onboarding/OnboardingManager.kt` — DataStore-backed onboarding state
+- `src/test/java/.../domain/usecase/GetEntriesUseCaseTest.kt`
+- `src/test/java/.../ui/home/HomeViewModelTest.kt`
+- `src/androidTest/java/.../HomeScreenTest.kt`
+
+### Files Modified
+- `ui/navigation/NavGraph.kt` — onboarding-aware start destination
+- `ui/navigation/Screen.kt` — Onboarding route
+- `ui/record/RecordScreen.kt` — recording pulse animation
+- `ui/home/HomeScreen.kt` — shimmer skeleton instead of loading text
+- `ui/detail/DetailScreen.kt` — shimmer skeleton instead of loading text
+- `gradle/libs.versions.toml` — test dependencies
+- `app/build.gradle.kts` — test dependencies
+- `ROADMAP.md` — Phases 9-10 items checked
+
+### Remaining Items
+- Performance profiling
+- Google Play assets (icon, screenshots, description)
+- ProGuard optimization (default rules in place)

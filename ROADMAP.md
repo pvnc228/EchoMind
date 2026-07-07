@@ -55,16 +55,16 @@
 - [x] FLAG_SECURE (prevent screenshots in app overview)
 - [x] Local-only mode toggle (Settings toggle + network config)
 
-## Phase 9: UX Polish
-- [ ] Skeleton loaders & transitions
-- [ ] Dark/light theme
-- [ ] Material You (dynamic color)
-- [ ] Onboarding flow
-- [ ] Animations (entry/exit, recording pulse)
+## Phase 9: UX Polish ✅
+- [x] Skeleton loaders & transitions (shimmer effect on HomeScreen + DetailScreen)
+- [x] Dark/light theme (system theme detection, Material 3 dynamic colors)
+- [x] Material You (dynamic color on Android 12+, custom palette fallback)
+- [x] Onboarding flow (3-page welcome with skip, DataStore persistence)
+- [x] Animations (recording pulse dot via InfiniteTransition, AnimatedContent transitions)
 
-## Phase 10: Testing & Release
-- [ ] Unit tests (ViewModel, UseCases, Repository)
-- [ ] UI tests (Compose Test)
+## Phase 10: Testing & Release ✅
+- [x] Unit tests (GetEntriesUseCaseTest, HomeViewModelTest)
+- [x] UI tests (HomeScreenTest - compose)
 - [ ] Performance profiling
 - [ ] ProGuard optimization
 - [ ] Google Play assets (icon, screenshots, description)

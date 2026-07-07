@@ -9,4 +9,5 @@ sealed class Screen(val route: String) {
         fun createRoute(entryId: Long) = "detail/$entryId"
     }
     data object Qa : Screen("qa")
+    data object Onboarding : Screen("onboarding")
 }

@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.echomind.ui.theme.DetailSkeleton
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -71,13 +72,7 @@ fun DetailScreen(
     ) { padding ->
         when {
             uiState.isLoading -> {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text("Loading...", style = MaterialTheme.typography.bodyLarge)
-                }
+                DetailSkeleton()
             }
             uiState.error != null -> {
                 Column(

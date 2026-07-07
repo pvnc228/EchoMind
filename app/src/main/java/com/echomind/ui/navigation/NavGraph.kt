@@ -1,6 +1,11 @@
 package com.echomind.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -9,19 +14,45 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.echomind.ui.detail.DetailScreen
 import com.echomind.ui.home.HomeScreen
+import com.echomind.ui.onboarding.OnboardingManager
+import com.echomind.ui.onboarding.OnboardingScreen
 import com.echomind.ui.qa.QaScreen
 import com.echomind.ui.record.RecordScreen
 import com.echomind.ui.search.SearchScreen
 import com.echomind.ui.settings.SettingsScreen
+import kotlinx.coroutines.launch
 
 @Composable
 fun EchoMindNavGraph(
     navController: NavHostController = rememberNavController()
 ) {
+    val context = LocalContext.current
+    val onboardingManager = remember { OnboardingManager(context) }
+    val onboardingCompleted by onboardingManager.isOnboardingCompleted.collectAsState(initial = null)
+    val scope = rememberCoroutineScope()
+
+    val startDestination = if (onboardingCompleted == true) {
+        Screen.Home.route
+    } else {
+        Screen.Onboarding.route
+    }
+
     NavHost(
         navController = navController,
-        startDestination = Screen.Home.route
+        startDestination = startDestination
     ) {
+        composable(Screen.Onboarding.route) {
+            OnboardingScreen(
+                onComplete = {
+                    scope.launch {
+                        onboardingManager.completeOnboarding()
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Onboarding.route) { inclusive = true }
+                        }
+                    }
+                }
+            )
+        }
         composable(Screen.Home.route) {
             HomeScreen(
                 onNavigateToRecord = { navController.navigate(Screen.Record.route) },
