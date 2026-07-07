@@ -70,17 +70,35 @@
 
 ---
 
-## Security Skills Integration (from skills-reference)
-- [ ] AES-256-GCM encryption for diary entries
-- [ ] TLS 1.3 for server channel (OkHttp cert pinning)
-- [ ] API key security (generation, rotation)
-- [ ] Rate limiting on server
-- [ ] OAuth 2.0 + PKCE for server auth
-- [ ] Prompt injection detection for voice input
-- [ ] Llama Guard for on-device safety
+## Skill References (Phase by Phase)
 
-## Design References
-- `skills/meeting-insights-analyzer` → emotion detection adaptation
-- `skills/content-research-writer` → diary structuring
-- `skills/theme-factory` → color palettes
-- `skills/artifacts-builder` → server dashboard UI
+### Security & Encryption (Phase 8)
+- `Anthropic-Cybersecurity-Skills/skills/implementing-aes-encryption-for-data-at-rest` — AES-256-GCM for diary entries
+- `Anthropic-Cybersecurity-Skills/skills/configuring-tls-1-3-for-secure-communications` — TLS 1.3 for server channel
+- `Anthropic-Cybersecurity-Skills/skills/implementing-api-key-security-controls` — API key management
+- `Anthropic-Cybersecurity-Skills/skills/implementing-api-rate-limiting-and-throttling` — Rate limiting
+- `Anthropic-Cybersecurity-Skills/skills/configuring-oauth2-authorization-flow` — OAuth 2.0 + PKCE
+- `Anthropic-Cybersecurity-Skills/skills/defending-llms-with-guardrails` — Llama Guard
+- `Anthropic-Cybersecurity-Skills/skills/detecting-ai-model-prompt-injection-attacks` — Prompt injection defense
+- `Anthropic-Cybersecurity-Skills/skills/exploiting-insecure-data-storage-in-mobile` — Anti-patterns audit
+- `Anthropic-Cybersecurity-Skills/skills/conducting-mobile-app-penetration-test` — Full pentest
+
+### AI / Transcript Analysis (Phase 4-5, 7)
+- `awesome-claude-skills/meeting-insights-analyzer` — Emotion/pattern detection from transcripts
+- `awesome-claude-skills/content-research-writer` — Structuring unstructured text
+
+### Design (Phase 9)
+- `awesome-claude-skills/theme-factory` — Color palettes & font pairings
+- `awesome-claude-skills/canvas-design` — Onboarding/mood illustrations
+- `awesome-claude-skills/brand-guidelines` — Brand identity system
+
+### Server Backend (if needed)
+- `awesome-claude-skills/mcp-builder` — Self-hosted MCP server
+- `awesome-claude-skills/artifacts-builder` — Dashboard UI (React/TS)
+- `awesome-claude-skills/webapp-testing` — Playwright tests
+
+### File & Data Organization
+- `awesome-claude-skills/file-organizer` — Diary entry organization patterns
+
+### Meta (Skill Creation)
+- `awesome-claude-skills/skill-creator` — Package custom project skills
