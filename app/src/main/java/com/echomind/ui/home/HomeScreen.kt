@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
@@ -52,6 +53,7 @@ fun HomeScreen(
     onNavigateToSearch: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToDetail: (Long) -> Unit = {},
+    onNavigateToQa: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -61,6 +63,9 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("EchoMind") },
                 actions = {
+                    IconButton(onClick = onNavigateToQa) {
+                        Icon(Icons.Default.QuestionAnswer, contentDescription = "Ask AI")
+                    }
                     IconButton(onClick = onNavigateToSearch) {
                         Icon(Icons.Default.Search, contentDescription = "Search")
                     }

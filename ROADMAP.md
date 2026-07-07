@@ -42,11 +42,11 @@
 - [x] Detail screen per entry
 - [x] Filter chips by category
 
-## Phase 7: AI Q&A on Past Entries
-- [ ] Chat-style interface
-- [ ] Context window construction (recent N entries)
-- [ ] Natural language queries ("What worried me last week?")
-- [ ] Source entry linking in responses
+## Phase 7: AI Q&A on Past Entries ✅
+- [x] Chat-style interface (QaScreen with message bubbles + input)
+- [x] Context window construction (last 20 entries as LLM context)
+- [x] Natural language queries ("What worried me last week?")
+- [x] Source entry linking (entry IDs cited in responses)
 
 ## Phase 8: Security & Privacy
 - [ ] Biometric authentication on launch

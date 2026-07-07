@@ -1,8 +1,10 @@
 package com.echomind.di
 
+import com.echomind.data.local.dao.EntryDao
 import com.echomind.data.repository.EntryRepository
 import com.echomind.data.repository.LlmRepository
 import com.echomind.domain.usecase.AnalyzeEntryUseCase
+import com.echomind.domain.usecase.AskQuestionUseCase
 import com.echomind.domain.usecase.GetEntriesUseCase
 import com.echomind.domain.usecase.SaveEntryUseCase
 import dagger.Module
@@ -29,4 +31,9 @@ object RepositoryModule {
     @Singleton
     fun provideAnalyzeEntryUseCase(repository: LlmRepository): AnalyzeEntryUseCase =
         AnalyzeEntryUseCase(repository)
+
+    @Provides
+    @Singleton
+    fun provideAskQuestionUseCase(dao: EntryDao, repository: LlmRepository): AskQuestionUseCase =
+        AskQuestionUseCase(dao, repository)
 }

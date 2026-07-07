@@ -100,9 +100,38 @@ Verified all key skill paths from skills-reference.md are accessible:
 - `ui/record/RecordScreen.kt` — waveform replaces spinner during recording
 - `ROADMAP.md` — checked completed items across Phases 2-6
 
+---
+
+## 2026-07-07 — Phase 7: AI Q&A on Past Entries
+
+### Skills Used
+- **`meeting-insights-analyzer`** — Pattern recognition approach informed prompt design for extracting insights across multiple diary entries. The skill's emphasis on "speaking patterns, sentiment, recurring themes" mapped to how the LLM should analyze diary entries for Q&A.
+- **`content-research-writer`** — Context window construction approach (bundling recent entries as source material, instructing LLM to cite sources) was influenced by this skill's research/structuring workflow.
+
+### Done
+- **`AskQuestionUseCase`**: Loads last 20 entries, formats them as structured context (with ID, date, category, transcript, summary, tasks, ideas, emotions, tags), sends to LLM via existing `v1/chat/completions` endpoint. Uses system prompt instructing the model to answer only from provided entries and cite sources as `[Entry N]`.
+- **`QaScreen`**: Chat-style UI with message bubbles (user right-aligned, AI left-aligned), auto-scroll to latest, send button in bottom bar, "Thinking..." indicator, and empty-state hint text.
+- **`QaViewModel`**: Manages message list, input state, loading state, and error handling. Calls `AskQuestionUseCase` on send.
+- **Navigation**: Added `Screen.Qa` route, wired `QaScreen` composable in `NavGraph`, added `QuestionAnswer` icon button to HomeScreen top bar.
+- **`LlmRepository.askQuestion()`**: New method reusing existing `AnalysisRequest`/`AnalysisResponse` DTOs with higher temperature (0.7) for creative Q&A.
+
+### Files Created
+- `domain/usecase/AskQuestionUseCase.kt` — context construction + LLM query
+- `ui/qa/QaScreen.kt` — chat message UI with bubbles
+- `ui/qa/QaViewModel.kt` — message/input/loading state management
+
+### Files Modified
+- `data/repository/LlmRepository.kt` — added `askQuestion()`
+- `ui/navigation/Screen.kt` — added `Qa` route
+- `ui/navigation/NavGraph.kt` — Qa composable + HomeScreen onNavigateToQa
+- `ui/home/HomeScreen.kt` — Q&A icon button in top bar
+- `di/RepositoryModule.kt` — provide AskQuestionUseCase
+- `ROADMAP.md` — Phase 7 items checked
+
 ### Next Steps
-1. Implement Room database encryption with SQLCipher (Phase 8)
-2. AI Q&A chat interface on past entries (Phase 7)
-3. Biometric authentication on launch (Phase 8)
-4. Onboarding flow (Phase 9)
-5. Data migrations for Room (v1→v2)
+1. Biometric authentication on launch (Phase 8)
+2. SQLCipher database encryption (Phase 8)
+3. Audio file encryption (AES-256-GCM) (Phase 8)
+4. FLAG_SECURE (prevent screenshots) (Phase 8)
+5. Onboarding flow (Phase 9)
+6. Data migrations for Room (v1→v2)

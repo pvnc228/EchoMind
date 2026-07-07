@@ -61,6 +61,15 @@ class LlmRepository @Inject constructor(
         )
     }
 
+    suspend fun askQuestion(messages: List<Message>): Result<String> = runCatching {
+        val request = AnalysisRequest(
+            messages = messages,
+            temperature = 0.7
+        )
+        val response = llmApi.analyzeText(request)
+        response.choices.firstOrNull()?.message?.content ?: throw Exception("Empty response")
+    }
+
     private fun String.extractJson(): String {
         val start = indexOf('{')
         val end = lastIndexOf('}')
