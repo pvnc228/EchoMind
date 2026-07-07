@@ -34,24 +34,6 @@ app/src/main/java/com/echomind/
     └── navigation/     # Nav graph
 ```
 
-## Phases
-
-| Phase | Status |
-|-------|--------|
-| 1 — Project Foundation | ✅ Complete |
-| 2 — Local Data Storage | ⏳ Next |
-| 3 — Audio Recording | ⏳ |
-| 4 — LLM Integration | ⏳ |
-| 5 — AI Structuring | ⏳ |
-| 6 — Home & Search | ⏳ |
-| 7 — AI Q&A | ⏳ |
-| 8 — Security & Privacy | ⏳ |
-| 9 — UX Polish | ⏳ |
-| 10 — Testing & Release | ⏳ |
-
-See [ROADMAP.md](ROADMAP.md) for full details and skill references.
-See [JOURNAL.md](JOURNAL.md) for development journal and rules.
-
 ## Getting Started
 
 1. Open in Android Studio (Ladybug+ recommended)
