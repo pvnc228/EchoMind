@@ -28,58 +28,57 @@ fun BiometricAuthGate(
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME && !isAuthenticated) {
-                val biometricManager = BiometricManager.from(context)
-                val canAuthenticate = biometricManager.canAuthenticate(
-                    BIOMETRIC_STRONG or DEVICE_CREDENTIAL
-                )
-                if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS ||
-                    canAuthenticate == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
-                ) {
-                    val activity = context as FragmentActivity
-                    val prompt = BiometricPrompt(
-                        activity,
-                        Executors.newSingleThreadExecutor(),
-                        object : BiometricPrompt.AuthenticationCallback() {
-                            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                                isAuthenticated = true
-                            }
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    if (!isAuthenticated) {
+                        val biometricManager = BiometricManager.from(context)
+                        val canAuthenticate = biometricManager.canAuthenticate(
+                            BIOMETRIC_STRONG or DEVICE_CREDENTIAL
+                        )
+                        if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS ||
+                            canAuthenticate == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
+                        ) {
+                            val activity = context as FragmentActivity
+                            val prompt = BiometricPrompt(
+                                activity,
+                                Executors.newSingleThreadExecutor(),
+                                object : BiometricPrompt.AuthenticationCallback() {
+                                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                                        isAuthenticated = true
+                                    }
 
-                            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                                // Only finish on hard errors (device lockout, no auth configured)
-                                if (errorCode == BiometricPrompt.ERROR_LOCKOUT_PERMANENT ||
-                                    errorCode == BiometricPrompt.ERROR_NO_BIOMETRICS ||
-                                    errorCode == BiometricPrompt.ERROR_HW_NOT_PRESENT ||
-                                    errorCode == BiometricPrompt.ERROR_HW_UNAVAILABLE
-                                ) {
-                                    activity.finish()
+                                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                        if (errorCode == BiometricPrompt.ERROR_LOCKOUT_PERMANENT ||
+                                            errorCode == BiometricPrompt.ERROR_NO_BIOMETRICS ||
+                                            errorCode == BiometricPrompt.ERROR_HW_NOT_PRESENT ||
+                                            errorCode == BiometricPrompt.ERROR_HW_UNAVAILABLE
+                                        ) {
+                                            activity.finish()
+                                        }
+                                    }
+
+                                    override fun onAuthenticationFailed() {
+                                    }
                                 }
-                                // ERROR_NEGATIVE_BUTTON and ERROR_USER_CANCELED
-                                // let the user retry via the prompt on next ON_RESUME
-                            }
-
-                            override fun onAuthenticationFailed() {
-                                // Retry - don't finish
-                            }
+                            )
+                            val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                                .setTitle("EchoMind")
+                                .setSubtitle("Authenticate to access your diary")
+                                .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
+                                .apply {
+                                    if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
+                                        setNegativeButtonText("Cancel")
+                                    }
+                                }
+                                .build()
+                            prompt.authenticate(promptInfo)
                         }
-                    )
-                    val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                        .setTitle("EchoMind")
-                        .setSubtitle("Authenticate to access your diary")
-                        .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
-                        .apply {
-                            // Show "Use PIN" as negative button only if device credential
-                            // is not already the primary option
-                            if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
-                                setNegativeButtonText("Cancel")
-                            }
-                        }
-                        .build()
-                    prompt.authenticate(promptInfo)
-                } else {
-                    // No biometric or device credential available at all
-                    isAuthenticated = true
+                    }
                 }
+                Lifecycle.Event.ON_STOP -> {
+                    isAuthenticated = false
+                }
+                else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

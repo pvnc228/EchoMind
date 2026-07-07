@@ -11,6 +11,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.echomind.data.export.ExportManager
 import com.echomind.data.remote.BaseUrlProvider
+import com.echomind.data.remote.CredentialsProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,7 +26,8 @@ data class SettingsUiState(
     val apiEndpoint: String = "http://localhost:1234",
     val apiKey: String = "",
     val localMode: Boolean = true,
-    val exportState: ExportState = ExportState.Idle
+    val exportState: ExportState = ExportState.Idle,
+    val showEndpointWarning: Boolean = false
 )
 
 sealed interface ExportState {
@@ -39,7 +41,8 @@ sealed interface ExportState {
 class SettingsViewModel @Inject constructor(
     application: Application,
     private val baseUrlProvider: BaseUrlProvider,
-    private val exportManager: ExportManager
+    private val exportManager: ExportManager,
+    private val credentialsProvider: CredentialsProvider
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -50,14 +53,21 @@ class SettingsViewModel @Inject constructor(
             val prefs = getApplication<Application>().dataStore.data.first()
             _uiState.value = SettingsUiState(
                 apiEndpoint = prefs[KEY_API_ENDPOINT] ?: "http://localhost:1234",
-                apiKey = prefs[KEY_API_KEY] ?: "",
+                apiKey = credentialsProvider.apiKey,
                 localMode = prefs[KEY_LOCAL_MODE] ?: true
             )
         }
     }
 
     fun updateApiEndpoint(endpoint: String) {
-        _uiState.value = _uiState.value.copy(apiEndpoint = endpoint)
+        val isNonLocal = endpoint.contains("://") &&
+            !endpoint.contains("localhost") &&
+            !endpoint.contains("127.0.0.1") &&
+            !endpoint.contains("10.0.2.2")
+        _uiState.value = _uiState.value.copy(
+            apiEndpoint = endpoint,
+            showEndpointWarning = isNonLocal
+        )
         baseUrlProvider.updateUrl(endpoint)
         viewModelScope.launch {
             getApplication<Application>().dataStore.edit { prefs ->
@@ -66,13 +76,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun dismissEndpointWarning() {
+        _uiState.value = _uiState.value.copy(showEndpointWarning = false)
+    }
+
     fun updateApiKey(key: String) {
         _uiState.value = _uiState.value.copy(apiKey = key)
-        viewModelScope.launch {
-            getApplication<Application>().dataStore.edit { prefs ->
-                prefs[KEY_API_KEY] = key
-            }
-        }
+        credentialsProvider.updateApiKey(key)
     }
 
     fun toggleLocalMode(enabled: Boolean) {
@@ -112,7 +122,6 @@ class SettingsViewModel @Inject constructor(
 
     companion object {
         private val KEY_API_ENDPOINT = stringPreferencesKey("api_endpoint")
-        private val KEY_API_KEY = stringPreferencesKey("api_key")
         private val KEY_LOCAL_MODE = booleanPreferencesKey("local_mode")
     }
 }

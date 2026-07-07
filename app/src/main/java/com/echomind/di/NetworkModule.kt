@@ -1,7 +1,9 @@
 package com.echomind.di
 
+import com.echomind.data.remote.AuthInterceptor
 import com.echomind.data.remote.EndpointInterceptor
 import com.echomind.data.remote.LlmApi
+import com.echomind.data.remote.CredentialsProvider
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module
 import dagger.Provides
@@ -28,12 +30,20 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(interceptor: EndpointInterceptor): OkHttpClient {
+    fun provideOkHttpClient(
+        endpointInterceptor: EndpointInterceptor,
+        authInterceptor: AuthInterceptor
+    ): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (com.echomind.BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BODY
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
         }
         return OkHttpClient.Builder()
-            .addInterceptor(interceptor)
+            .addInterceptor(authInterceptor)
+            .addInterceptor(endpointInterceptor)
             .addInterceptor(logging)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
@@ -54,4 +64,11 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideLlmApi(retrofit: Retrofit): LlmApi = retrofit.create(LlmApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideCredentialsProvider(provider: CredentialsProvider): CredentialsProvider {
+        provider.loadApiKey()
+        return provider
+    }
 }

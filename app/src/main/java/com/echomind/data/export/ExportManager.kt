@@ -80,11 +80,11 @@ class ExportManager @Inject constructor(
                     durationMs = entity.durationMs,
                     createdAt = entity.createdAt,
                     category = entity.category,
-                    tags = entity.tags.split(",").filter { it.isNotBlank() },
+                    tags = entity.tags,
                     summary = entity.summary,
-                    tasks = entity.tasks.split("|").filter { it.isNotBlank() },
-                    ideas = entity.ideas.split("|").filter { it.isNotBlank() },
-                    emotions = entity.emotions.split("|").filter { it.isNotBlank() }
+                    tasks = entity.tasks,
+                    ideas = entity.ideas,
+                    emotions = entity.emotions
                 )
             }
         )

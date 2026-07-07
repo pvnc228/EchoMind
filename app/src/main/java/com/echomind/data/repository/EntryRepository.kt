@@ -46,11 +46,11 @@ class EntryRepository @Inject constructor(
         durationMs = durationMs,
         createdAt = createdAt,
         category = EntryCategory.fromString(category),
-        tags = if (tags.isBlank()) emptyList() else tags.split(",").map { it.trim() },
+        tags = tags,
         summary = summary,
-        tasks = if (tasks.isBlank()) emptyList() else tasks.split("|").map { it.trim() },
-        ideas = if (ideas.isBlank()) emptyList() else ideas.split("|").map { it.trim() },
-        emotions = if (emotions.isBlank()) emptyList() else emotions.split("|").map { it.trim() }
+        tasks = tasks,
+        ideas = ideas,
+        emotions = emotions
     )
 
     private fun Entry.toEntity() = EntryEntity(
@@ -60,10 +60,10 @@ class EntryRepository @Inject constructor(
         durationMs = durationMs,
         createdAt = createdAt,
         category = category.name.lowercase(),
-        tags = tags.joinToString(","),
+        tags = tags,
         summary = summary,
-        tasks = tasks.joinToString("|"),
-        ideas = ideas.joinToString("|"),
-        emotions = emotions.joinToString("|")
+        tasks = tasks,
+        ideas = ideas,
+        emotions = emotions
     )
 }

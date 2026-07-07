@@ -21,7 +21,8 @@ data class DetailUiState(
     val entry: Entry? = null,
     val isLoading: Boolean = true,
     val isPlaying: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val tempAudioPath: String? = null
 )
 
 @HiltViewModel
@@ -49,45 +50,63 @@ class DetailViewModel @Inject constructor(
     }
 
     fun togglePlayback() {
-        val entry = _uiState.value.entry ?: return
-        val audioPath = entry.audioPath ?: return
+        viewModelScope.launch {
+            val entry = _uiState.value.entry ?: return@launch
+            val audioPath = entry.audioPath ?: return@launch
 
-        if (player == null) {
-            val playbackUri = if (audioPath.endsWith(AudioEncryptionUtil.ENCRYPTED_EXTENSION)) {
-                val tempFile = audioEncryptionUtil.decryptToTempFile(audioPath)
-                Uri.fromFile(tempFile)
+            if (player == null) {
+                val playbackUri = if (audioPath.endsWith(AudioEncryptionUtil.ENCRYPTED_EXTENSION)) {
+                    val tempFile = audioEncryptionUtil.decryptToTempFile(audioPath)
+                    _uiState.value = _uiState.value.copy(tempAudioPath = tempFile.absolutePath)
+                    Uri.fromFile(tempFile)
+                } else {
+                    Uri.parse(audioPath)
+                }
+                player = ExoPlayer.Builder(getApplication()).build().apply {
+                    setMediaItem(MediaItem.fromUri(playbackUri))
+                    prepare()
+                    play()
+                    addListener(object : Player.Listener {
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            _uiState.value = _uiState.value.copy(isPlaying = isPlaying)
+                        }
+                    })
+                }
+                _uiState.value = _uiState.value.copy(isPlaying = true)
+            } else if (player!!.isPlaying) {
+                player!!.pause()
+                _uiState.value = _uiState.value.copy(isPlaying = false)
             } else {
-                Uri.parse(audioPath)
+                player!!.play()
+                _uiState.value = _uiState.value.copy(isPlaying = true)
             }
-            player = ExoPlayer.Builder(getApplication()).build().apply {
-                setMediaItem(MediaItem.fromUri(playbackUri))
-                prepare()
-                play()
-                addListener(object : Player.Listener {
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        _uiState.value = _uiState.value.copy(isPlaying = isPlaying)
-                    }
-                })
-            }
-            _uiState.value = _uiState.value.copy(isPlaying = true)
-        } else if (player!!.isPlaying) {
-            player!!.pause()
-            _uiState.value = _uiState.value.copy(isPlaying = false)
-        } else {
-            player!!.play()
-            _uiState.value = _uiState.value.copy(isPlaying = true)
         }
+    }
+
+    fun stopPlayback() {
+        player?.stop()
+        player?.release()
+        player = null
+        _uiState.value = _uiState.value.copy(isPlaying = false)
+        cleanupTempFile()
     }
 
     fun deleteEntry() {
         viewModelScope.launch {
             _uiState.value.entry?.let { entryRepository.deleteEntry(it.id) }
+            stopPlayback()
+        }
+    }
+
+    private fun cleanupTempFile() {
+        _uiState.value.tempAudioPath?.let {
+            audioEncryptionUtil.deleteTempFile(it)
+            _uiState.value = _uiState.value.copy(tempAudioPath = null)
         }
     }
 
     override fun onCleared() {
+        stopPlayback()
         super.onCleared()
-        player?.release()
-        player = null
     }
 }

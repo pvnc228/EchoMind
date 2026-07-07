@@ -22,7 +22,12 @@ class LlmRepository @Inject constructor(
     private val offlineAnalyzer: SimpleTextAnalyzer
 ) {
     suspend fun transcribeAudio(audioFile: java.io.File): Result<String> = runCatching {
-        val requestBody = audioFile.asRequestBody("audio/wav".toMediaTypeOrNull())
+        val mimeType = when {
+            audioFile.name.endsWith(".m4a") -> "audio/mp4"
+            audioFile.name.endsWith(".wav") -> "audio/wav"
+            else -> "audio/wav"
+        }
+        val requestBody = audioFile.asRequestBody(mimeType.toMediaTypeOrNull())
         val part = MultipartBody.Part.createFormData("file", audioFile.name, requestBody)
         val modelPart = "whisper-1".toRequestBody()
         val formatPart = "json".toRequestBody()

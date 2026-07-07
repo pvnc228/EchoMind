@@ -1,7 +1,7 @@
 package com.echomind.domain.usecase
 
-import com.echomind.data.local.dao.EntryDao
 import com.echomind.data.remote.dto.Message
+import com.echomind.data.repository.EntryRepository
 import com.echomind.data.repository.LlmRepository
 import com.echomind.domain.model.Entry
 import javax.inject.Inject
@@ -12,11 +12,11 @@ data class QaResult(
 )
 
 class AskQuestionUseCase @Inject constructor(
-    private val entryDao: EntryDao,
+    private val entryRepository: EntryRepository,
     private val llmRepository: LlmRepository
 ) {
     suspend operator fun invoke(question: String): Result<QaResult> = runCatching {
-        val recentEntries = entryDao.getRecentEntries(20)
+        val recentEntries = entryRepository.getRecentEntries(20)
 
         val contextBanner = buildString {
             appendLine("You are EchoMind's AI assistant. You help users explore their personal voice diary entries.")
@@ -60,7 +60,6 @@ class AskQuestionUseCase @Inject constructor(
         )
 
         val answer = llmRepository.askQuestion(messages).getOrThrow()
-
         val sourceIds = recentEntries.map { it.id }
 
         QaResult(answer = answer, sourceEntryIds = sourceIds)

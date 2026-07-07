@@ -3,6 +3,7 @@ package com.echomind.data.local.entity
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.echomind.data.local.converter.Converters
 
 @Entity(tableName = "entries")
 data class EntryEntity(
@@ -19,13 +20,13 @@ data class EntryEntity(
     @ColumnInfo(name = "category")
     val category: String = "general",
     @ColumnInfo(name = "tags")
-    val tags: String = "",
+    val tags: List<String> = emptyList(),
     @ColumnInfo(name = "summary")
     val summary: String = "",
     @ColumnInfo(name = "tasks")
-    val tasks: String = "",
+    val tasks: List<String> = emptyList(),
     @ColumnInfo(name = "ideas")
-    val ideas: String = "",
+    val ideas: List<String> = emptyList(),
     @ColumnInfo(name = "emotions")
-    val emotions: String = ""
+    val emotions: List<String> = emptyList()
 )

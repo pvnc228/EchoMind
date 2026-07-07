@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -24,18 +26,20 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,6 +50,7 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    var showExportWarning by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.exportState) {
         when (val state = uiState.exportState) {
@@ -56,7 +61,7 @@ fun SettingsScreen(
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 context.startActivity(Intent.createChooser(shareIntent, "Share export"))
-                snackbarHostState.showSnackbar("Export ready")
+                snackbarHostState.showSnackbar("Export ready - this file is NOT encrypted, handle with care")
                 viewModel.clearExportState()
             }
             is ExportState.Error -> {
@@ -65,6 +70,55 @@ fun SettingsScreen(
             }
             else -> {}
         }
+    }
+
+    if (uiState.showEndpointWarning) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissEndpointWarning() },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null) },
+            title = { Text("Non-local endpoint") },
+            text = {
+                Text(
+                    "You are changing the API endpoint to a remote server. " +
+                    "Your diary entries and transcripts will be sent to this server. " +
+                    "Ensure you trust the recipient and use HTTPS in production."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissEndpointWarning() }) {
+                    Text("I understand")
+                }
+            }
+        )
+    }
+
+    if (showExportWarning) {
+        AlertDialog(
+            onDismissRequest = { showExportWarning = false },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null) },
+            title = { Text("Unencrypted export") },
+            text = {
+                Text(
+                    "The exported zip file contains your full diary entries and " +
+                    "decrypted audio recordings in PLAINTEXT. This file is NOT " +
+                    "password-protected. Only share via trusted channels and " +
+                    "delete after use."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExportWarning = false
+                    viewModel.exportData()
+                }) {
+                    Text("Export anyway")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportWarning = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -114,7 +168,7 @@ fun SettingsScreen(
             Text("Data", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(16.dp))
             Button(
-                onClick = { viewModel.exportData() },
+                onClick = { showExportWarning = true },
                 enabled = uiState.exportState !is ExportState.InProgress,
                 modifier = Modifier.fillMaxWidth()
             ) {

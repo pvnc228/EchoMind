@@ -52,12 +52,13 @@ class RecordViewModel @Inject constructor(
         val context = getApplication<Application>()
         val audioDir = File(context.filesDir, "audio")
         audioDir.mkdirs()
-        val audioFile = File(audioDir, "entry_${System.currentTimeMillis()}.wav")
+        val audioFile = File(audioDir, "entry_${System.currentTimeMillis()}.m4a")
 
         mediaRecorder = MediaRecorder().apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
-            setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
-            setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            setAudioSamplingRate(16000)
             setOutputFile(audioFile.absolutePath)
             try {
                 prepare()
@@ -92,12 +93,12 @@ class RecordViewModel @Inject constructor(
                 stop()
                 release()
             } catch (e: Exception) {
-                // release anyway
             }
         }
         mediaRecorder = null
         val duration = System.currentTimeMillis() - startTime
         val audioPath = _uiState.value.audioPath
+
         val encryptedPath = if (audioPath != null) {
             val original = File(audioPath)
             val encFile = File(original.parent, original.name + AudioEncryptionUtil.ENCRYPTED_EXTENSION)
@@ -105,9 +106,14 @@ class RecordViewModel @Inject constructor(
                 audioEncryptionUtil.encryptFile(original, encFile)
                 encFile.absolutePath
             } catch (e: Exception) {
-                audioPath
+                _uiState.value = RecordUiState(
+                    state = RecordingState.ERROR,
+                    error = "Encryption failed: ${e.message}. Recording discarded."
+                )
+                return
             }
         } else null
+
         _uiState.value = _uiState.value.copy(
             state = RecordingState.DONE,
             durationMs = duration,

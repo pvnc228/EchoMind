@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.security.crypto.EncryptedFile
 import androidx.security.crypto.MasterKey
 import java.io.File
+import java.io.InputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,7 +34,7 @@ class AudioEncryptionUtil @Inject constructor(
         inputFile.delete()
     }
 
-    fun getDecryptedInputStream(encryptedFile: File): java.io.InputStream {
+    fun getDecryptedInputStream(encryptedFile: File): InputStream {
         val file = EncryptedFile.Builder(
             context,
             encryptedFile,
@@ -59,8 +60,12 @@ class AudioEncryptionUtil @Inject constructor(
                 input.copyTo(output)
             }
         }
-        tempFile.deleteOnExit()
         return tempFile
+    }
+
+    fun deleteTempFile(tempPath: String) {
+        val file = File(tempPath)
+        if (file.exists()) file.delete()
     }
 
     companion object {

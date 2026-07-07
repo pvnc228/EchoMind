@@ -1,6 +1,5 @@
 package com.echomind.di
 
-import com.echomind.data.local.dao.EntryDao
 import com.echomind.data.repository.EntryRepository
 import com.echomind.data.repository.LlmRepository
 import com.echomind.domain.usecase.AnalyzeEntryUseCase
@@ -34,6 +33,6 @@ object RepositoryModule {
 
     @Provides
     @Singleton
-    fun provideAskQuestionUseCase(dao: EntryDao, repository: LlmRepository): AskQuestionUseCase =
-        AskQuestionUseCase(dao, repository)
+    fun provideAskQuestionUseCase(repository: EntryRepository, llmRepository: LlmRepository): AskQuestionUseCase =
+        AskQuestionUseCase(repository, llmRepository)
 }

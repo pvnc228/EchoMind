@@ -11,6 +11,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import net.zetetic.database.sqlcipher.SupportFactory
+import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)

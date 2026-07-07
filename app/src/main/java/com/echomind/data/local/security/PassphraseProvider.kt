@@ -25,6 +25,7 @@ class PassphraseProvider @Inject constructor(
         )
     }
 
+    @Synchronized
     fun getPassphrase(): ByteArray {
         val stored = prefs.getString(KEY_PASSPHRASE, null)
         if (stored != null) {
