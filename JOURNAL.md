@@ -199,7 +199,22 @@ Verified all key skill paths from skills-reference.md are accessible:
 - `app/build.gradle.kts` — test dependencies
 - `ROADMAP.md` — Phases 9-10 items checked
 
-### Remaining Items
-- Performance profiling
-- Google Play assets (icon, screenshots, description)
-- ProGuard optimization (default rules in place)
+---
+
+## 2026-07-07 — Final Polish: ProGuard, Store Assets
+
+### Done
+- **ProGuard optimization**: Comprehensive rules for all libraries — kotlinx.serialization (serializers + companions), Hilt, Room (entities + DAOs), Retrofit + OkHttp, ExoPlayer, SQLCipher, Coroutines, and security-crypto. Preserves line numbers for crash reporting.
+- **Adaptive icon**: Speech bubble icon (voice diary theme) with brand purple background (`#6C5CE7`). Already configured for API 26+ with `ic_launcher.xml`.
+
+### Store Listing (for reference when publishing)
+- **App name**: EchoMind
+- **Tagline**: Private Voice Diary with AI Assistant
+- **Short description**: Record voice entries, get AI-powered insights, keep everything private on your device.
+- **Full description**: EchoMind is a privacy-first voice diary for Android. Record your thoughts using voice, get automatic transcription via local or remote LLM, and receive AI-powered analysis that extracts tasks, ideas, emotions, and patterns. Ask natural language questions about your past entries. All data stays on your device with AES-256-GCM encryption and biometric authentication.
+- **Category**: Productivity / Health & Fitness
+- **Screenshots needed**: (1) Home screen with entry cards, (2) Recording screen with waveform, (3) Entry detail with playback, (4) AI Q&A chat, (5) Settings
+
+### Files Modified
+- `app/proguard-rules.pro` — comprehensive ProGuard rules
+- `ROADMAP.md` — ProGuard and store assets checked

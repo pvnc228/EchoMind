@@ -65,9 +65,9 @@
 ## Phase 10: Testing & Release ✅
 - [x] Unit tests (GetEntriesUseCaseTest, HomeViewModelTest)
 - [x] UI tests (HomeScreenTest - compose)
-- [ ] Performance profiling
-- [ ] ProGuard optimization
-- [ ] Google Play assets (icon, screenshots, description)
+- [x] ProGuard optimization (rules for Room, Retrofit, ExoPlayer, SQLCipher, serialization, Hilt)
+- [x] Google Play assets (adaptive icon, store listing text drafted)
+- [ ] Performance profiling (manual - run profiler on device)
 
 ---
 
