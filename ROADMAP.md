@@ -48,12 +48,12 @@
 - [x] Natural language queries ("What worried me last week?")
 - [x] Source entry linking (entry IDs cited in responses)
 
-## Phase 8: Security & Privacy
-- [ ] Biometric authentication on launch
-- [ ] SQLCipher database encryption
-- [ ] Audio file encryption (AES-256-GCM)
-- [ ] FLAG_SECURE (prevent screenshots)
-- [ ] Local-only mode toggle
+## Phase 8: Security & Privacy ✅
+- [x] Biometric authentication on launch (BiometricPrompt gate composable)
+- [x] SQLCipher database encryption (SupportFactory + MasterKey-derived passphrase)
+- [x] Audio file encryption (AES-256-GCM via EncryptedFile)
+- [x] FLAG_SECURE (prevent screenshots in app overview)
+- [x] Local-only mode toggle (Settings toggle + network config)
 
 ## Phase 9: UX Polish
 - [ ] Skeleton loaders & transitions

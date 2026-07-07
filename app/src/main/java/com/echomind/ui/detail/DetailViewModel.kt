@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.echomind.data.local.security.AudioEncryptionUtil
 import com.echomind.data.repository.EntryRepository
 import com.echomind.domain.model.Entry
 import com.google.android.exoplayer2.ExoPlayer
@@ -26,7 +27,8 @@ data class DetailUiState(
 @HiltViewModel
 class DetailViewModel @Inject constructor(
     application: Application,
-    private val entryRepository: EntryRepository
+    private val entryRepository: EntryRepository,
+    private val audioEncryptionUtil: AudioEncryptionUtil
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(DetailUiState())
@@ -51,8 +53,14 @@ class DetailViewModel @Inject constructor(
         val audioPath = entry.audioPath ?: return
 
         if (player == null) {
+            val playbackUri = if (audioPath.endsWith(AudioEncryptionUtil.ENCRYPTED_EXTENSION)) {
+                val tempFile = audioEncryptionUtil.decryptToTempFile(audioPath)
+                Uri.fromFile(tempFile)
+            } else {
+                Uri.parse(audioPath)
+            }
             player = ExoPlayer.Builder(getApplication()).build().apply {
-                setMediaItem(MediaItem.fromUri(Uri.parse(audioPath)))
+                setMediaItem(MediaItem.fromUri(playbackUri))
                 prepare()
                 play()
                 addListener(object : Player.Listener {

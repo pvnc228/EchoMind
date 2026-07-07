@@ -98,4 +98,8 @@ dependencies {
 
     // ExoPlayer for audio playback
     implementation(libs.exoplayer.core)
+
+    // SQLCipher for database encryption
+    implementation(libs.sqlcipher)
+    implementation(libs.androidx.sqlite.ktx)
 }

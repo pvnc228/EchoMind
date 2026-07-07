@@ -128,10 +128,39 @@ Verified all key skill paths from skills-reference.md are accessible:
 - `di/RepositoryModule.kt` — provide AskQuestionUseCase
 - `ROADMAP.md` — Phase 7 items checked
 
+---
+
+## 2026-07-07 — Phase 8: Security & Privacy
+
+### Skills Used
+- **`implementing-aes-encryption-for-data-at-rest`** — AES-256-GCM mode, nonce management, key derivation patterns. The skill's encrypted file format (nonce + ciphertext + tag) informed the `EncryptedFile` usage approach via Android security-crypto library.
+- **`implementing-api-key-security-controls`** — Principles of secure key storage (never plaintext, hardware-backed keystore) applied to how the SQLCipher passphrase is managed via `EncryptedSharedPreferences` backed by Android Keystore.
+
+### Done
+- **FLAG_SECURE**: Added `WindowManager.LayoutParams.FLAG_SECURE` to `MainActivity.onCreate` to prevent screenshots and app overview content leak.
+- **Audio file encryption**: Created `AudioEncryptionUtil` using `EncryptedFile` (AES-256-GCM with HKDF) backed by `MasterKey` in Android Keystore. Audio files are encrypted after recording in `RecordViewModel` and decrypted to temp files during playback in `DetailViewModel`. Encrypted files use `.enc` extension.
+- **Biometric authentication**: Created `BiometricAuthGate` composable that shows `BiometricPrompt` on app resume using `BIOMETRIC_STRONG`. Falls back to no auth if no biometric hardware is available. Canceling or pressing negative button closes the app via `activity.finish()`.
+- **SQLCipher encryption**: Added `net.zetetic:android-database-sqlcipher` + `androidx.sqlite:sqlite-ktx` dependencies. Created `PassphraseProvider` that generates a random 256-bit passphrase on first launch, stores it in `EncryptedSharedPreferences` (AES-256-GCM via Android Keystore). `DatabaseModule` now uses `SupportFactory` with this passphrase. Room database version bumped to 2 with `fallbackToDestructiveMigration()`.
+
+### Files Created
+- `data/local/security/AudioEncryptionUtil.kt` — EncryptedFile-based AES-256-GCM encrypt/decrypt
+- `data/local/security/PassphraseProvider.kt` — Keystore-backed SQLCipher passphrase management
+- `ui/BiometricAuthGate.kt` — Composable biometric prompt gate
+
+### Files Modified
+- `MainActivity.kt` — FLAG_SECURE + BiometricAuthGate wrapper
+- `ui/record/RecordViewModel.kt` — AudioEncryptionUtil injection, encrypt on stop
+- `ui/detail/DetailViewModel.kt` — AudioEncryptionUtil injection, decrypt before playback
+- `di/DatabaseModule.kt` — SQLCipher SupportFactory + PassphraseProvider
+- `data/local/AppDatabase.kt` — version bumped to 2
+- `gradle/libs.versions.toml` — added sqlcipher + sqlite-ktx versions
+- `app/build.gradle.kts` — added sqlcipher + sqlite-ktx deps
+- `ROADMAP.md` — Phase 8 items checked
+
 ### Next Steps
-1. Biometric authentication on launch (Phase 8)
-2. SQLCipher database encryption (Phase 8)
-3. Audio file encryption (AES-256-GCM) (Phase 8)
-4. FLAG_SECURE (prevent screenshots) (Phase 8)
-5. Onboarding flow (Phase 9)
-6. Data migrations for Room (v1→v2)
+1. Skeleton loaders & transitions (Phase 9)
+2. Dark/light theme (Phase 9)
+3. Onboarding flow (Phase 9)
+4. Animations (entry/exit, recording pulse) (Phase 9)
+5. Unit tests (Phase 10)
+6. UI tests (Phase 10)

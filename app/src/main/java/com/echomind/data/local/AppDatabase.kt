@@ -8,7 +8,7 @@ import com.echomind.data.local.entity.EntryEntity
 
 @Database(
     entities = [EntryEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @androidx.room.TypeConverters(Converters::class)

@@ -4,6 +4,7 @@ import android.app.Application
 import android.media.MediaRecorder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.echomind.data.local.security.AudioEncryptionUtil
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.EntryCategory
 import com.echomind.domain.usecase.AnalyzeEntryUseCase
@@ -36,7 +37,8 @@ data class RecordUiState(
 class RecordViewModel @Inject constructor(
     application: Application,
     private val saveEntryUseCase: SaveEntryUseCase,
-    private val analyzeEntryUseCase: AnalyzeEntryUseCase
+    private val analyzeEntryUseCase: AnalyzeEntryUseCase,
+    private val audioEncryptionUtil: AudioEncryptionUtil
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(RecordUiState())
@@ -95,9 +97,21 @@ class RecordViewModel @Inject constructor(
         }
         mediaRecorder = null
         val duration = System.currentTimeMillis() - startTime
+        val audioPath = _uiState.value.audioPath
+        val encryptedPath = if (audioPath != null) {
+            val original = File(audioPath)
+            val encFile = File(original.parent, original.name + AudioEncryptionUtil.ENCRYPTED_EXTENSION)
+            try {
+                audioEncryptionUtil.encryptFile(original, encFile)
+                encFile.absolutePath
+            } catch (e: Exception) {
+                audioPath
+            }
+        } else null
         _uiState.value = _uiState.value.copy(
             state = RecordingState.DONE,
-            durationMs = duration
+            durationMs = duration,
+            audioPath = encryptedPath
         )
     }
 
