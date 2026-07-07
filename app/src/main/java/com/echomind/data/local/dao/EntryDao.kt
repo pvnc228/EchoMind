@@ -37,4 +37,7 @@ interface EntryDao {
 
     @Query("SELECT * FROM entries ORDER BY created_at DESC LIMIT :limit")
     suspend fun getRecentEntries(limit: Int): List<EntryEntity>
+
+    @Query("SELECT * FROM entries ORDER BY created_at DESC")
+    suspend fun getAllEntriesOnce(): List<EntryEntity>
 }

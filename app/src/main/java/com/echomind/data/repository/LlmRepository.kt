@@ -1,5 +1,6 @@
 package com.echomind.data.repository
 
+import com.echomind.data.analysis.SimpleTextAnalyzer
 import com.echomind.data.remote.LlmApi
 import com.echomind.data.remote.dto.AnalysisRequest
 import com.echomind.data.remote.dto.Message
@@ -17,7 +18,8 @@ import javax.inject.Singleton
 
 @Singleton
 class LlmRepository @Inject constructor(
-    private val llmApi: LlmApi
+    private val llmApi: LlmApi,
+    private val offlineAnalyzer: SimpleTextAnalyzer
 ) {
     suspend fun transcribeAudio(audioFile: java.io.File): Result<String> = runCatching {
         val requestBody = audioFile.asRequestBody("audio/wav".toMediaTypeOrNull())
@@ -28,37 +30,45 @@ class LlmRepository @Inject constructor(
         response.text
     }
 
-    suspend fun analyzeEntry(entry: Entry): Result<Entry> = runCatching {
-        val prompt = buildString {
-            appendLine("Analyze the following voice diary entry.")
-            appendLine("Extract: summary, tasks, ideas, emotions, category (general/task/idea/feeling/plan), tags.")
-            appendLine("Respond in JSON format:")
-            appendLine("""{"summary":"...","tasks":["..."],"ideas":["..."],"emotions":["..."],"category":"...","tags":["..."]}""")
-            appendLine()
-            appendLine("Entry:")
-            appendLine(entry.transcript)
+    suspend fun analyzeEntry(entry: Entry): Result<Entry> {
+        val llmResult = runCatching {
+            val prompt = buildString {
+                appendLine("Analyze the following voice diary entry.")
+                appendLine("Extract: summary, tasks, ideas, emotions, category (general/task/idea/feeling/plan), tags.")
+                appendLine("Respond in JSON format:")
+                appendLine("""{"summary":"...","tasks":["..."],"ideas":["..."],"emotions":["..."],"category":"...","tags":["..."]}""")
+                appendLine()
+                appendLine("Entry:")
+                appendLine(entry.transcript)
+            }
+
+            val request = AnalysisRequest(
+                messages = listOf(
+                    Message("system", "You are a diary analysis assistant. Extract structured data from personal voice journal entries."),
+                    Message("user", prompt)
+                )
+            )
+            val response = llmApi.analyzeText(request)
+            val content = response.choices.firstOrNull()?.message?.content ?: return@runCatching entry
+
+            val json = Json { ignoreUnknownKeys = true }
+            val analysis = json.decodeFromString<AnalysisResult>(content.extractJson())
+
+            entry.copy(
+                summary = analysis.summary,
+                tasks = analysis.tasks,
+                ideas = analysis.ideas,
+                emotions = analysis.emotions,
+                category = EntryCategory.fromString(analysis.category),
+                tags = analysis.tags
+            )
         }
 
-        val request = AnalysisRequest(
-            messages = listOf(
-                Message("system", "You are a diary analysis assistant. Extract structured data from personal voice journal entries."),
-                Message("user", prompt)
-            )
-        )
-        val response = llmApi.analyzeText(request)
-        val content = response.choices.firstOrNull()?.message?.content ?: return@runCatching entry
-
-        val json = Json { ignoreUnknownKeys = true }
-        val analysis = json.decodeFromString<AnalysisResult>(content.extractJson())
-
-        entry.copy(
-            summary = analysis.summary,
-            tasks = analysis.tasks,
-            ideas = analysis.ideas,
-            emotions = analysis.emotions,
-            category = EntryCategory.fromString(analysis.category),
-            tags = analysis.tags
-        )
+        return if (llmResult.isSuccess) {
+            llmResult
+        } else {
+            Result.success(offlineAnalyzer.analyze(entry))
+        }
     }
 
     suspend fun askQuestion(messages: List<Message>): Result<String> = runCatching {

@@ -1,12 +1,15 @@
 package com.echomind.ui.settings
 
 import android.app.Application
+import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.echomind.data.export.ExportManager
 import com.echomind.data.remote.BaseUrlProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,13 +24,22 @@ private val Application.dataStore by preferencesDataStore(name = "settings")
 data class SettingsUiState(
     val apiEndpoint: String = "http://localhost:1234",
     val apiKey: String = "",
-    val localMode: Boolean = true
+    val localMode: Boolean = true,
+    val exportState: ExportState = ExportState.Idle
 )
+
+sealed interface ExportState {
+    data object Idle : ExportState
+    data object InProgress : ExportState
+    data class Success(val uri: Uri) : ExportState
+    data class Error(val message: String) : ExportState
+}
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     application: Application,
-    private val baseUrlProvider: BaseUrlProvider
+    private val baseUrlProvider: BaseUrlProvider,
+    private val exportManager: ExportManager
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -70,6 +82,32 @@ class SettingsViewModel @Inject constructor(
                 prefs[KEY_LOCAL_MODE] = enabled
             }
         }
+    }
+
+    fun exportData() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(exportState = ExportState.InProgress)
+            val result = exportManager.exportToZip()
+            result.fold(
+                onSuccess = { file ->
+                    val uri = FileProvider.getUriForFile(
+                        getApplication(),
+                        "${getApplication<Application>().packageName}.fileprovider",
+                        file
+                    )
+                    _uiState.value = _uiState.value.copy(exportState = ExportState.Success(uri))
+                },
+                onFailure = { e ->
+                    _uiState.value = _uiState.value.copy(
+                        exportState = ExportState.Error(e.message ?: "Export failed")
+                    )
+                }
+            )
+        }
+    }
+
+    fun clearExportState() {
+        _uiState.value = _uiState.value.copy(exportState = ExportState.Idle)
     }
 
     companion object {
