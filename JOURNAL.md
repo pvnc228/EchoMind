@@ -82,8 +82,27 @@ Verified all key skill paths from skills-reference.md are accessible:
 - `ui/search/SearchScreen.kt` — clickable results
 - `ui/record/RecordScreen.kt` — permission request
 
+---
+
+## 2026-07-07 — Phase 3 Completion: Waveform Visualization
+
+### Done
+- **WaveformVisualizer**: Created custom Compose Canvas component that renders real-time amplitude bars from `MediaRecorder.getMaxAmplitude()`.
+- **Amplitude polling**: `RecordViewModel` now polls amplitude every 100ms via a coroutine during recording, normalized to 0-1 range. Stores a rolling window of up to 120 samples.
+- **Recording UI**: Replaced the `CircularProgressIndicator` during RECORDING state with the live waveform visualizer + "Recording..." label.
+- **ROADMAP update**: Updated Phases 2-6 completion status to accurately reflect implemented code. Phase 3 now fully complete.
+
+### Files Created
+- `ui/record/WaveformVisualizer.kt` — Canvas-based amplitude bar visualization
+
+### Files Modified
+- `ui/record/RecordViewModel.kt` — amplitude flow + polling job
+- `ui/record/RecordScreen.kt` — waveform replaces spinner during recording
+- `ROADMAP.md` — checked completed items across Phases 2-6
+
 ### Next Steps
-1. Implement Room database encryption with SQLCipher
-2. Add onboarding flow
-3. AI Q&A chat interface on past entries
-4. Biometric authentication on launch
+1. Implement Room database encryption with SQLCipher (Phase 8)
+2. AI Q&A chat interface on past entries (Phase 7)
+3. Biometric authentication on launch (Phase 8)
+4. Onboarding flow (Phase 9)
+5. Data migrations for Room (v1→v2)

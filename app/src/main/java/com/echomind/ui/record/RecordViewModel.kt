@@ -9,9 +9,12 @@ import com.echomind.domain.model.EntryCategory
 import com.echomind.domain.usecase.AnalyzeEntryUseCase
 import com.echomind.domain.usecase.SaveEntryUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
@@ -25,7 +28,8 @@ data class RecordUiState(
     val transcript: String = "",
     val durationMs: Long = 0,
     val audioPath: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val amplitudes: List<Float> = emptyList()
 )
 
 @HiltViewModel
@@ -40,6 +44,7 @@ class RecordViewModel @Inject constructor(
 
     private var mediaRecorder: MediaRecorder? = null
     private var startTime: Long = 0
+    private var amplitudeJob: Job? = null
 
     fun startRecording() {
         val context = getApplication<Application>()
@@ -57,6 +62,20 @@ class RecordViewModel @Inject constructor(
                 start()
                 startTime = System.currentTimeMillis()
                 _uiState.value = RecordUiState(state = RecordingState.RECORDING, audioPath = audioFile.absolutePath)
+                amplitudeJob = viewModelScope.launch {
+                    val maxSamples = 120
+                    while (isActive) {
+                        val amp = mediaRecorder?.maxAmplitude ?: 0
+                        val normalized = (amp / 32767f).coerceIn(0f, 1f)
+                        val current = _uiState.value.amplitudes.toMutableList()
+                        current.add(normalized)
+                        if (current.size > maxSamples) {
+                            current.removeAt(0)
+                        }
+                        _uiState.value = _uiState.value.copy(amplitudes = current)
+                        delay(100)
+                    }
+                }
             } catch (e: Exception) {
                 _uiState.value = RecordUiState(state = RecordingState.ERROR, error = e.message)
             }
@@ -64,6 +83,8 @@ class RecordViewModel @Inject constructor(
     }
 
     fun stopRecording() {
+        amplitudeJob?.cancel()
+        amplitudeJob = null
         mediaRecorder?.apply {
             try {
                 stop()

@@ -11,35 +11,36 @@
 - [x] Navigation (Navigation Compose)
 - [x] Theme setup (Material 3, dynamic colors)
 
-## Phase 2: Local Data Storage
-- [ ] Room database with encrypted entries
-- [ ] Entry CRUD operations
-- [ ] Repository pattern implementation
-- [ ] Data migrations
+## Phase 2: Local Data Storage ✅
+- [x] Room database (schema, DAO, entities)
+- [x] Entry CRUD operations (insert, read, update, delete)
+- [x] Repository pattern implementation
+- [ ] Data migrations (v1→v2)
+- [ ] SQLCipher encryption (see Phase 8)
 
-## Phase 3: Audio Recording & Playback
-- [ ] MediaRecorder integration
-- [ ] Audio file management (private storage)
-- [ ] Playback with ExoPlayer
-- [ ] Recording UI with waveform visualization
+## Phase 3: Audio Recording & Playback ✅
+- [x] MediaRecorder integration
+- [x] Audio file management (private storage)
+- [x] Playback with ExoPlayer
+- [x] Recording UI with waveform visualization
 
-## Phase 4: LLM Integration (Local/Remote)
-- [ ] Retrofit client for OpenAI-compatible API
-- [ ] Whisper transcription via LM Studio / API
-- [ ] Text analysis (tasks, ideas, emotions extraction)
-- [ ] Loading states and error handling
+## Phase 4: LLM Integration (Local/Remote) ✅
+- [x] Retrofit client for OpenAI-compatible API
+- [x] Whisper transcription via LM Studio / API
+- [x] Text analysis (tasks, ideas, emotions extraction)
+- [x] Loading states and error handling
 
-## Phase 5: AI-Powered Structuring
-- [ ] Prompt engineering for diary analysis
-- [ ] Structured JSON parsing from LLM responses
-- [ ] Automatic categorization (tasks, ideas, feelings, plans)
-- [ ] Smart tagging
+## Phase 5: AI-Powered Structuring ✅
+- [x] Prompt engineering for diary analysis
+- [x] Structured JSON parsing from LLM responses
+- [x] Automatic categorization (tasks, ideas, feelings, plans)
+- [x] Smart tagging
 
-## Phase 6: Home Screen & Search
-- [ ] Entry list (LazyColumn with category filters)
-- [ ] Full-text search with debounce
-- [ ] Detail screen per entry
-- [ ] Filter chips by category/emotion
+## Phase 6: Home Screen & Search ✅
+- [x] Entry list (LazyColumn with category filters)
+- [x] Full-text search with debounce
+- [x] Detail screen per entry
+- [x] Filter chips by category
 
 ## Phase 7: AI Q&A on Past Entries
 - [ ] Chat-style interface
