@@ -11,7 +11,6 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import net.zetetic.database.sqlcipher.SupportFactory
-import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -30,7 +29,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "echomind.db"
         ).openHelperFactory(supportFactory)
-            .fallbackToDestructiveMigration()
+            .addMigrations(AppDatabase.MIGRATION_1_2)
             .build()
     }
 

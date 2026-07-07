@@ -3,6 +3,7 @@ package com.echomind.ui
 import android.content.Context
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
+import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -24,16 +25,17 @@ fun BiometricAuthGate(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var isAuthenticated by remember { mutableStateOf(false) }
-    var hasBiometric by remember { mutableStateOf(true) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && !isAuthenticated) {
                 val biometricManager = BiometricManager.from(context)
                 val canAuthenticate = biometricManager.canAuthenticate(
-                    BIOMETRIC_STRONG
+                    BIOMETRIC_STRONG or DEVICE_CREDENTIAL
                 )
-                if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
+                if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS ||
+                    canAuthenticate == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
+                ) {
                     val activity = context as FragmentActivity
                     val prompt = BiometricPrompt(
                         activity,
@@ -44,11 +46,16 @@ fun BiometricAuthGate(
                             }
 
                             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                                if (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
-                                    errorCode == BiometricPrompt.ERROR_USER_CANCELED
+                                // Only finish on hard errors (device lockout, no auth configured)
+                                if (errorCode == BiometricPrompt.ERROR_LOCKOUT_PERMANENT ||
+                                    errorCode == BiometricPrompt.ERROR_NO_BIOMETRICS ||
+                                    errorCode == BiometricPrompt.ERROR_HW_NOT_PRESENT ||
+                                    errorCode == BiometricPrompt.ERROR_HW_UNAVAILABLE
                                 ) {
                                     activity.finish()
                                 }
+                                // ERROR_NEGATIVE_BUTTON and ERROR_USER_CANCELED
+                                // let the user retry via the prompt on next ON_RESUME
                             }
 
                             override fun onAuthenticationFailed() {
@@ -59,11 +66,18 @@ fun BiometricAuthGate(
                     val promptInfo = BiometricPrompt.PromptInfo.Builder()
                         .setTitle("EchoMind")
                         .setSubtitle("Authenticate to access your diary")
-                        .setAllowedAuthenticators(BIOMETRIC_STRONG)
+                        .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
+                        .apply {
+                            // Show "Use PIN" as negative button only if device credential
+                            // is not already the primary option
+                            if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
+                                setNegativeButtonText("Cancel")
+                            }
+                        }
                         .build()
                     prompt.authenticate(promptInfo)
                 } else {
-                    hasBiometric = false
+                    // No biometric or device credential available at all
                     isAuthenticated = true
                 }
             }
