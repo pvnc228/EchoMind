@@ -29,6 +29,10 @@ class CredentialsProvider @Inject constructor(
     var apiKey: String = ""
         private set
 
+    init {
+        loadApiKey()
+    }
+
     fun updateApiKey(key: String) {
         apiKey = key
         prefs.edit().putString(KEY_API_KEY, key).apply()

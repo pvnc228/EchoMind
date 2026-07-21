@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.echomind.BuildConfig
 import java.util.concurrent.Executors
 
 @Composable
@@ -24,7 +25,10 @@ fun BiometricAuthGate(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var isAuthenticated by remember { mutableStateOf(false) }
+    // Emulators commonly have no enrolled biometric or device credential.
+    // Keep authentication active in release builds while letting debug builds
+    // reach the app UI for development and testing.
+    var isAuthenticated by remember { mutableStateOf(BuildConfig.DEBUG) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -65,11 +69,6 @@ fun BiometricAuthGate(
                                 .setTitle("EchoMind")
                                 .setSubtitle("Authenticate to access your diary")
                                 .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
-                                .apply {
-                                    if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
-                                        setNegativeButtonText("Cancel")
-                                    }
-                                }
                                 .build()
                             prompt.authenticate(promptInfo)
                         }

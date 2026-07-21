@@ -3,6 +3,7 @@ package com.echomind.data.local.security
 import android.content.Context
 import androidx.security.crypto.EncryptedFile
 import androidx.security.crypto.MasterKey
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.InputStream
 import javax.inject.Inject
@@ -10,7 +11,7 @@ import javax.inject.Singleton
 
 @Singleton
 class AudioEncryptionUtil @Inject constructor(
-    private val context: Context
+    @ApplicationContext private val context: Context
 ) {
     private val masterKey by lazy {
         MasterKey.Builder(context)

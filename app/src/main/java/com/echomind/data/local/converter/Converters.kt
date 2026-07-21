@@ -8,12 +8,6 @@ class Converters {
     private val json = Json { ignoreUnknownKeys = true }
 
     @TypeConverter
-    fun fromTimestamp(value: Long?): Long? = value
-
-    @TypeConverter
-    fun toTimestamp(value: Long?): Long? = value
-
-    @TypeConverter
     fun fromStringList(value: String?): List<String> {
         if (value.isNullOrBlank()) return emptyList()
         return try {

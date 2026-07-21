@@ -4,13 +4,14 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.SecureRandom
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class PassphraseProvider @Inject constructor(
-    private val context: Context
+    @ApplicationContext private val context: Context
 ) {
     private val prefs: SharedPreferences by lazy {
         val masterKey = MasterKey.Builder(context)

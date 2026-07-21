@@ -215,6 +215,31 @@ Verified all key skill paths from skills-reference.md are accessible:
 - **Category**: Productivity / Health & Fitness
 - **Screenshots needed**: (1) Home screen with entry cards, (2) Recording screen with waveform, (3) Entry detail with playback, (4) AI Q&A chat, (5) Settings
 
+---
+
+## 2026-07-21 — Build Recovery & Emulator Validation
+
+### Done
+- Fixed the Gradle settings repository block (`dependencyResolutionManagement`) and added Gradle Wrapper files using Gradle 8.9, compatible with Android Gradle Plugin 8.7.0.
+- Replaced the unavailable SQLCipher `4.5.6` artifact with public `android-database-sqlcipher:4.5.3`; updated its `SupportFactory` import and ProGuard package rules.
+- Resolved Room/KSP failures by removing duplicate no-op `Long?` type converters and the unnecessary `SupportSQLiteDatabase` migration declaration. The database now uses destructive migration fallback for the pre-release schema transition.
+- Resolved compilation issues caused by missing Compose layout imports in recording and shimmer UI components.
+- Fixed Hilt dependency injection: removed the `CredentialsProvider` self-dependency cycle, load stored API credentials on initialization, and qualify security utility contexts with `@ApplicationContext`.
+- Fixed the startup crash in `BiometricAuthGate` by making `MainActivity` a `FragmentActivity` as required by `BiometricPrompt`.
+- Disabled the biometric gate only in debug builds so a clean emulator without enrolled biometrics or a device credential can reach the application UI. Release builds retain the authentication gate.
+- Created and validated a Pixel 8 API 35 emulator workflow. `:app:assembleDebug` builds successfully, and the resulting debug APK was installed and launched with `MainActivity` remaining active.
+
+### Follow-up
+- The product needs a dedicated UX/UI refinement pass; the current navigation and interaction flow are functional but need clearer onboarding and stronger visual hierarchy.
+
+### Files Modified
+- `settings.gradle.kts`, `gradle/wrapper/*`, `gradlew`, `gradlew.bat`
+- `gradle/libs.versions.toml`, `app/proguard-rules.pro`
+- `MainActivity.kt`, `ui/BiometricAuthGate.kt`, `ui/record/RecordScreen.kt`, `ui/theme/ShimmerEffect.kt`
+- `data/local/AppDatabase.kt`, `data/local/converter/Converters.kt`
+- `data/local/security/AudioEncryptionUtil.kt`, `data/local/security/PassphraseProvider.kt`
+- `data/remote/CredentialsProvider.kt`, `di/DatabaseModule.kt`, `di/NetworkModule.kt`
+
 ### Files Modified
 - `app/proguard-rules.pro` — comprehensive ProGuard rules
 - `ROADMAP.md` — ProGuard and store assets checked

@@ -23,7 +23,7 @@ core-testing = "2.2.0"
 security-crypto = "1.1.0-alpha06"
 biometric = "1.1.0"
 exoplayer = "2.19.1"
-sqlcipher = "4.5.6"
+sqlcipher = "4.5.3"
 sqlite-ktx = "2.4.0"
 
 [libraries]

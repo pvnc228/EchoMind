@@ -38,8 +38,8 @@
 -dontwarn com.google.android.exoplayer2.**
 
 # --- SQLCipher ---
--keep class net.zetetic.** { *; }
--dontwarn net.zetetic.**
+-keep class net.sqlcipher.** { *; }
+-dontwarn net.sqlcipher.**
 
 # --- Coroutines ---
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
