@@ -1,105 +1,263 @@
-# EchoMind — Development Roadmap
+# EchoMind — Product Roadmap
 
-**Project**: Private voice diary with AI assistant for Android
-**Stack**: Kotlin, Jetpack Compose, MVVM + Clean Architecture, Room, Hilt, Retrofit
+**Last updated:** 2026-07-29
 
----
+**Product direction:** [VISION.md](VISION.md)
 
-## Phase 1: Foundation ✅
-- [x] Project scaffold (Gradle, modules, build files)
-- [x] Dependency injection (Dagger Hilt)
-- [x] Navigation (Navigation Compose)
-- [x] Theme setup (Material 3, dynamic colors)
+This roadmap replaces the former feature checklist for a "voice diary with AI." Existing code is treated as a technical prototype. A capability is complete only when it supports the product loop in `VISION.md` and satisfies its evidence, privacy, and verification criteria.
 
-## Phase 2: Local Data Storage ✅
-- [x] Room database (schema, DAO, entities)
-- [x] Entry CRUD operations (insert, read, update, delete)
-- [x] Repository pattern implementation
-- [ ] Data migrations (v1→v2)
-- [ ] SQLCipher encryption (see Phase 8)
+## Current baseline
 
-## Phase 3: Audio Recording & Playback ✅
-- [x] MediaRecorder integration
-- [x] Audio file management (private storage)
-- [x] Playback with ExoPlayer
-- [x] Recording UI with waveform visualization
+### Reusable foundation
 
-## Phase 4: LLM Integration (Local/Remote) ✅
-- [x] Retrofit client for OpenAI-compatible API
-- [x] Whisper transcription via LM Studio / API
-- [x] Text analysis (tasks, ideas, emotions extraction)
-- [x] Loading states and error handling
+- Android application built with Kotlin, Jetpack Compose, Hilt, Room, and Retrofit.
+- Local entry CRUD, timeline, category filtering, search, detail view, and export.
+- Audio recording, encrypted audio storage, and playback.
+- OpenAI-compatible endpoints for text analysis, Q&A, and transcription.
+- SQLCipher database encryption, Android Keystore integration, biometric release gate, and `FLAG_SECURE`.
+- Local fallback text analyzer.
+- Unit and Compose UI test foundation.
+- Verified debug build and emulator startup on Pixel 8 API 35.
 
-## Phase 5: AI-Powered Structuring ✅
-- [x] Prompt engineering for diary analysis
-- [x] Structured JSON parsing from LLM responses
-- [x] Automatic categorization (tasks, ideas, feelings, plans)
-- [x] Smart tagging
+### Product gaps
 
-## Phase 6: Home Screen & Search ✅
-- [x] Entry list (LazyColumn with category filters)
-- [x] Full-text search with debounce
-- [x] Detail screen per entry
-- [x] Filter chips by category
+- The data model is a flat diary `Entry`; it cannot represent a conclusion, revision, source, contradiction, decision, or outcome.
+- AI analysis writes generated fields directly into an entry without a user confirmation boundary.
+- The current recording flow asks the user to type a transcript; the implemented transcription client is not connected to that flow.
+- Q&A sends a context window of recent entries but does not operate on a traceable, user-confirmed model.
+- The `localMode` setting is persisted but does not enforce a network boundary in the repository layer.
+- Remote processing does not yet provide local redaction, a minimized-context preview, or separate transmission consent.
+- The home screen is a diary timeline, not a prompt plus relevant evidence-backed resurfacing.
+- Current categories (`task`, `idea`, `feeling`, `plan`) do not express evolving conclusions.
 
-## Phase 7: AI Q&A on Past Entries ✅
-- [x] Chat-style interface (QaScreen with message bubbles + input)
-- [x] Context window construction (last 20 entries as LLM context)
-- [x] Natural language queries ("What worried me last week?")
-- [x] Source entry linking (entry IDs cited in responses)
+Until these gaps are closed, the repository is a working technical prototype, not a completed implementation of the new vision.
 
-## Phase 8: Security & Privacy ✅
-- [x] Biometric authentication on launch (BiometricPrompt gate composable)
-- [x] SQLCipher database encryption (SupportFactory + MasterKey-derived passphrase)
-- [x] Audio file encryption (AES-256-GCM via EncryptedFile)
-- [x] FLAG_SECURE (prevent screenshots in app overview)
-- [x] Local-only mode toggle (Settings toggle + network config)
+## Delivery rules
 
-## Phase 9: UX Polish ✅
-- [x] Skeleton loaders & transitions (shimmer effect on HomeScreen + DetailScreen)
-- [x] Dark/light theme (system theme detection, Material 3 dynamic colors)
-- [x] Material You (dynamic color on Android 12+, custom palette fallback)
-- [x] Onboarding flow (3-page welcome with skip, DataStore persistence)
-- [x] Animations (recording pulse dot via InfiniteTransition, AnimatedContent transitions)
+Every milestone must:
 
-## Phase 10: Testing & Release ✅
-- [x] Unit tests (GetEntriesUseCaseTest, HomeViewModelTest)
-- [x] UI tests (HomeScreenTest - compose)
-- [x] ProGuard optimization (rules for Room, Retrofit, ExoPlayer, SQLCipher, serialization, Hilt)
-- [x] Google Play assets (adaptive icon, store listing text drafted)
-- [ ] Performance profiling (manual - run profiler on device)
+- produce a usable end-to-end user outcome, not only infrastructure;
+- preserve provenance from raw record to confirmed conclusion;
+- prevent unconfirmed AI output from entering the user model;
+- include migration, export, and deletion behavior for new data;
+- include automated tests for core state transitions and privacy boundaries;
+- be validated on an emulator or device before being marked complete;
+- update `JOURNAL.md` with decisions, evidence, and remaining limitations.
 
----
+No milestone is complete because a screen exists or an LLM returned plausible text.
 
-## Skill References (Phase by Phase)
+## M0 — Data and privacy contract
 
-### Security & Encryption (Phase 8)
-- `Anthropic-Cybersecurity-Skills/skills/implementing-aes-encryption-for-data-at-rest` — AES-256-GCM for diary entries
-- `Anthropic-Cybersecurity-Skills/skills/configuring-tls-1-3-for-secure-communications` — TLS 1.3 for server channel
-- `Anthropic-Cybersecurity-Skills/skills/implementing-api-key-security-controls` — API key management
-- `Anthropic-Cybersecurity-Skills/skills/implementing-api-rate-limiting-and-throttling` — Rate limiting
-- `Anthropic-Cybersecurity-Skills/skills/configuring-oauth2-authorization-flow` — OAuth 2.0 + PKCE
-- `Anthropic-Cybersecurity-Skills/skills/defending-llms-with-guardrails` — Llama Guard
-- `Anthropic-Cybersecurity-Skills/skills/detecting-ai-model-prompt-injection-attacks` — Prompt injection defense
-- `Anthropic-Cybersecurity-Skills/skills/exploiting-insecure-data-storage-in-mobile` — Anti-patterns audit
-- `Anthropic-Cybersecurity-Skills/skills/conducting-mobile-app-penetration-test` — Full pentest
+**Priority:** P0
 
-### AI / Transcript Analysis (Phase 4-5, 7)
-- `awesome-claude-skills/meeting-insights-analyzer` — Emotion/pattern detection from transcripts
-- `awesome-claude-skills/content-research-writer` — Structuring unstructured text
+**Outcome:** the architecture can enforce the promises in `VISION.md` before more AI behavior is added.
 
-### Design (Phase 9)
-- `awesome-claude-skills/theme-factory` — Color palettes & font pairings
-- `awesome-claude-skills/canvas-design` — Onboarding/mood illustrations
-- `awesome-claude-skills/brand-guidelines` — Brand identity system
+### Scope
 
-### Server Backend (if needed)
-- `awesome-claude-skills/mcp-builder` — Self-hosted MCP server
-- `awesome-claude-skills/artifacts-builder` — Dashboard UI (React/TS)
-- `awesome-claude-skills/webapp-testing` — Playwright tests
+- [ ] Classify raw, derived, confirmed, identifying, and exportable data.
+- [ ] Define the local entities and state transitions for:
+  - raw records;
+  - AI hypotheses;
+  - confirmed conclusions;
+  - revisions;
+  - evidence and counterevidence links;
+  - themes;
+  - decisions and outcomes.
+- [ ] Define deletion and export semantics for the entire relationship graph.
+- [ ] Replace destructive pre-release migration behavior with an explicit migration strategy before valuable user data exists.
+- [ ] Turn local mode into an enforced network policy rather than a UI preference.
+- [ ] Define the remote-request pipeline: local minimization, redaction, preview, explicit consent, request, and disposal.
+- [ ] Document third-party endpoint limitations, including provider-side retention outside EchoMind's control.
+- [ ] Add tests proving that raw records cannot cross the remote boundary.
 
-### File & Data Organization
-- `awesome-claude-skills/file-organizer` — Diary entry organization patterns
+### Completion criteria
 
-### Meta (Skill Creation)
-- `awesome-claude-skills/skill-creator` — Package custom project skills
+- Every persisted field has a data classification and owner.
+- A state diagram covers proposal, edit, confirmation, rejection, revision, and deletion.
+- Network tests fail if a raw record or complete personal model is included in a remote request.
+- Local mode blocks all AI network calls at the repository boundary.
+- Existing prototype data has a documented migration or explicit pre-release reset path.
+
+## M1 — Day-one reflection loop
+
+**Priority:** P0
+
+**Outcome:** one short text entry can produce a useful, user-confirmed clarification in a single session.
+
+### Scope
+
+- [ ] Make text-first thought capture the primary flow.
+- [ ] Preserve the original text as an immutable raw record.
+- [ ] Generate a structured draft containing:
+  - tentative thesis;
+  - observations;
+  - interpretations;
+  - assumptions;
+  - open questions.
+- [ ] Offer one relevant counterargument or alternative interpretation without manufacturing disagreement.
+- [ ] Let the user edit, accept, reject, or continue discussing the draft.
+- [ ] Save only the accepted formulation as a confirmed conclusion.
+- [ ] Display the raw source, AI proposal, user edits, and final conclusion as distinct objects.
+- [ ] Provide graceful local-only behavior when remote assistance is unavailable.
+
+### Completion criteria
+
+- The "Walter White / architect" scenario can be completed end to end.
+- The user can identify which words are theirs and which were proposed by AI.
+- Rejecting an AI hypothesis leaves no confirmed claim behind.
+- A confirmed conclusion retains its source and revision history after restart.
+- A first-session usability check demonstrates a concrete clarification rather than a paraphrased note.
+
+## M2 — Traceable personal knowledge model
+
+**Priority:** P1
+
+**Outcome:** conclusions become a connected, inspectable history rather than isolated summaries.
+
+### Scope
+
+- [ ] Link conclusions to supporting and contradicting records.
+- [ ] Create and edit themes without treating AI clustering as truth.
+- [ ] Preserve dated revisions and show what changed.
+- [ ] Add archive and search across raw records, conclusions, and themes.
+- [ ] Detect candidate relationships locally or with minimized remote context.
+- [ ] Require user confirmation for durable semantic links inferred by AI.
+- [ ] Extend export, deletion, and backup to all new objects.
+
+### Completion criteria
+
+- A conclusion can be traced to every source and revision.
+- A user can correct or delete a relationship without damaging unrelated records.
+- Contradictory conclusions can coexist without one being silently overwritten.
+- Search can recover both the original record and the current conclusion.
+- Export and restore preserve graph identity and provenance.
+
+## M3 — Relevant resurfacing and visible capability
+
+**Priority:** P1
+
+**Outcome:** the home screen returns one meaningful line of thought and honestly shows what EchoMind currently knows.
+
+### Scope
+
+- [ ] Replace the timeline-first home screen with:
+  - a prompt to capture or continue a thought;
+  - one evidence-backed relevant card;
+  - fast access to capture and archive.
+- [ ] Explain why a theme, contradiction, or unfinished question is shown now.
+- [ ] Let the user inspect sources, continue, dismiss, or postpone the card.
+- [ ] Show evidence coverage separately per theme.
+- [ ] Distinguish reflection, connection, change tracking, and guidance capabilities.
+- [ ] Avoid global personality percentages, streak pressure, and arbitrary levels.
+
+### Completion criteria
+
+- A resurfaced card cites the relevant records and conclusion versions.
+- The card remains useful without a 3D graph or heatmap.
+- Sparse domains clearly report insufficient evidence.
+- Records from one domain do not create apparent confidence in another.
+- The user can understand the suggested next action within 30 seconds.
+
+## M4 — Decision and outcome loop
+
+**Priority:** P2
+
+**Outcome:** EchoMind learns from reported consequences, not only from the user's self-description.
+
+### Scope
+
+- [ ] Let the user turn a question into an explicit decision record.
+- [ ] Store the user's choice separately from EchoMind's suggestion.
+- [ ] Offer an optional, user-controlled follow-up.
+- [ ] Capture the reported outcome with minimal friction.
+- [ ] Compare an outcome with the original expectation and revise relevant conclusions only after review.
+- [ ] Show when a theme lacks outcome evidence.
+
+### Completion criteria
+
+- The complete chain `question → grounds → suggestion → choice → outcome → revision` is inspectable.
+- Ignoring follow-up never blocks basic reflection or retrieval.
+- Reminders are opt-in, dismissible, and do not use guilt or streak mechanics.
+- Advice quality is never inferred from entry count alone.
+
+## M5 — Explainable personal guidance
+
+**Priority:** P2
+
+**Outcome:** on explicit request, EchoMind can offer cautious guidance supported by the user's relevant history.
+
+### Scope
+
+- [ ] Retrieve relevant confirmed conclusions, counterevidence, and comparable outcomes.
+- [ ] Construct the smallest sufficient context for a local or remote model.
+- [ ] Show the exact context before any remote transmission.
+- [ ] Produce guidance with citations, uncertainty, and alternative interpretations.
+- [ ] Refuse or ask focused questions when the evidence is insufficient.
+- [ ] Keep advice domain-specific and prevent unsupported personality or clinical claims.
+- [ ] Let the user rate usefulness and report an eventual outcome without turning feedback into an obligation.
+
+### Completion criteria
+
+- Every substantive guidance claim is linked to visible grounds.
+- Removing a cited ground changes or lowers the stated confidence.
+- The system does not produce guidance until the user asks.
+- Safety tests reject diagnosis, hidden-motive claims, and unsupported certainty.
+- A curated evaluation set includes helpful answers, appropriate refusals, contradictions, and privacy-sensitive prompts.
+
+## M6 — Input and visualization expansion
+
+**Priority:** P3
+
+**Outcome:** additional modalities make the proven loop easier to use without redefining the product.
+
+### Scope
+
+- [ ] Connect optional voice capture to transcription and the same review flow as text.
+- [ ] Keep the transcript editable and retain the raw/derived distinction.
+- [ ] Evaluate on-device transcription before allowing raw audio to leave the device.
+- [ ] Add two-dimensional theme and revision views only for validated user questions.
+- [ ] Consider heatmaps or 3D visualization only after proving that they improve navigation or understanding.
+- [ ] Evaluate selective import from notes or chat exports with explicit review before model ingestion.
+
+### Completion criteria
+
+- Text and voice produce the same inspectable conclusion workflow.
+- No modality bypasses confirmation or privacy boundaries.
+- A visualization must answer a named user question better than a list or timeline in usability testing.
+- Imported material remains unconfirmed until reviewed by the user.
+
+## M7 — Private beta and release evidence
+
+**Priority:** after M1–M3 are stable
+
+**Outcome:** the product promise is tested with reflective users rather than inferred from implementation completeness.
+
+### Scope
+
+- [ ] Run first-session tests focused on reaching a genuine clarification.
+- [ ] Test whether users voluntarily return with a second thought.
+- [ ] Test whether resurfacing recovers useful forgotten reasoning.
+- [ ] Evaluate remote-context previews for comprehension and informed consent.
+- [ ] Profile startup, database operations, encryption, and long-history retrieval.
+- [ ] Complete accessibility, backup/restore, failure recovery, and release security review.
+- [ ] Gather research feedback without product telemetry; participation and any shared material must be explicit.
+
+### Completion criteria
+
+- Users can explain the difference between a raw record, AI hypothesis, and confirmed conclusion.
+- At least one repeated-use study demonstrates immediate and compounding value.
+- Privacy and deletion behavior pass a documented verification checklist.
+- Release claims match the behavior of the shipped build.
+
+## Next implementation slice
+
+The first implementation block should be M0 plus the thinnest vertical part of M1:
+
+1. approve the domain model and privacy state transitions;
+2. implement raw text capture;
+3. create an AI draft without persisting it as truth;
+4. add review and explicit confirmation;
+5. persist a versioned conclusion with its source;
+6. verify restart, rejection, deletion, export, and network-boundary behavior.
+
+Do not begin personalization, prediction, 3D visualization, or broad UI polish before this slice demonstrates day-one value.

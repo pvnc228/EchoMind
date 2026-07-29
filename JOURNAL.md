@@ -240,6 +240,45 @@ Verified all key skill paths from skills-reference.md are accessible:
 - `data/local/security/AudioEncryptionUtil.kt`, `data/local/security/PassphraseProvider.kt`
 - `data/remote/CredentialsProvider.kt`, `di/DatabaseModule.kt`, `di/NetworkModule.kt`
 
+---
+
+## 2026-07-29 — Product Vision Recovery
+
+### Context
+
+The previous project description and roadmap treated EchoMind as a nearly complete private voice diary with AI categorization. A product grilling session showed that the durable value is different: user-owned documentation of evolving conclusions, immediate challenge of self-persuasion, and later evidence-backed guidance based on confirmed history and reported outcomes.
+
+### Decisions
+
+- The primary product object is an evolving conclusion with provenance, not a flat diary entry.
+- The first-session value is structured reflection plus a user-reviewed counterargument.
+- AI output remains a hypothesis until the user explicitly edits or confirms it.
+- Long-term value comes from themes, contradictions, revisions, decisions, and reported outcomes.
+- Advice is offered only on request and must expose grounds, counterevidence, and uncertainty.
+- Raw records and the complete personal model remain local.
+- Confirmation and permission to transmit are separate actions.
+- The product collects no telemetry.
+- Feedback improves capability but remains optional; the product does not use guilt or streak mechanics.
+- Voice, prediction, heatmaps, and 3D visualization are extensions of the core loop rather than the initial product.
+
+### Documentation
+
+- Added `VISION.md` as the stable product contract.
+- Replaced the completed-feature roadmap with milestone-based delivery and measurable completion criteria.
+- Updated `README.md` to distinguish the current technical prototype from the target product.
+
+### Known Prototype Gaps
+
+- The current `Entry` model cannot represent conclusions, revisions, evidence, decisions, or outcomes.
+- AI-generated analysis is persisted without a dedicated review and confirmation boundary.
+- The transcription client is not connected to the main recording flow.
+- The `localMode` preference does not yet enforce a repository-level network boundary.
+- Remote requests do not yet implement local minimization, preview, and separate transmission consent.
+
+### Next
+
+Complete M0 and the thinnest vertical slice of M1: define the domain and privacy transitions, capture a raw text record, create a non-authoritative AI draft, review it, and persist a versioned confirmed conclusion with its source.
+
 ### Files Modified
 - `app/proguard-rules.pro` — comprehensive ProGuard rules
 - `ROADMAP.md` — ProGuard and store assets checked
