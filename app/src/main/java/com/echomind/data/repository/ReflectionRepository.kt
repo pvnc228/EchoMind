@@ -81,6 +81,12 @@ class ReflectionRepository @Inject constructor(
     suspend fun loadLatestProposedReflection(): ReflectionSession? =
         knowledgeDao.getLatestProposedHypothesis()?.let { loadReflection(it.id) }
 
+    suspend fun loadReflectionForEntry(entryId: Long): ReflectionSession? {
+        val rawRecord = knowledgeDao.getRawRecordByLegacyEntryId(entryId) ?: return null
+        val hypothesis = knowledgeDao.getLatestHypothesisForRawRecord(rawRecord.id) ?: return null
+        return loadReflection(hypothesis.id)
+    }
+
     suspend fun loadReflection(hypothesisId: Long): ReflectionSession {
         val hypothesis = requireNotNull(knowledgeDao.getHypothesisById(hypothesisId)) {
             "Reflection proposal $hypothesisId does not exist."
@@ -92,6 +98,9 @@ class ReflectionRepository @Inject constructor(
         val revision = conclusion?.currentRevisionId?.let {
             knowledgeDao.getRevisionById(it)
         }
+        val sourceLink = revision?.let {
+            knowledgeDao.getEvidenceLinkForRevision(it.id)
+        }
 
         return ReflectionSession(
             rawRecordId = rawRecord.id,
@@ -101,7 +110,9 @@ class ReflectionRepository @Inject constructor(
             counterargument = hypothesis.counterargument,
             status = hypothesis.status,
             confirmedConclusion = revision?.text,
-            revisionVersion = revision?.version
+            revisionVersion = revision?.version,
+            sourceRelationship = sourceLink?.relationship,
+            sourceLinkStatus = sourceLink?.status
         )
     }
 

@@ -6,8 +6,9 @@
 
 This document turns the promises in [VISION.md](VISION.md) into storage and
 network rules. Room schema version 3 implements the minimum provenance model
-alongside the legacy `entries` table used by the archive UI. M1-A now uses
-that model for the primary text-first reflection flow.
+alongside the legacy `entries` table used by the archive UI. M1-B now verifies
+that model across capture, detail display, export, deletion, restart, and the
+network boundary.
 
 ## Data classes
 
@@ -118,8 +119,11 @@ Confirmed wording and its source/revision relationship survive database reopen.
   source remains unless the user explicitly selects it too.
 - Deleting a raw record removes its encrypted audio and dependent unconfirmed
   proposals. A foreign-key restriction rejects deletion while a conclusion
-  cites it; the legacy detail screen does not yet explain that restriction.
-  M1-B must ask the user to delete that conclusion first or cancel.
+  cites it. The detail screen explains that relationship and requires an
+  explicit choice to delete the conclusion and source together or cancel.
+  The repository deletes conclusion, revisions, and links before the raw
+  record and archive entry in one Room transaction, then removes attached
+  audio. A filesystem failure is surfaced instead of silently claiming success.
 - Deleting a theme, decision, or outcome never deletes the records or
   conclusions it references.
 - Export uses stable IDs and includes raw records, hypotheses with statuses,
@@ -141,9 +145,11 @@ Remote access is denied by default and evaluated at the repository boundary:
 7. discard request-only state after completion.
 
 Raw records, raw audio, the complete personal model, secrets, and unconfirmed
-background requests never pass this boundary. The current prototype still
-sends raw material when local mode is disabled; remote mode therefore remains
-an acknowledged M0 gap until this pipeline replaces those calls.
+background requests never pass this boundary. Legacy entry analysis stays
+on-device even when local mode is off. Legacy Q&A and transcription fail before
+`LlmApi` in both modes: local mode reports that networking is disabled, while
+remote mode reports that minimized preview and per-request approval are
+required. Remote assistance remains unavailable until that pipeline exists.
 
 Remote providers may retain prompts, responses, network metadata, or abuse
 monitoring records under their own policies. EchoMind cannot verify or delete

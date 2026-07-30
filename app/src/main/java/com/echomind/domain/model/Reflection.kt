@@ -22,7 +22,9 @@ data class ReflectionSession(
     val counterargument: String,
     val status: String,
     val confirmedConclusion: String? = null,
-    val revisionVersion: Int? = null
+    val revisionVersion: Int? = null,
+    val sourceRelationship: String? = null,
+    val sourceLinkStatus: String? = null
 )
 
 object ReflectionStatus {

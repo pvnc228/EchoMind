@@ -46,6 +46,9 @@ interface KnowledgeDao {
     @Query("SELECT * FROM raw_records WHERE id = :id")
     suspend fun getRawRecordById(id: Long): RawRecordEntity?
 
+    @Query("SELECT * FROM raw_records WHERE legacy_entry_id = :entryId")
+    suspend fun getRawRecordByLegacyEntryId(entryId: Long): RawRecordEntity?
+
     @Query("SELECT * FROM ai_hypotheses WHERE id = :id")
     suspend fun getHypothesisById(id: Long): AiHypothesisEntity?
 
@@ -75,6 +78,12 @@ interface KnowledgeDao {
 
     @Query("SELECT * FROM conclusion_revisions WHERE id = :id")
     suspend fun getRevisionById(id: Long): ConclusionRevisionEntity?
+
+    @Query(
+        "SELECT * FROM evidence_links WHERE conclusion_revision_id = :revisionId " +
+            "ORDER BY id LIMIT 1"
+    )
+    suspend fun getEvidenceLinkForRevision(revisionId: Long): EvidenceLinkEntity?
 
     @Query("UPDATE conclusions SET current_revision_id = :revisionId WHERE id = :conclusionId")
     suspend fun setCurrentRevision(conclusionId: Long, revisionId: Long): Int

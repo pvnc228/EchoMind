@@ -429,3 +429,73 @@ Complete M0 and the thinnest vertical slice of M1: define the domain and privacy
   detail screen does not yet explain that the conclusion must be removed first.
 - M1-B still owns deletion/export/network-boundary proof for the full vertical
   slice. Remote mode remains unsafe for raw prototype requests.
+
+---
+
+## 2026-07-30 — M1-B Vertical-Slice Proof
+
+### Skills Used
+
+- **`ponytail` (full)** — reused the existing Room graph, export manifest,
+  repository boundary, and detail screen. Remote raw-content features are
+  denied until their required preview/consent flow exists; no new dependency
+  or speculative remote abstraction was added.
+
+### Done
+
+- Added a detail projection that reloads the saved raw source, original local
+  proposal, alternative interpretation, current conclusion revision, and
+  confirmed source link as visibly distinct objects.
+- Replaced immediate legacy deletion with an explicit confirmation dialog.
+  A cited raw source stays protected unless the user selects deletion of the
+  conclusion and source together.
+- Delete-all now removes conclusion, revisions, evidence links, proposal, raw
+  record, archive entry, and attached audio in the required order. Audio
+  deletion failure is surfaced rather than silently ignored.
+- Added an actual ZIP export test. It creates and confirms a reflection, writes
+  `manifest.json`, reopens the ZIP, and verifies stable IDs, status, revision,
+  and evidence provenance.
+- Closed the raw network gap. Entry analysis always stays on-device; legacy
+  Q&A and transcription fail before `LlmApi` even when local mode is disabled.
+  Settings now state that configuring an endpoint does not grant transmission
+  permission.
+- Kept the remote path deliberately unavailable until EchoMind can show a
+  minimized outgoing preview and obtain approval for that specific request.
+
+### Evidence
+
+- `:app:testDebugUnitTest` — 15/15 tests passed, including local and remote-mode
+  assertions that raw entry, history, and audio never call `LlmApi`.
+- `:app:assembleDebugAndroidTest` — passed.
+- Full `:app:connectedDebugAndroidTest` on `Pixel_8_2`, API 35 — 12/12 tests
+  passed.
+- Instrumented tests cover protected deletion, explicit complete graph
+  deletion including audio, a real provenance ZIP, Room migration/restart
+  behavior, and Compose provenance labels.
+- Manual API 35 walkthrough completed
+  `capture → proposal → reopen pending review → confirm → reopen saved detail`.
+  The detail view showed raw source, confirmed proposal, revision 1, and the
+  `supports/confirmed` link. Its deletion dialog named the conclusion/source
+  relationship, and confirmed deletion returned to an empty archive.
+- The initial Compose rerun failed because the AVD had gone to sleep and the
+  host activity transitioned immediately to `PAUSED/STOPPED`. Waking and
+  unlocking the same AVD, with no test-host code change retained, produced the
+  clean 12/12 result.
+- `git diff --check` — passed before delivery.
+
+### Remaining limitations
+
+- The deterministic analyzer is still shallow. The manual architect scenario
+  proves the flow, not usefulness; a first-session usability check must show a
+  clarification better than the default paraphrase.
+- Continuing a dispute or asking a focused follow-up remains unimplemented, so
+  the combined M1 review item stays open.
+- The archive and search still index legacy entries. Saved provenance is now
+  inspectable in detail, but current conclusions are not first-class archive
+  or search results; that belongs to M2.
+- Remote assistance is safely unavailable rather than complete. Redaction,
+  minimized preview, destination disclosure, and per-request approval still
+  need an explicit product flow before any network call can be enabled.
+- Room deletion and filesystem deletion cannot be atomic. The normal path is
+  tested and failures are surfaced, but orphan-audio recovery remains a
+  pre-release hardening task.

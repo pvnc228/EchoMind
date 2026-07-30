@@ -79,9 +79,10 @@ fun SettingsScreen(
             title = { Text("Non-local endpoint") },
             text = {
                 Text(
-                    "You are changing the API endpoint to a remote server. " +
-                    "Your diary entries and transcripts will be sent to this server. " +
-                    "Ensure you trust the recipient and use HTTPS in production."
+                    "Changing the endpoint does not transmit data. EchoMind blocks raw diary " +
+                    "and audio requests. Future remote assistance must show the minimized " +
+                    "outgoing context and ask for approval each time. Provider retention " +
+                    "remains outside EchoMind's control."
                 )
             },
             confirmButton = {
@@ -167,7 +168,8 @@ fun SettingsScreen(
                 text = if (uiState.localMode) {
                     "AI network calls are blocked; entry analysis uses the on-device fallback."
                 } else {
-                    "Prototype mode: raw content may be sent to the configured endpoint."
+                    "Remote endpoint configured, but raw content remains blocked. No request " +
+                        "is sent without a minimized preview and separate approval."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

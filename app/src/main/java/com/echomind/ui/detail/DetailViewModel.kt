@@ -6,7 +6,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.echomind.data.local.security.AudioEncryptionUtil
 import com.echomind.data.repository.EntryRepository
+import com.echomind.data.repository.ReflectionRepository
 import com.echomind.domain.model.Entry
+import com.echomind.domain.model.ReflectionSession
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.Player
@@ -19,8 +21,11 @@ import javax.inject.Inject
 
 data class DetailUiState(
     val entry: Entry? = null,
+    val reflection: ReflectionSession? = null,
     val isLoading: Boolean = true,
     val isPlaying: Boolean = false,
+    val isDeleting: Boolean = false,
+    val deleted: Boolean = false,
     val error: String? = null,
     val tempAudioPath: String? = null
 )
@@ -29,6 +34,7 @@ data class DetailUiState(
 class DetailViewModel @Inject constructor(
     application: Application,
     private val entryRepository: EntryRepository,
+    private val reflectionRepository: ReflectionRepository,
     private val audioEncryptionUtil: AudioEncryptionUtil
 ) : AndroidViewModel(application) {
 
@@ -42,7 +48,12 @@ class DetailViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 val entry = entryRepository.getEntryById(id)
-                _uiState.value = _uiState.value.copy(entry = entry, isLoading = false)
+                val reflection = reflectionRepository.loadReflectionForEntry(id)
+                _uiState.value = _uiState.value.copy(
+                    entry = entry,
+                    reflection = reflection,
+                    isLoading = false
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
             }
@@ -91,10 +102,23 @@ class DetailViewModel @Inject constructor(
         cleanupTempFile()
     }
 
-    fun deleteEntry() {
+    fun deleteEntry(includeConfirmedConclusion: Boolean) {
+        if (_uiState.value.isDeleting) return
+
         viewModelScope.launch {
-            _uiState.value.entry?.let { entryRepository.deleteEntry(it.id) }
-            stopPlayback()
+            val entry = _uiState.value.entry ?: return@launch
+            _uiState.value = _uiState.value.copy(isDeleting = true, error = null)
+            runCatching {
+                entryRepository.deleteEntry(entry.id, includeConfirmedConclusion)
+            }.onSuccess {
+                stopPlayback()
+                _uiState.value = _uiState.value.copy(isDeleting = false, deleted = true)
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    isDeleting = false,
+                    error = error.message ?: "Could not delete the reflection."
+                )
+            }
         }
     }
 

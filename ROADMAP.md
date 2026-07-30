@@ -14,21 +14,27 @@ This roadmap replaces the former feature checklist for a "voice diary with AI." 
 
 - Android application built with Kotlin, Jetpack Compose, Hilt, Room, and Retrofit.
 - Local entry CRUD, timeline, category filtering, search, detail view, and export.
+- Versioned conclusions, proposals, revisions, and source links with inspectable
+  provenance in the detail view.
+- Transactional graph deletion and manifest version 2 export for the complete
+  M1 relationship chain.
 - Audio recording, encrypted audio storage, and playback.
 - OpenAI-compatible endpoints for text analysis, Q&A, and transcription.
 - SQLCipher database encryption, Android Keystore integration, biometric release gate, and `FLAG_SECURE`.
-- Local fallback text analyzer.
+- Deterministic on-device reflection and fallback analyzers.
+- Repository-level deny-by-default boundary for every legacy raw-content AI
+  request.
 - Unit and Compose UI test foundation.
 - Verified debug build and emulator startup on Pixel 8 API 35.
 
 ### Product gaps
 
-- The data model is a flat diary `Entry`; it cannot represent a conclusion, revision, source, contradiction, decision, or outcome.
-- AI analysis writes generated fields directly into an entry without a user confirmation boundary.
+- The legacy `Entry` archive remains alongside the M1 provenance graph and does
+  not yet model themes, contradictions, decisions, or outcomes.
 - The current recording flow asks the user to type a transcript; the implemented transcription client is not connected to that flow.
-- Q&A sends a context window of recent entries but does not operate on a traceable, user-confirmed model.
-- The `localMode` setting is persisted but does not enforce a network boundary in the repository layer.
-- Remote processing does not yet provide local redaction, a minimized-context preview, or separate transmission consent.
+- Q&A and remote transcription are deliberately unavailable because the
+  prototype has no minimized-context preview or per-request transmission
+  approval.
 - The home screen is a diary timeline, not a prompt plus relevant evidence-backed resurfacing.
 - Current categories (`task`, `idea`, `feeling`, `plan`) do not express evolving conclusions.
 
@@ -70,7 +76,7 @@ No milestone is complete because a screen exists or an LLM returned plausible te
 - [x] Turn local mode into an enforced network policy rather than a UI preference.
 - [x] Define the remote-request pipeline: local minimization, redaction, preview, explicit consent, request, and disposal.
 - [x] Document third-party endpoint limitations, including provider-side retention outside EchoMind's control.
-- [ ] Add tests proving that raw records cannot cross the remote boundary.
+- [x] Add tests proving that raw records cannot cross the remote boundary.
 
 ### Completion criteria
 
@@ -253,16 +259,20 @@ No milestone is complete because a screen exists or an LLM returned plausible te
 
 ## Next implementation slice
 
-The first implementation block should be M0 plus the thinnest vertical part of M1:
+M0 and the first complete M1 vertical slice are implemented and verified. The
+next block must finish the remaining M1 product evidence before M2:
 
-1. approve the domain model and privacy state transitions;
-2. implement raw text capture;
-3. create an AI draft without persisting it as truth;
-4. add review and explicit confirmation;
-5. persist a versioned conclusion with its source;
-6. verify restart, rejection, deletion, export, and network-boundary behavior.
+1. run a first-session usability check and record whether the result is a real
+   clarification rather than a paraphrase;
+2. adjust the local analyzer only where that evidence identifies a concrete
+   failure;
+3. add a minimal continue-discussion path without letting a follow-up bypass
+   confirmation;
+4. keep remote raw-content paths blocked until a minimized preview and
+   per-request approval flow exists.
 
-Do not begin personalization, prediction, 3D visualization, or broad UI polish before this slice demonstrates day-one value.
+Do not begin personalization, prediction, 3D visualization, or broad UI polish
+before this product proof is complete.
 
 ## Execution stages
 
@@ -291,6 +301,6 @@ Do not begin personalization, prediction, 3D visualization, or broad UI polish b
 
 ### M1-B — Vertical-slice proof
 
-- [ ] Verify restart, rejection, deletion, export, and network-boundary behavior.
-- [ ] Validate the full flow on Pixel 8 API 35.
-- [ ] Record evidence and remaining limitations in `JOURNAL.md`.
+- [x] Verify restart, rejection, deletion, export, and network-boundary behavior.
+- [x] Validate the full flow on Pixel 8 API 35.
+- [x] Record evidence and remaining limitations in `JOURNAL.md`.

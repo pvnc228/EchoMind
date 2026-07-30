@@ -8,6 +8,7 @@ import com.echomind.data.local.AppDatabase
 import com.echomind.domain.model.ReflectionStatus
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -143,6 +144,60 @@ class ReflectionRepositoryTest {
             assertEquals("I think I need more evidence.", restored?.originalText)
         } finally {
             reopenedDatabase.close()
+        }
+    }
+
+    @Test
+    fun confirmedReflectionRequiresExplicitGraphDeletionThenRemovesEverything() {
+        val database = inMemoryDatabase()
+        val audioFile = File(context.cacheDir, "confirmed-reflection-audio.enc").apply {
+            writeText("encrypted placeholder")
+        }
+
+        try {
+            val reflectionRepository = repository(database)
+            val entryRepository = EntryRepository(
+                database,
+                database.entryDao(),
+                database.knowledgeDao()
+            )
+            runBlocking {
+                val rawRecordId = reflectionRepository.captureRawText(
+                    originalText = "A source that becomes a conclusion.",
+                    audioPath = audioFile.absolutePath
+                )
+                val proposal = reflectionRepository.createLocalProposal(rawRecordId)
+                reflectionRepository.confirm(proposal.hypothesisId, "Confirmed wording")
+                val entryId = requireNotNull(
+                    database.knowledgeDao().getRawRecordById(rawRecordId)?.legacyEntryId
+                )
+
+                var protected = false
+                try {
+                    entryRepository.deleteEntry(entryId)
+                } catch (_: ConfirmedConclusionDeletionRequiredException) {
+                    protected = true
+                }
+                assertTrue(protected)
+                assertEquals(1, database.entryDao().getAllEntriesOnce().size)
+                assertEquals(1, database.knowledgeDao().getAllConclusions().size)
+                assertTrue(audioFile.exists())
+
+                entryRepository.deleteEntry(
+                    id = entryId,
+                    includeConfirmedConclusion = true
+                )
+                assertTrue(database.entryDao().getAllEntriesOnce().isEmpty())
+                assertTrue(database.knowledgeDao().getAllRawRecords().isEmpty())
+                assertTrue(database.knowledgeDao().getAllHypotheses().isEmpty())
+                assertTrue(database.knowledgeDao().getAllConclusions().isEmpty())
+                assertTrue(database.knowledgeDao().getAllRevisions().isEmpty())
+                assertTrue(database.knowledgeDao().getAllEvidenceLinks().isEmpty())
+                assertTrue(!audioFile.exists())
+            }
+        } finally {
+            database.close()
+            audioFile.delete()
         }
     }
 

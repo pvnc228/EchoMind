@@ -43,14 +43,29 @@ class EntryRepository @Inject constructor(
         }
     }
 
-    suspend fun deleteEntry(id: Long) {
-        val audioPath = entryDao.getEntryById(id)?.audioPath
+    suspend fun deleteEntry(id: Long, includeConfirmedConclusion: Boolean = false) {
+        val entry = entryDao.getEntryById(id) ?: return
         database.withTransaction {
+            val rawRecord = knowledgeDao.getRawRecordByLegacyEntryId(id)
+            val conclusion = rawRecord?.let {
+                knowledgeDao.getConclusionForRawRecord(it.id)
+            }
+            if (conclusion != null) {
+                if (!includeConfirmedConclusion) {
+                    throw ConfirmedConclusionDeletionRequiredException()
+                }
+                knowledgeDao.deleteConclusion(conclusion)
+            }
             knowledgeDao.deleteRawRecordByLegacyEntryId(id)
             entryDao.deleteEntryById(id)
         }
         // ponytail: DB and filesystem deletion cannot be atomic; add orphan cleanup if failures appear.
-        audioPath?.let { File(it).delete() }
+        entry.audioPath?.let { path ->
+            val audioFile = File(path)
+            if (audioFile.exists() && !audioFile.delete()) {
+                throw AudioDeletionFailedException(path)
+            }
+        }
     }
 
     suspend fun getRecentEntries(limit: Int): List<Entry> =
@@ -92,3 +107,11 @@ class EntryRepository @Inject constructor(
         createdAt = createdAt
     )
 }
+
+class ConfirmedConclusionDeletionRequiredException : IllegalStateException(
+    "This source supports a confirmed conclusion. Delete the conclusion and source together, or cancel."
+)
+
+class AudioDeletionFailedException(path: String) : IllegalStateException(
+    "The database records were deleted, but the attached audio could not be removed: $path"
+)

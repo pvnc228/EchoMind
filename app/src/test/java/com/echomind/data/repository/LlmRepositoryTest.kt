@@ -59,6 +59,42 @@ class LlmRepositoryTest {
         }
     }
 
+    @Test
+    fun `remote mode still analyzes raw entries only on device`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+
+        val result = repository.analyzeEntry(testEntry("Raw private thought.")).getOrThrow()
+
+        assertEquals("Raw private thought.", result.summary)
+        coVerify(exactly = 0) { llmApi.analyzeText(any()) }
+    }
+
+    @Test
+    fun `remote mode blocks raw question context before the api`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+
+        val result = repository.askQuestion(
+            listOf(Message("system", "Raw private history"), Message("user", "What changed?"))
+        )
+
+        assertTrue(result.exceptionOrNull() is RemoteApprovalRequiredException)
+        coVerify(exactly = 0) { llmApi.analyzeText(any()) }
+    }
+
+    @Test
+    fun `remote mode blocks raw audio before the api`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        val audioFile = File.createTempFile("echomind-private", ".m4a")
+        try {
+            val result = repository.transcribeAudio(audioFile)
+
+            assertTrue(result.exceptionOrNull() is RemoteApprovalRequiredException)
+            coVerify(exactly = 0) { llmApi.transcribeAudio(any(), any(), any()) }
+        } finally {
+            audioFile.delete()
+        }
+    }
+
     private fun testEntry(transcript: String) = Entry(
         transcript = transcript,
         audioPath = null,
