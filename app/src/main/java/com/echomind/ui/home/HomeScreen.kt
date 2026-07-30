@@ -59,6 +59,28 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    HomeScreenContent(
+        uiState = uiState,
+        onNavigateToRecord = onNavigateToRecord,
+        onNavigateToSearch = onNavigateToSearch,
+        onNavigateToSettings = onNavigateToSettings,
+        onNavigateToDetail = onNavigateToDetail,
+        onNavigateToQa = onNavigateToQa,
+        onSelectCategory = viewModel::selectCategory
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreenContent(
+    uiState: HomeUiState,
+    onNavigateToRecord: () -> Unit,
+    onNavigateToSearch: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onNavigateToDetail: (Long) -> Unit = {},
+    onNavigateToQa: () -> Unit = {},
+    onSelectCategory: (String?) -> Unit = {}
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -78,7 +100,7 @@ fun HomeScreen(
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onNavigateToRecord) {
-                Icon(Icons.Default.Add, contentDescription = "Record entry")
+                Icon(Icons.Default.Add, contentDescription = "New reflection")
             }
         }
     ) { padding ->
@@ -91,12 +113,12 @@ fun HomeScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        "No entries yet",
+                        "Start with one thought",
                         style = MaterialTheme.typography.titleLarge
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Tap + to record your first entry",
+                        "Tap + to write your first reflection",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -117,13 +139,13 @@ fun HomeScreen(
                     ) {
                         FilterChip(
                             selected = uiState.selectedCategory == null,
-                            onClick = { viewModel.selectCategory(null) },
+                            onClick = { onSelectCategory(null) },
                             label = { Text("All") }
                         )
                         EntryCategory.entries.forEach { category ->
                             FilterChip(
                                 selected = uiState.selectedCategory == category.name.lowercase(),
-                                onClick = { viewModel.selectCategory(category.name.lowercase()) },
+                                onClick = { onSelectCategory(category.name.lowercase()) },
                                 label = { Text(category.displayName) }
                             )
                         }

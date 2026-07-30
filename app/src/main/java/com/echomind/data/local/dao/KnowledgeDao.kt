@@ -43,6 +43,42 @@ interface KnowledgeDao {
     @Query("SELECT * FROM evidence_links ORDER BY id")
     suspend fun getAllEvidenceLinks(): List<EvidenceLinkEntity>
 
+    @Query("SELECT * FROM raw_records WHERE id = :id")
+    suspend fun getRawRecordById(id: Long): RawRecordEntity?
+
+    @Query("SELECT * FROM ai_hypotheses WHERE id = :id")
+    suspend fun getHypothesisById(id: Long): AiHypothesisEntity?
+
+    @Query(
+        "SELECT * FROM ai_hypotheses " +
+            "WHERE raw_record_id = :rawRecordId ORDER BY created_at DESC, id DESC LIMIT 1"
+    )
+    suspend fun getLatestHypothesisForRawRecord(rawRecordId: Long): AiHypothesisEntity?
+
+    @Query(
+        "SELECT * FROM ai_hypotheses WHERE status = 'proposed' " +
+            "ORDER BY created_at DESC, id DESC LIMIT 1"
+    )
+    suspend fun getLatestProposedHypothesis(): AiHypothesisEntity?
+
+    @Query(
+        "UPDATE ai_hypotheses SET status = :newStatus " +
+            "WHERE id = :id AND status = 'proposed'"
+    )
+    suspend fun updateProposedHypothesisStatus(id: Long, newStatus: String): Int
+
+    @Query(
+        "SELECT * FROM conclusions WHERE raw_record_id = :rawRecordId " +
+            "ORDER BY created_at DESC, id DESC LIMIT 1"
+    )
+    suspend fun getConclusionForRawRecord(rawRecordId: Long): ConclusionEntity?
+
+    @Query("SELECT * FROM conclusion_revisions WHERE id = :id")
+    suspend fun getRevisionById(id: Long): ConclusionRevisionEntity?
+
+    @Query("UPDATE conclusions SET current_revision_id = :revisionId WHERE id = :conclusionId")
+    suspend fun setCurrentRevision(conclusionId: Long, revisionId: Long): Int
+
     @Query("DELETE FROM raw_records WHERE legacy_entry_id = :entryId")
     suspend fun deleteRawRecordByLegacyEntryId(entryId: Long): Int
 

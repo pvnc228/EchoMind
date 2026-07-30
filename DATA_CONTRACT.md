@@ -6,7 +6,8 @@
 
 This document turns the promises in [VISION.md](VISION.md) into storage and
 network rules. Room schema version 3 implements the minimum provenance model
-alongside the legacy `entries` table used by the current UI.
+alongside the legacy `entries` table used by the archive UI. M1-A now uses
+that model for the primary text-first reflection flow.
 
 ## Data classes
 
@@ -93,6 +94,23 @@ stale proposal from reappearing as confirmed, but it creates no conclusion.
 An outcome can propose a revision, but the existing conclusion changes only
 after the normal review and confirmation transition.
 
+The implemented M1-A transition is:
+
+1. `captureRawText` commits the archive entry and immutable `RawRecord` before
+   any analysis begins;
+2. the on-device deterministic analyzer stores a structured
+   `AiHypothesis(PROPOSED)` and one alternative interpretation without making a
+   network request;
+3. editing changes only the user's confirmation field; the stored proposal
+   remains inspectable as the original system wording;
+4. reject changes the proposal to `REJECTED` and creates no conclusion;
+5. explicit confirm atomically changes the proposal to `CONFIRMED`, creates a
+   `Conclusion`, appends user-authored `ConclusionRevision(version=1)`, updates
+   the current revision pointer, and adds a confirmed source evidence link.
+
+The newest proposed reflection is restored when the capture screen is reopened.
+Confirmed wording and its source/revision relationship survive database reopen.
+
 ## Deletion and export
 
 - Deleting a proposal removes only that proposal.
@@ -100,7 +118,8 @@ after the normal review and confirmation transition.
   source remains unless the user explicitly selects it too.
 - Deleting a raw record removes its encrypted audio and dependent unconfirmed
   proposals. A foreign-key restriction rejects deletion while a conclusion
-  cites it; M1 must ask the user to delete that conclusion first or cancel.
+  cites it; the legacy detail screen does not yet explain that restriction.
+  M1-B must ask the user to delete that conclusion first or cancel.
 - Deleting a theme, decision, or outcome never deletes the records or
   conclusions it references.
 - Export uses stable IDs and includes raw records, hypotheses with statuses,

@@ -88,19 +88,19 @@ No milestone is complete because a screen exists or an LLM returned plausible te
 
 ### Scope
 
-- [ ] Make text-first thought capture the primary flow.
-- [ ] Preserve the original text as an immutable raw record.
-- [ ] Generate a structured draft containing:
+- [x] Make text-first thought capture the primary flow.
+- [x] Preserve the original text as an immutable raw record.
+- [x] Generate a structured draft containing:
   - tentative thesis;
   - observations;
   - interpretations;
   - assumptions;
   - open questions.
-- [ ] Offer one relevant counterargument or alternative interpretation without manufacturing disagreement.
+- [x] Offer one relevant counterargument or alternative interpretation without manufacturing disagreement.
 - [ ] Let the user edit, accept, reject, or continue discussing the draft.
-- [ ] Save only the accepted formulation as a confirmed conclusion.
-- [ ] Display the raw source, AI proposal, user edits, and final conclusion as distinct objects.
-- [ ] Provide graceful local-only behavior when remote assistance is unavailable.
+- [x] Save only the accepted formulation as a confirmed conclusion.
+- [x] Display the raw source, AI proposal, user edits, and final conclusion as distinct objects.
+- [x] Provide graceful local-only behavior when remote assistance is unavailable.
 
 ### Completion criteria
 
@@ -284,10 +284,10 @@ Do not begin personalization, prediction, 3D visualization, or broad UI polish b
 
 ### M1-A — Text-first reflection
 
-- [ ] Capture and persist immutable raw text before analysis.
-- [ ] Produce one local structured draft and counterargument.
-- [ ] Let the user edit, reject, or explicitly confirm the proposal.
-- [ ] Persist the confirmed wording as revision 1 linked to its source.
+- [x] Capture and persist immutable raw text before analysis.
+- [x] Produce one local structured draft and counterargument.
+- [x] Let the user edit, reject, or explicitly confirm the proposal.
+- [x] Persist the confirmed wording as revision 1 linked to its source.
 
 ### M1-B — Vertical-slice proof
 

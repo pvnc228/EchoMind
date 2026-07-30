@@ -4,15 +4,14 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,34 +20,39 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.echomind.domain.model.ReflectionDraft
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,7 +61,6 @@ fun RecordScreen(
     viewModel: RecordViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var transcript by remember { mutableStateOf("") }
     val context = LocalContext.current
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -65,10 +68,22 @@ fun RecordScreen(
         if (granted) viewModel.startRecording()
     }
 
+    val requestRecording = {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            viewModel.startRecording()
+        } else {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Record") },
+                title = { Text("New reflection") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -77,121 +92,398 @@ fun RecordScreen(
             )
         }
     ) { padding ->
-        Box(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentAlignment = Alignment.Center
+        RecordScreenContent(
+            uiState = uiState,
+            onThoughtChange = viewModel::updateThought,
+            onSubmit = viewModel::submitThought,
+            onStartRecording = requestRecording,
+            onStopRecording = viewModel::stopRecording,
+            onConfirmationChange = viewModel::updateConfirmation,
+            onConfirm = viewModel::confirmProposal,
+            onReject = viewModel::rejectProposal,
+            onRetry = viewModel::retry,
+            onDone = onNavigateBack,
+            modifier = Modifier.padding(padding)
+        )
+    }
+}
+
+@Composable
+fun RecordScreenContent(
+    uiState: RecordUiState,
+    onThoughtChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onStartRecording: () -> Unit,
+    onStopRecording: () -> Unit,
+    onConfirmationChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onReject: () -> Unit,
+    onRetry: () -> Unit,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.fillMaxSize().imePadding(),
+        contentAlignment = Alignment.Center
+    ) {
+        when (uiState.stage) {
+            ReflectionStage.LOADING -> ProcessingContent("Restoring your reflection...")
+            ReflectionStage.CAPTURE -> CaptureContent(
+                text = uiState.thoughtText,
+                hasAudio = uiState.audioPath != null,
+                onTextChange = onThoughtChange,
+                onSubmit = onSubmit,
+                onStartRecording = onStartRecording
+            )
+            ReflectionStage.RECORDING -> RecordingContent(
+                amplitudes = uiState.amplitudes,
+                onStopRecording = onStopRecording
+            )
+            ReflectionStage.PROCESSING -> ProcessingContent(
+                if (uiState.rawRecordId == null) {
+                    "Saving your original words..."
+                } else {
+                    "Original saved. Structuring locally..."
+                }
+            )
+            ReflectionStage.REVIEW -> ReviewContent(
+                originalText = uiState.thoughtText,
+                draft = requireNotNull(uiState.draft),
+                counterargument = uiState.counterargument,
+                confirmationText = uiState.confirmationText,
+                onConfirmationChange = onConfirmationChange,
+                onConfirm = onConfirm,
+                onReject = onReject
+            )
+            ReflectionStage.CONFIRMED -> ConfirmedContent(
+                originalText = uiState.thoughtText,
+                draft = requireNotNull(uiState.draft),
+                counterargument = uiState.counterargument,
+                conclusion = uiState.confirmedConclusion.orEmpty(),
+                onDone = onDone
+            )
+            ReflectionStage.REJECTED -> RejectedContent(
+                originalText = uiState.thoughtText,
+                draft = requireNotNull(uiState.draft),
+                onDone = onDone
+            )
+            ReflectionStage.ERROR -> ErrorContent(
+                message = uiState.error ?: "Unknown error",
+                onRetry = onRetry
+            )
+        }
+    }
+}
+
+@Composable
+private fun CaptureContent(
+    text: String,
+    hasAudio: Boolean,
+    onTextChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onStartRecording: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            "What are you trying to understand?",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Describe the situation and your current interpretation. Your original words stay separate from EchoMind's proposal.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(20.dp))
+        OutlinedTextField(
+            value = text,
+            onValueChange = onTextChange,
+            label = { Text("Your reflection") },
+            placeholder = { Text("I noticed... I think... What I may be assuming is...") },
+            minLines = 7,
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (hasAudio) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Encrypted voice note attached. Add or edit its transcript above.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = onSubmit,
+            enabled = text.isNotBlank(),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            when (uiState.state) {
-                RecordingState.IDLE -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Button(onClick = {
-                            val hasPermission = ContextCompat.checkSelfPermission(
-                                context, Manifest.permission.RECORD_AUDIO
-                            ) == PackageManager.PERMISSION_GRANTED
-                            if (hasPermission) {
-                                viewModel.startRecording()
-                            } else {
-                                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                            }
-                        }) {
-                            Text("Start Recording")
-                        }
-                    }
-                }
-                RecordingState.RECORDING -> {
-                    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-                    val pulseAlpha by infiniteTransition.animateFloat(
-                        initialValue = 0.3f,
-                        targetValue = 1f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(600),
-                            repeatMode = RepeatMode.Reverse
-                        ),
-                        label = "pulse_alpha"
+            Text("Create local reflection")
+        }
+        Spacer(Modifier.height(8.dp))
+        TextButton(
+            onClick = onStartRecording,
+            enabled = !hasAudio,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        ) {
+            Icon(Icons.Default.Mic, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(if (hasAudio) "Voice note attached" else "Record instead")
+        }
+    }
+}
+
+@Composable
+private fun RecordingContent(
+    amplitudes: List<Float>,
+    onStopRecording: () -> Unit
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_alpha"
+    )
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        WaveformVisualizer(
+            amplitudes = amplitudes,
+            modifier = Modifier.fillMaxWidth().height(120.dp)
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(
+                        MaterialTheme.colorScheme.error.copy(alpha = pulseAlpha),
+                        CircleShape
                     )
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        WaveformVisualizer(
-                            amplitudes = uiState.amplitudes,
-                            modifier = Modifier.fillMaxWidth().height(120.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.error.copy(alpha = pulseAlpha),
-                                        CircleShape
-                                    )
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Recording...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Button(onClick = { viewModel.stopRecording() }) {
-                            Text("Stop Recording")
-                        }
-                    }
-                }
-                RecordingState.DONE -> {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("Recording complete!", style = MaterialTheme.typography.titleMedium)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        TextField(
-                            value = transcript,
-                            onValueChange = { transcript = it },
-                            label = { Text("Transcript") },
-                            modifier = Modifier.fillMaxSize().weight(1f)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = { viewModel.saveEntry(transcript) },
-                            enabled = transcript.isNotBlank()
-                        ) {
-                            Text("Save & Analyze")
-                        }
-                    }
-                }
-                RecordingState.PROCESSING -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator()
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Processing...")
-                    }
-                }
-                RecordingState.ERROR -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            "Error: ${uiState.error}",
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { viewModel.startRecording() }) {
-                            Text("Retry")
-                        }
-                    }
-                }
+            )
+            Spacer(Modifier.width(8.dp))
+            Text("Recording...", color = MaterialTheme.colorScheme.error)
+        }
+        Spacer(Modifier.height(24.dp))
+        Button(onClick = onStopRecording) {
+            Text("Stop and add transcript")
+        }
+    }
+}
+
+@Composable
+private fun ProcessingContent(message: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        CircularProgressIndicator()
+        Spacer(Modifier.height(16.dp))
+        Text(message)
+    }
+}
+
+@Composable
+private fun ReviewContent(
+    originalText: String,
+    draft: ReflectionDraft,
+    counterargument: String,
+    confirmationText: String,
+    onConfirmationChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onReject: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        LabeledCard("Your words · immutable source", originalText)
+        DraftCard(draft)
+        LabeledCard("Local proposal · alternative", counterargument)
+        HorizontalDivider()
+        Text(
+            "Your confirmed wording",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            "Edit freely. Only this field becomes a conclusion when you confirm it.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedTextField(
+            value = confirmationText,
+            onValueChange = onConfirmationChange,
+            minLines = 3,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Button(
+            onClick = onConfirm,
+            enabled = confirmationText.isNotBlank(),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Confirm conclusion")
+        }
+        TextButton(onClick = onReject, modifier = Modifier.fillMaxWidth()) {
+            Text("Reject proposal")
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun ConfirmedContent(
+    originalText: String,
+    draft: ReflectionDraft,
+    counterargument: String,
+    conclusion: String,
+    onDone: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            "Conclusion confirmed",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+        LabeledCard("Your words · source", originalText)
+        LabeledCard("Local proposal · tentative thesis", draft.tentativeThesis)
+        LabeledCard("Local proposal · alternative", counterargument)
+        LabeledCard("Your conclusion · revision 1", conclusion, emphasized = true)
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+            Text("Done")
+        }
+    }
+}
+
+@Composable
+private fun RejectedContent(
+    originalText: String,
+    draft: ReflectionDraft,
+    onDone: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Proposal rejected", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "No confirmed conclusion was created. Your original record remains in your archive.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        LabeledCard("Your words · source", originalText)
+        LabeledCard("Rejected local proposal", draft.tentativeThesis)
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+            Text("Done")
+        }
+    }
+}
+
+@Composable
+private fun ErrorContent(message: String, onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier.padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(message, color = MaterialTheme.colorScheme.error)
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = onRetry) {
+            Text("Retry")
+        }
+    }
+}
+
+@Composable
+private fun DraftCard(draft: ReflectionDraft) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "Local proposal · structured draft",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            DraftField("Tentative thesis", listOf(draft.tentativeThesis))
+            DraftField("Observations", draft.observations)
+            DraftField("Interpretations", draft.interpretations)
+            DraftField("Assumptions", draft.assumptions)
+            DraftField("Open questions", draft.openQuestions)
+        }
+    }
+}
+
+@Composable
+private fun DraftField(label: String, values: List<String>) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        if (values.isEmpty()) {
+            Text(
+                "None identified in the original text.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+            )
+        } else {
+            values.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+        }
+    }
+}
+
+@Composable
+private fun LabeledCard(
+    label: String,
+    text: String,
+    emphasized: Boolean = false
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (emphasized) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
             }
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (emphasized) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(text, style = MaterialTheme.typography.bodyLarge)
         }
     }
 }

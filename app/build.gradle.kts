@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     debugImplementation(libs.androidx.ui.tooling)
+    debugImplementation(libs.androidx.ui.test.manifest)
 
     // Navigation
     implementation(libs.androidx.navigation.compose)
@@ -108,7 +109,6 @@ dependencies {
     testImplementation(libs.androidx.core.testing)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
-    androidTestImplementation(libs.androidx.ui.test.manifest)
 
     // SQLCipher for database encryption
     implementation(libs.sqlcipher)

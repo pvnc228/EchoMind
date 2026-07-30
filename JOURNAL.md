@@ -373,3 +373,59 @@ Complete M0 and the thinnest vertical slice of M1: define the domain and privacy
   the corresponding M0 network-boundary test remains open.
 - Theme, decision, and outcome entities remain deliberately deferred until
   their roadmap milestones.
+
+---
+
+## 2026-07-30 — M1-A Text-First Reflection
+
+### Done
+
+- Replaced the recording-first entry screen with a text-first reflection flow;
+  encrypted voice recording remains an optional attachment that returns to the
+  same editable transcript path.
+- Added a deterministic on-device reflection analyzer. It keeps extracted
+  observations and interpretations tied to source sentences, produces the
+  five-part draft required by the roadmap, and offers one conditional
+  counterargument without a network request.
+- Persist the legacy archive row and immutable raw record in one completed
+  transaction before proposal generation starts.
+- Added a review screen that visibly separates the user's immutable source,
+  local proposal, alternative interpretation, editable user wording, and final
+  confirmed conclusion.
+- Added durable proposal states. Reject creates no conclusion. Explicit confirm
+  atomically creates the conclusion, user-authored revision 1, current-revision
+  pointer, and confirmed evidence link to the raw source.
+- Restore the newest proposed reflection when the capture screen is reopened;
+  confirmed wording and provenance survive closing and reopening Room.
+- Moved the Compose test manifest to the debug APK, where its host activity
+  belongs, and separated `HomeScreenContent` from its Hilt wrapper so UI tests
+  run in a real test host.
+
+### Evidence
+
+- `:app:testDebugUnitTest` — 12 tests passed, including three local reflection
+  analyzer tests.
+- `:app:assembleDebug` and `:app:assembleDebugAndroidTest` — passed.
+- Full `:app:connectedDebugAndroidTest` on `Pixel_8_2`, stable API 35 — 9/9
+  tests passed.
+- Repository tests prove raw-before-proposal ordering, durable rejection with
+  zero conclusions, edited confirmation as revision 1 with a source link,
+  pending-proposal restoration, and confirmed-state restoration after database
+  reopen.
+- Compose test verifies that source, proposal, editable confirmation, confirm,
+  and reject controls are visibly distinct.
+- `git diff --check` — passed.
+
+### Remaining limitations
+
+- The local analyzer is deliberately deterministic and shallow. A first-session
+  usability check must still prove that its clarification is useful rather
+  than a paraphrase.
+- Continuing a dispute or asking follow-up questions is not implemented, so the
+  corresponding combined M1 roadmap item remains open.
+- Home/detail/search still use legacy archive entries; they do not yet expose a
+  persisted conclusion and revision as an inspectable provenance view.
+- Deleting a confirmed reflection is protected by foreign keys, but the legacy
+  detail screen does not yet explain that the conclusion must be removed first.
+- M1-B still owns deletion/export/network-boundary proof for the full vertical
+  slice. Remote mode remains unsafe for raw prototype requests.

@@ -2,7 +2,9 @@
 
 EchoMind is a private Android thinking environment that turns short reflections into traceable, evolving conclusions. It helps a user inspect assumptions, preserve changes of mind, reconnect related ideas, and eventually receive evidence-backed guidance without handing decisions to an AI.
 
-> The repository currently contains a working voice-diary prototype that is being realigned with the product vision. The existing AI and privacy controls do not yet enforce every guarantee described in `VISION.md`.
+> The repository is an active product prototype. Its primary capture path now
+> enforces explicit confirmation, while remote Q&A/legacy features and the
+> archive UI do not yet satisfy every guarantee described in `VISION.md`.
 
 ## Documentation
 
@@ -13,15 +15,20 @@ EchoMind is a private Android thinking environment that turns short reflections 
 
 ## Current Prototype
 
-- Encrypted local diary entries and audio recordings
-- Voice recording with manual transcript entry
+- Text-first reflection capture with optional encrypted voice attachment
+- Immutable raw text persisted before local analysis
+- On-device structured proposal: thesis, observations, interpretations,
+  assumptions, open questions, and one alternative interpretation
+- Explicit edit, confirm, and reject boundary
+- Confirmed conclusion stored as revision 1 with its raw source
 - OpenAI-compatible text analysis, transcription client, and Q&A
 - Entry timeline, search, filters, details, and export
 - Room v3 provenance storage for raw records, hypotheses, conclusions, revisions, and evidence links
-- Local fallback text analysis
 - Biometric release gate and screenshot protection
 
 Automatic transcription is not yet connected to the main recording flow.
+The archive and detail screens still present legacy entries rather than the
+complete provenance graph, and discussion of a proposal is not implemented.
 `localMode` now blocks repository network calls, but disabling it still exposes
 the prototype's raw-entry requests; minimized context preview and per-request
 consent remain tracked in the roadmap.
@@ -51,7 +58,7 @@ app/src/main/java/com/echomind/
 ├── di/                 # Hilt DI modules
 └── ui/
     ├── home/           # Entry list
-    ├── record/         # Voice recording
+    ├── record/         # Text-first reflection and optional voice capture
     ├── search/         # Full-text search
     ├── settings/       # API config, privacy toggles
     ├── theme/          # Material 3 theme
@@ -74,6 +81,7 @@ $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 .\gradlew.bat :app:assembleDebug --console=plain
 .\gradlew.bat :app:testDebugUnitTest --console=plain
+.\gradlew.bat :app:connectedDebugAndroidTest --console=plain
 ```
 
 ## License
