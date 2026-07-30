@@ -4,6 +4,8 @@
 
 **Product direction:** [VISION.md](VISION.md)
 
+**Data/privacy contract:** [DATA_CONTRACT.md](DATA_CONTRACT.md)
+
 This roadmap replaces the former feature checklist for a "voice diary with AI." Existing code is treated as a technical prototype. A capability is complete only when it supports the product loop in `VISION.md` and satisfies its evidence, privacy, and verification criteria.
 
 ## Current baseline
@@ -54,8 +56,8 @@ No milestone is complete because a screen exists or an LLM returned plausible te
 
 ### Scope
 
-- [ ] Classify raw, derived, confirmed, identifying, and exportable data.
-- [ ] Define the local entities and state transitions for:
+- [x] Classify raw, derived, confirmed, identifying, and exportable data.
+- [x] Define the local entities and state transitions for:
   - raw records;
   - AI hypotheses;
   - confirmed conclusions;
@@ -63,11 +65,11 @@ No milestone is complete because a screen exists or an LLM returned plausible te
   - evidence and counterevidence links;
   - themes;
   - decisions and outcomes.
-- [ ] Define deletion and export semantics for the entire relationship graph.
+- [x] Define deletion and export semantics for the entire relationship graph.
 - [ ] Replace destructive pre-release migration behavior with an explicit migration strategy before valuable user data exists.
-- [ ] Turn local mode into an enforced network policy rather than a UI preference.
-- [ ] Define the remote-request pipeline: local minimization, redaction, preview, explicit consent, request, and disposal.
-- [ ] Document third-party endpoint limitations, including provider-side retention outside EchoMind's control.
+- [x] Turn local mode into an enforced network policy rather than a UI preference.
+- [x] Define the remote-request pipeline: local minimization, redaction, preview, explicit consent, request, and disposal.
+- [x] Document third-party endpoint limitations, including provider-side retention outside EchoMind's control.
 - [ ] Add tests proving that raw records cannot cross the remote boundary.
 
 ### Completion criteria
@@ -261,3 +263,34 @@ The first implementation block should be M0 plus the thinnest vertical part of M
 6. verify restart, rejection, deletion, export, and network-boundary behavior.
 
 Do not begin personalization, prediction, 3D visualization, or broad UI polish before this slice demonstrates day-one value.
+
+## Execution stages
+
+### M0-A — Contract and network boundary
+
+- [x] Classify current and planned data in `DATA_CONTRACT.md`.
+- [x] Define confirmation, rejection, revision, deletion, export, and remote-request transitions.
+- [x] Share the persisted local-mode setting with the repository layer.
+- [x] Block analysis, Q&A, and transcription network calls while local mode is enabled.
+- [x] Stop debug logging of personal request and response bodies.
+- [x] Add repository tests proving that local mode performs no AI API call.
+
+### M0-B — Storage and migration
+
+- [ ] Add the minimum raw record, hypothesis, conclusion, revision, and evidence-link tables.
+- [ ] Migrate version 2 entries without treating legacy generated fields as confirmed.
+- [ ] Remove destructive migration fallback.
+- [ ] Extend deletion and export to the new relationship graph.
+
+### M1-A — Text-first reflection
+
+- [ ] Capture and persist immutable raw text before analysis.
+- [ ] Produce one local structured draft and counterargument.
+- [ ] Let the user edit, reject, or explicitly confirm the proposal.
+- [ ] Persist the confirmed wording as revision 1 linked to its source.
+
+### M1-B — Vertical-slice proof
+
+- [ ] Verify restart, rejection, deletion, export, and network-boundary behavior.
+- [ ] Validate the full flow on Pixel 8 API 35.
+- [ ] Record evidence and remaining limitations in `JOURNAL.md`.

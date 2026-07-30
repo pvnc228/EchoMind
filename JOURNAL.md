@@ -282,3 +282,45 @@ Complete M0 and the thinnest vertical slice of M1: define the domain and privacy
 ### Files Modified
 - `app/proguard-rules.pro` — comprehensive ProGuard rules
 - `ROADMAP.md` — ProGuard and store assets checked
+
+---
+
+## 2026-07-30 — M0-A Data Contract and Local-Mode Boundary
+
+### Skills Used
+
+- **`ponytail` (full)** — kept the first roadmap delivery to the smallest
+  enforceable privacy slice, reused DataStore and the existing repository
+  boundary, and added no dependency or speculative architecture.
+
+### Done
+
+- Added `DATA_CONTRACT.md` with data ownership/classification, the minimum
+  domain objects, state transitions, deletion/export rules, the remote-request
+  sequence, provider limitations, and the version 2 alpha reset policy.
+- Split the next roadmap block into M0-A, M0-B, M1-A, and M1-B with explicit
+  completion checks.
+- Centralized the existing `settings` DataStore in `SettingsStore`; Settings
+  and repositories now read the same persisted local-mode value.
+- Enforced local mode in `LlmRepository`: analysis uses the existing offline
+  analyzer, while Q&A and transcription fail before calling `LlmApi`.
+- Reduced debug HTTP logging from bodies to request metadata.
+- Added three unit tests proving that analysis, Q&A, and transcription make no
+  AI API call in local mode.
+
+### Evidence
+
+- `:app:testDebugUnitTest` — 8 tests passed, including 3 local-mode boundary
+  tests.
+- `:app:assembleDebug` — passed; debug APK produced.
+- `git diff --check` — passed.
+
+### Remaining limitations
+
+- Disabling local mode still exposes the prototype's raw-entry requests. M0-B
+  must replace them with minimized, redacted, previewed, per-request approved
+  context before the privacy contract is complete.
+- Room still uses destructive migration fallback for version 2. M0-B must add
+  the explicit relationship-graph migration and remove the fallback.
+- No emulator interaction was needed for this repository-boundary slice; the
+  end-to-end M1 flow remains subject to Pixel 8 API 35 validation.

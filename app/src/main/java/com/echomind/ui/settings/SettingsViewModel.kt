@@ -3,24 +3,18 @@ package com.echomind.ui.settings
 import android.app.Application
 import android.net.Uri
 import androidx.core.content.FileProvider
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.echomind.data.export.ExportManager
 import com.echomind.data.remote.BaseUrlProvider
 import com.echomind.data.remote.CredentialsProvider
+import com.echomind.data.settings.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-private val Application.dataStore by preferencesDataStore(name = "settings")
 
 data class SettingsUiState(
     val apiEndpoint: String = "http://localhost:1234",
@@ -42,7 +36,8 @@ class SettingsViewModel @Inject constructor(
     application: Application,
     private val baseUrlProvider: BaseUrlProvider,
     private val exportManager: ExportManager,
-    private val credentialsProvider: CredentialsProvider
+    private val credentialsProvider: CredentialsProvider,
+    private val settingsStore: SettingsStore
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -50,11 +45,12 @@ class SettingsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val prefs = getApplication<Application>().dataStore.data.first()
+            val settings = settingsStore.load()
+            baseUrlProvider.updateUrl(settings.apiEndpoint)
             _uiState.value = SettingsUiState(
-                apiEndpoint = prefs[KEY_API_ENDPOINT] ?: "http://localhost:1234",
+                apiEndpoint = settings.apiEndpoint,
                 apiKey = credentialsProvider.apiKey,
-                localMode = prefs[KEY_LOCAL_MODE] ?: true
+                localMode = settings.localMode
             )
         }
     }
@@ -70,9 +66,7 @@ class SettingsViewModel @Inject constructor(
         )
         baseUrlProvider.updateUrl(endpoint)
         viewModelScope.launch {
-            getApplication<Application>().dataStore.edit { prefs ->
-                prefs[KEY_API_ENDPOINT] = endpoint
-            }
+            settingsStore.setApiEndpoint(endpoint)
         }
     }
 
@@ -87,10 +81,9 @@ class SettingsViewModel @Inject constructor(
 
     fun toggleLocalMode(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(localMode = enabled)
+        settingsStore.updateLocalMode(enabled)
         viewModelScope.launch {
-            getApplication<Application>().dataStore.edit { prefs ->
-                prefs[KEY_LOCAL_MODE] = enabled
-            }
+            settingsStore.persistLocalMode(enabled)
         }
     }
 
@@ -118,10 +111,5 @@ class SettingsViewModel @Inject constructor(
 
     fun clearExportState() {
         _uiState.value = _uiState.value.copy(exportState = ExportState.Idle)
-    }
-
-    companion object {
-        private val KEY_API_ENDPOINT = stringPreferencesKey("api_endpoint")
-        private val KEY_LOCAL_MODE = booleanPreferencesKey("local_mode")
     }
 }

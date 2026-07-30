@@ -163,6 +163,15 @@ fun SettingsScreen(
                     onCheckedChange = { viewModel.toggleLocalMode(it) }
                 )
             }
+            Text(
+                text = if (uiState.localMode) {
+                    "AI network calls are blocked; entry analysis uses the on-device fallback."
+                } else {
+                    "Prototype mode: raw content may be sent to the configured endpoint."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
             Text("Data", style = MaterialTheme.typography.titleMedium)

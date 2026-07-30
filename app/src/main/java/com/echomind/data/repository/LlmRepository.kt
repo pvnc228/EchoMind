@@ -4,6 +4,7 @@ import com.echomind.data.analysis.SimpleTextAnalyzer
 import com.echomind.data.remote.LlmApi
 import com.echomind.data.remote.dto.AnalysisRequest
 import com.echomind.data.remote.dto.Message
+import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.EntryCategory
 import kotlinx.serialization.Serializable
@@ -19,23 +20,32 @@ import javax.inject.Singleton
 @Singleton
 class LlmRepository @Inject constructor(
     private val llmApi: LlmApi,
-    private val offlineAnalyzer: SimpleTextAnalyzer
+    private val offlineAnalyzer: SimpleTextAnalyzer,
+    private val settingsStore: SettingsStore
 ) {
-    suspend fun transcribeAudio(audioFile: java.io.File): Result<String> = runCatching {
-        val mimeType = when {
-            audioFile.name.endsWith(".m4a") -> "audio/mp4"
-            audioFile.name.endsWith(".wav") -> "audio/wav"
-            else -> "audio/wav"
+    suspend fun transcribeAudio(audioFile: java.io.File): Result<String> {
+        if (settingsStore.isLocalMode()) return networkDisabled()
+
+        return runCatching {
+            val mimeType = when {
+                audioFile.name.endsWith(".m4a") -> "audio/mp4"
+                audioFile.name.endsWith(".wav") -> "audio/wav"
+                else -> "audio/wav"
+            }
+            val requestBody = audioFile.asRequestBody(mimeType.toMediaTypeOrNull())
+            val part = MultipartBody.Part.createFormData("file", audioFile.name, requestBody)
+            val modelPart = "whisper-1".toRequestBody()
+            val formatPart = "json".toRequestBody()
+            val response = llmApi.transcribeAudio(part, modelPart, formatPart)
+            response.text
         }
-        val requestBody = audioFile.asRequestBody(mimeType.toMediaTypeOrNull())
-        val part = MultipartBody.Part.createFormData("file", audioFile.name, requestBody)
-        val modelPart = "whisper-1".toRequestBody()
-        val formatPart = "json".toRequestBody()
-        val response = llmApi.transcribeAudio(part, modelPart, formatPart)
-        response.text
     }
 
     suspend fun analyzeEntry(entry: Entry): Result<Entry> {
+        if (settingsStore.isLocalMode()) {
+            return Result.success(offlineAnalyzer.analyze(entry))
+        }
+
         val llmResult = runCatching {
             val prompt = buildString {
                 appendLine("Analyze the following voice diary entry.")
@@ -76,13 +86,17 @@ class LlmRepository @Inject constructor(
         }
     }
 
-    suspend fun askQuestion(messages: List<Message>): Result<String> = runCatching {
-        val request = AnalysisRequest(
-            messages = messages,
-            temperature = 0.7
-        )
-        val response = llmApi.analyzeText(request)
-        response.choices.firstOrNull()?.message?.content ?: throw Exception("Empty response")
+    suspend fun askQuestion(messages: List<Message>): Result<String> {
+        if (settingsStore.isLocalMode()) return networkDisabled()
+
+        return runCatching {
+            val request = AnalysisRequest(
+                messages = messages,
+                temperature = 0.7
+            )
+            val response = llmApi.analyzeText(request)
+            response.choices.firstOrNull()?.message?.content ?: throw Exception("Empty response")
+        }
     }
 
     private fun String.extractJson(): String {
@@ -90,7 +104,14 @@ class LlmRepository @Inject constructor(
         val end = lastIndexOf('}')
         return if (start != -1 && end != -1) substring(start..end) else this
     }
+
+    private fun <T> networkDisabled(): Result<T> =
+        Result.failure(AiNetworkDisabledException())
 }
+
+class AiNetworkDisabledException : IllegalStateException(
+    "AI network access is disabled while local mode is on"
+)
 
 @Serializable
 data class AnalysisResult(
