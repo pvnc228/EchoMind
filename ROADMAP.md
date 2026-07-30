@@ -110,11 +110,18 @@ No milestone is complete because a screen exists or an LLM returned plausible te
 
 ### Completion criteria
 
-- The "Walter White / architect" scenario can be completed end to end.
-- The user can identify which words are theirs and which were proposed by AI.
-- Rejecting an AI hypothesis leaves no confirmed claim behind.
-- A confirmed conclusion retains its source and revision history after restart.
-- A first-session usability check demonstrates a concrete clarification rather than a paraphrased note.
+- [x] The "Walter White / architect" scenario can be completed end to end.
+- [x] The user can identify which words are theirs and which were proposed by AI.
+- [x] Rejecting an AI hypothesis leaves no confirmed claim behind.
+- [x] A confirmed conclusion retains its source and revision history after restart.
+- [ ] A first-session usability check demonstrates a concrete clarification
+  rather than a paraphrased note.
+
+The 2026-07-30 synthetic first-session baseline failed the remaining product
+criterion: five scored scenarios totalled `18/50` (mean `3.6/10`). All eight
+source inputs persisted locally, so this is an analyzer-value failure rather
+than a storage or confirmation-flow failure. See
+[M1_USABILITY_EVALUATION.md](M1_USABILITY_EVALUATION.md).
 
 ## M2 — Traceable personal knowledge model
 
@@ -259,17 +266,23 @@ No milestone is complete because a screen exists or an LLM returned plausible te
 
 ## Next implementation slice
 
-M0 and the first complete M1 vertical slice are implemented and verified. The
-next block must finish the remaining M1 product evidence before M2:
+M0 and the technical M1 vertical slice are implemented and verified. The
+first-session baseline is now recorded and shows that the current analyzer
+mostly paraphrases. The next block is M1-C:
 
-1. run a first-session usability check and record whether the result is a real
-   clarification rather than a paraphrase;
-2. adjust the local analyzer only where that evidence identifies a concrete
-   failure;
-3. add a minimal continue-discussion path without letting a follow-up bypass
-   confirmation;
-4. keep remote raw-content paths blocked until a minimized preview and
-   per-request approval flow exists.
+1. turn the eight synthetic inputs into regression fixtures, including three
+   controls that must not be over-interpreted;
+2. make proposals relation-aware, non-duplicative, grounded in the source, and
+   language-matched;
+3. produce one scenario-specific alternative or discriminating question
+   without manufacturing facts;
+4. re-score the same five target scenarios and meet the gate in
+   [M1_USABILITY_EVALUATION.md](M1_USABILITY_EVALUATION.md);
+5. only then add a minimal continue-discussion path without letting a follow-up
+   bypass confirmation.
+
+Remote raw-content paths remain blocked until a minimized preview and
+per-request approval flow exists.
 
 Do not begin personalization, prediction, 3D visualization, or broad UI polish
 before this product proof is complete.
@@ -304,3 +317,14 @@ before this product proof is complete.
 - [x] Verify restart, rejection, deletion, export, and network-boundary behavior.
 - [x] Validate the full flow on Pixel 8 API 35.
 - [x] Record evidence and remaining limitations in `JOURNAL.md`.
+
+### M1-C — Useful clarification
+
+- [x] Record a scored synthetic baseline and verify that all eight raw inputs
+  persist locally.
+- [ ] Add the eight evaluation inputs as analyzer regression fixtures.
+- [ ] Remove duplicated classifications and verbatim suggested conclusions.
+- [ ] Generate grounded, scenario-specific, language-matched clarification.
+- [ ] Protect cautious and observational control inputs from manufactured
+  disagreement.
+- [ ] Meet the documented re-score gate without regressing M0/M1 boundaries.

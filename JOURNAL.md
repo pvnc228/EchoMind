@@ -499,3 +499,57 @@ Complete M0 and the thinnest vertical slice of M1: define the domain and privacy
 - Room deletion and filesystem deletion cannot be atomic. The normal path is
   tested and failures are surfaced, but orphan-audio recovery remains a
   pre-release hardening task.
+
+---
+
+## 2026-07-30 — M1 First-Session Usability Baseline
+
+### Done
+
+- Recorded the project owner's first-session evaluation in
+  `M1_USABILITY_EVALUATION.md`.
+- Preserved five target scenarios and their raw five-criterion scores:
+  `5/10`, `4/10`, `1/10`, `4/10`, and `4/10`.
+- Calculated the baseline as `18/50`, mean `3.6/10`, median `4/10`, and range
+  `1–5/10`.
+- Reopened the installed app on `Pixel_8_2` and confirmed that the archive
+  still contains all eight exact synthetic inputs: the five scored scenarios
+  and three controls.
+- Kept the persistence claim narrow. Archive presence proves that the source
+  entries remain locally available; it does not prove that every scenario has
+  a confirmed conclusion.
+- Inspected the two screenshots attached to the source note. They show a
+  Russian input whose thesis is repeated across proposal sections and the
+  confirmation field, plus a generic English fallback question and alternative.
+- Traced the result to the current mechanism: independent substring
+  classification, fixed counterargument templates, a generic fallback
+  question, and `suggestedConclusion()` returning the tentative thesis
+  verbatim.
+
+### Product Decision
+
+M1 is not complete. The storage, provenance, review, rejection, deletion,
+export, restart, and no-network boundaries remain valid, but the day-one value
+claim failed. The current behavior is predominantly structured paraphrase, not
+a useful clarification.
+
+The next work block is M1-C, not M2. It will use all eight inputs as regression
+fixtures, improve only the analyzer/proposal behavior required by the observed
+failure, preserve user confirmation and privacy boundaries, and re-run the same
+scoring protocol. The working gate is at least `35/50`, no target scenario below
+`5/10`, plus all existing M0/M1 tests passing.
+
+### Verification
+
+- Installed archive on `Pixel_8_2`, API 35 — all eight synthetic source texts
+  present after app reopen.
+- No instrumented test, reinstall, database reset, export, or deletion was run
+  during the persistence check.
+- This is a documentation-only checkpoint; Gradle tests were not rerun.
+
+### Next
+
+Implement the bounded M1-C handoff in `M1_USABILITY_EVALUATION.md`: regression
+fixtures first, relation-aware and language-matched clarification second,
+blind re-score third. Do not enable remote raw-content processing or begin M2
+while the M1 usefulness gate is open.
