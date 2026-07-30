@@ -66,7 +66,7 @@ No milestone is complete because a screen exists or an LLM returned plausible te
   - themes;
   - decisions and outcomes.
 - [x] Define deletion and export semantics for the entire relationship graph.
-- [ ] Replace destructive pre-release migration behavior with an explicit migration strategy before valuable user data exists.
+- [x] Replace destructive pre-release migration behavior with an explicit migration strategy before valuable user data exists.
 - [x] Turn local mode into an enforced network policy rather than a UI preference.
 - [x] Define the remote-request pipeline: local minimization, redaction, preview, explicit consent, request, and disposal.
 - [x] Document third-party endpoint limitations, including provider-side retention outside EchoMind's control.
@@ -277,10 +277,10 @@ Do not begin personalization, prediction, 3D visualization, or broad UI polish b
 
 ### M0-B — Storage and migration
 
-- [ ] Add the minimum raw record, hypothesis, conclusion, revision, and evidence-link tables.
-- [ ] Migrate version 2 entries without treating legacy generated fields as confirmed.
-- [ ] Remove destructive migration fallback.
-- [ ] Extend deletion and export to the new relationship graph.
+- [x] Add the minimum raw record, hypothesis, conclusion, revision, and evidence-link tables.
+- [x] Migrate version 2 entries without treating legacy generated fields as confirmed.
+- [x] Remove destructive migration fallback.
+- [x] Extend deletion and export to the new relationship graph.
 
 ### M1-A — Text-first reflection
 

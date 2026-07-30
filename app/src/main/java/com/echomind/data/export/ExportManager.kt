@@ -2,8 +2,16 @@ package com.echomind.data.export
 
 import android.content.Context
 import android.os.Environment
+import androidx.room.withTransaction
+import com.echomind.data.local.AppDatabase
 import com.echomind.data.local.dao.EntryDao
+import com.echomind.data.local.dao.KnowledgeDao
+import com.echomind.data.local.entity.AiHypothesisEntity
+import com.echomind.data.local.entity.ConclusionEntity
+import com.echomind.data.local.entity.ConclusionRevisionEntity
 import com.echomind.data.local.entity.EntryEntity
+import com.echomind.data.local.entity.EvidenceLinkEntity
+import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.security.AudioEncryptionUtil
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.Serializable
@@ -22,11 +30,22 @@ import javax.inject.Singleton
 @Singleton
 class ExportManager @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val database: AppDatabase,
     private val entryDao: EntryDao,
+    private val knowledgeDao: KnowledgeDao,
     private val audioEncryptionUtil: AudioEncryptionUtil
 ) {
     suspend fun exportToZip(): Result<File> = runCatching {
-        val entries = entryDao.getAllEntriesOnce()
+        val snapshot = database.withTransaction {
+            ExportSnapshot(
+                entries = entryDao.getAllEntriesOnce(),
+                rawRecords = knowledgeDao.getAllRawRecords(),
+                hypotheses = knowledgeDao.getAllHypotheses(),
+                conclusions = knowledgeDao.getAllConclusions(),
+                revisions = knowledgeDao.getAllRevisions(),
+                evidenceLinks = knowledgeDao.getAllEvidenceLinks()
+            )
+        }
         val dateStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val exportDir = File(
             context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
@@ -36,28 +55,25 @@ class ExportManager @Inject constructor(
         val zipFile = File(exportDir, "echomind_export_$dateStr.zip")
 
         ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
-            val manifest = buildManifest(entries)
+            val manifest = buildManifest(snapshot)
             val json = Json { prettyPrint = true }
             zos.putNextEntry(ZipEntry("manifest.json"))
             zos.write(json.encodeToString(manifest).toByteArray())
             zos.closeEntry()
 
-            for (entity in entries) {
-                val audioPath = entity.audioPath
-                if (audioPath != null) {
-                    val audioFile = File(audioPath)
-                    if (audioFile.exists()) {
-                        try {
-                            val decrypted = audioEncryptionUtil.decryptToTempFile(audioPath)
-                            zos.putNextEntry(ZipEntry("audio/${audioFile.nameWithoutExtension}.wav"))
-                            decrypted.inputStream().use { it.copyTo(zos) }
-                            zos.closeEntry()
-                            decrypted.delete()
-                        } catch (_: Exception) {
-                            zos.putNextEntry(ZipEntry("audio/${audioFile.nameWithoutExtension}.txt"))
-                            zos.write("[encrypted audio - unable to decrypt]".toByteArray())
-                            zos.closeEntry()
-                        }
+            for (audioPath in snapshot.rawRecords.mapNotNull { it.audioPath }.distinct()) {
+                val audioFile = File(audioPath)
+                if (audioFile.exists()) {
+                    try {
+                        val decrypted = audioEncryptionUtil.decryptToTempFile(audioPath)
+                        zos.putNextEntry(ZipEntry("audio/${audioFile.nameWithoutExtension}.wav"))
+                        decrypted.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
+                        decrypted.delete()
+                    } catch (_: Exception) {
+                        zos.putNextEntry(ZipEntry("audio/${audioFile.nameWithoutExtension}.txt"))
+                        zos.write("[encrypted audio - unable to decrypt]".toByteArray())
+                        zos.closeEntry()
                     }
                 }
             }
@@ -65,37 +81,93 @@ class ExportManager @Inject constructor(
 
         zipFile
     }
-
-    private fun buildManifest(entries: List<EntryEntity>): ExportManifest {
-        return ExportManifest(
-            version = 1,
-            exportedAt = System.currentTimeMillis(),
-            entries = entries.map { entity ->
-                ExportEntry(
-                    id = entity.id,
-                    transcript = entity.transcript,
-                    audioFileName = entity.audioPath?.let {
-                        File(it).nameWithoutExtension + ".wav"
-                    },
-                    durationMs = entity.durationMs,
-                    createdAt = entity.createdAt,
-                    category = entity.category,
-                    tags = entity.tags,
-                    summary = entity.summary,
-                    tasks = entity.tasks,
-                    ideas = entity.ideas,
-                    emotions = entity.emotions
-                )
-            }
-        )
-    }
 }
+
+internal data class ExportSnapshot(
+    val entries: List<EntryEntity>,
+    val rawRecords: List<RawRecordEntity>,
+    val hypotheses: List<AiHypothesisEntity>,
+    val conclusions: List<ConclusionEntity>,
+    val revisions: List<ConclusionRevisionEntity>,
+    val evidenceLinks: List<EvidenceLinkEntity>
+)
+
+internal fun buildManifest(snapshot: ExportSnapshot, exportedAt: Long = System.currentTimeMillis()) =
+    ExportManifest(
+        version = 2,
+        exportedAt = exportedAt,
+        entries = snapshot.entries.map { entity ->
+            ExportEntry(
+                id = entity.id,
+                transcript = entity.transcript,
+                audioFileName = entity.audioPath.toExportAudioName(),
+                durationMs = entity.durationMs,
+                createdAt = entity.createdAt,
+                category = entity.category,
+                tags = entity.tags,
+                summary = entity.summary,
+                tasks = entity.tasks,
+                ideas = entity.ideas,
+                emotions = entity.emotions
+            )
+        },
+        rawRecords = snapshot.rawRecords.map {
+            ExportRawRecord(
+                id = it.id,
+                legacyEntryId = it.legacyEntryId,
+                originalText = it.originalText,
+                audioFileName = it.audioPath.toExportAudioName(),
+                durationMs = it.durationMs,
+                createdAt = it.createdAt
+            )
+        },
+        hypotheses = snapshot.hypotheses.map {
+            ExportHypothesis(
+                id = it.id,
+                rawRecordId = it.rawRecordId,
+                draftJson = it.draftJson,
+                counterargument = it.counterargument,
+                status = it.status,
+                createdAt = it.createdAt
+            )
+        },
+        conclusions = snapshot.conclusions.map {
+            ExportConclusion(it.id, it.rawRecordId, it.currentRevisionId, it.createdAt)
+        },
+        revisions = snapshot.revisions.map {
+            ExportConclusionRevision(
+                it.id,
+                it.conclusionId,
+                it.version,
+                it.text,
+                it.author,
+                it.createdAt
+            )
+        },
+        evidenceLinks = snapshot.evidenceLinks.map {
+            ExportEvidenceLink(
+                it.id,
+                it.conclusionRevisionId,
+                it.sourceRawRecordId,
+                it.relationship,
+                it.status
+            )
+        }
+    )
+
+private fun String?.toExportAudioName(): String? =
+    this?.let { File(it).nameWithoutExtension + ".wav" }
 
 @Serializable
 data class ExportManifest(
     val version: Int,
     val exportedAt: Long,
-    val entries: List<ExportEntry>
+    val entries: List<ExportEntry>,
+    val rawRecords: List<ExportRawRecord>,
+    val hypotheses: List<ExportHypothesis>,
+    val conclusions: List<ExportConclusion>,
+    val revisions: List<ExportConclusionRevision>,
+    val evidenceLinks: List<ExportEvidenceLink>
 )
 
 @Serializable
@@ -110,5 +182,53 @@ data class ExportEntry(
     val summary: String,
     val tasks: List<String>,
     val ideas: List<String>,
-    val emotions: List<String>
+    val emotions: List<String>,
+    val analysisStatus: String = "legacy_unconfirmed"
+)
+
+@Serializable
+data class ExportRawRecord(
+    val id: Long,
+    val legacyEntryId: Long?,
+    val originalText: String,
+    val audioFileName: String?,
+    val durationMs: Long,
+    val createdAt: Long
+)
+
+@Serializable
+data class ExportHypothesis(
+    val id: Long,
+    val rawRecordId: Long,
+    val draftJson: String,
+    val counterargument: String,
+    val status: String,
+    val createdAt: Long
+)
+
+@Serializable
+data class ExportConclusion(
+    val id: Long,
+    val rawRecordId: Long,
+    val currentRevisionId: Long?,
+    val createdAt: Long
+)
+
+@Serializable
+data class ExportConclusionRevision(
+    val id: Long,
+    val conclusionId: Long,
+    val version: Int,
+    val text: String,
+    val author: String,
+    val createdAt: Long
+)
+
+@Serializable
+data class ExportEvidenceLink(
+    val id: Long,
+    val conclusionRevisionId: Long,
+    val sourceRawRecordId: Long,
+    val relationship: String,
+    val status: String
 )

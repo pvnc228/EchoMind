@@ -2,8 +2,10 @@
 
 ## Development Rules
 
-### Rule 1: Manual Git Push
-The user manually pushes all changes to GitHub. I never execute `git push` or any remote git operations. I can initialize local repos, stage, and commit — but pushing is always manual.
+### Rule 1: Commit and Push Completed Steps
+Every completed development step must end with a descriptive local commit and
+`git push` after validation. Push only the current project branch and report the
+commit hash and destination.
 
 ### Rule 2: Commit Major Changes
 All major changes must be committed with a descriptive message. Use simple git commands only (`git add`, `git commit`, `git push`). Never use `gh` CLI.
@@ -324,3 +326,50 @@ Complete M0 and the thinnest vertical slice of M1: define the domain and privacy
   the explicit relationship-graph migration and remove the fallback.
 - No emulator interaction was needed for this repository-boundary slice; the
   end-to-end M1 flow remains subject to Pixel 8 API 35 validation.
+
+---
+
+## 2026-07-30 — M0-B Storage and Migration
+
+### Skills Used
+
+- **`ponytail` (full)** — kept the migration additive: retained the legacy
+  `entries` table for the current UI and added only the five provenance objects
+  required by M0/M1. No graph framework or new library was introduced.
+
+### Done
+
+- Changed the delivery rule: every completed development step now ends with a
+  validated commit and push of the current branch.
+- Added Room schema version 3 tables for raw records, AI hypotheses,
+  conclusions, conclusion revisions, and evidence links.
+- Added explicit `MIGRATION_2_3`. Existing transcripts/audio metadata become
+  raw records with stable IDs; legacy generated analysis creates no confirmed
+  object.
+- Removed `fallbackToDestructiveMigration()`.
+- Dual-write new legacy entries and immutable raw records in one Room
+  transaction.
+- Enforced deletion relationships with `CASCADE` for proposals/revisions/links
+  and `RESTRICT` while a confirmed conclusion still cites a raw record.
+- Extended export manifest version 2 with the full provenance graph and
+  `legacy_unconfirmed` classification.
+- Added the Compose BOM to `androidTest` so the existing and new instrumented
+  tests resolve consistently.
+
+### Evidence
+
+- `:app:testDebugUnitTest` — 9 tests passed.
+- `AppDatabaseMigrationTest` on Pixel 8 API 35 — 3 tests passed: real v2→v3
+  migration, FK deletion semantics, and entry/raw dual-write.
+- `:app:assembleDebug` — passed.
+- `git diff --check` — passed.
+
+### Remaining limitations
+
+- Schema v3 supplies the persistence boundary, but the current screen still
+  writes legacy generated fields. M1-A must introduce text-first
+  capture → hypothesis → review → confirmation.
+- Remote mode still needs minimized context, preview, and per-request consent;
+  the corresponding M0 network-boundary test remains open.
+- Theme, decision, and outcome entities remain deliberately deferred until
+  their roadmap milestones.

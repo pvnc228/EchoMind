@@ -5,8 +5,8 @@
 **Last updated:** 2026-07-30
 
 This document turns the promises in [VISION.md](VISION.md) into storage and
-network rules. It describes the current version 2 prototype and the minimum
-model to be introduced in the next schema migration.
+network rules. Room schema version 3 implements the minimum provenance model
+alongside the legacy `entries` table used by the current UI.
 
 ## Data classes
 
@@ -28,7 +28,12 @@ model to be introduced in the next schema migration.
 |---|---|---|---|---|
 | Room `entries` | `id`, `created_at`, `duration_ms` | Operational | EchoMind | Yes |
 | Room `entries` | `transcript`, `audio_path` content | Raw | User | Yes |
-| Room `entries` | `summary`, `tasks`, `ideas`, `emotions`, `category`, `tags` | Derived proposal; legacy code does not record confirmation | User | Yes, labelled legacy/unconfirmed after migration |
+| Room `entries` | `summary`, `tasks`, `ideas`, `emotions`, `category`, `tags` | Derived proposal; legacy code does not record confirmation | User | Yes, labelled `legacy_unconfirmed` |
+| Room `raw_records` | original text, encrypted audio reference, duration, creation time | Raw + operational | User | Yes |
+| Room `ai_hypotheses` | draft JSON, counterargument, status, source and creation metadata | Derived proposal + operational | User | Yes |
+| Room `conclusions` | raw source, current revision pointer, creation time | Confirmed + operational | User | Yes |
+| Room `conclusion_revisions` | versioned text, author, creation time | Confirmed + operational | User | Yes |
+| Room `evidence_links` | revision/source IDs, relationship, confirmation status | Derived or confirmed according to status | User | Yes |
 | Encrypted audio file | recorded audio | Raw | User | Yes, decrypted only in the warned plaintext export |
 | DataStore `settings` | `local_mode` | Operational privacy choice | User | No |
 | DataStore `settings` | `api_endpoint` | Identifying configuration | User | No |
@@ -40,10 +45,10 @@ model to be introduced in the next schema migration.
 Debug HTTP logging records request metadata only. Request and response bodies
 must not be logged.
 
-## Target local entities
+## Local entities
 
-The first M1 slice uses five local objects. Later milestones add the remaining
-objects without changing the confirmation boundary.
+Schema version 3 implements the first five objects. Later milestones add the
+remaining objects without changing the confirmation boundary.
 
 | Object | Minimum fields | Rule |
 |---|---|---|
@@ -94,14 +99,15 @@ after the normal review and confirmation transition.
 - Deleting a conclusion removes its revisions and evidence links. Its raw
   source remains unless the user explicitly selects it too.
 - Deleting a raw record removes its encrypted audio and dependent unconfirmed
-  proposals. If confirmed conclusions cite it, the UI must request either
-  cascade deletion or preservation of a tombstone; it must not silently break
-  provenance.
+  proposals. A foreign-key restriction rejects deletion while a conclusion
+  cites it; M1 must ask the user to delete that conclusion first or cancel.
 - Deleting a theme, decision, or outcome never deletes the records or
   conclusions it references.
 - Export uses stable IDs and includes raw records, hypotheses with statuses,
   conclusions, revisions, evidence links, and encrypted-audio filenames.
-  Secrets, endpoint configuration, and encryption keys are excluded.
+  Manifest version 2 keeps legacy generated fields under
+  `analysisStatus=legacy_unconfirmed`. Secrets, endpoint configuration, and
+  encryption keys are excluded.
 
 ## Remote-request pipeline
 
@@ -125,18 +131,20 @@ monitoring records under their own policies. EchoMind cannot verify or delete
 provider-side copies. The preview must name the configured destination and
 state this limitation before consent.
 
-## Version 2 prototype data
+## Version 2 to 3 migration
 
-Version 2 still uses Room's destructive fallback and must not be treated as a
-safe store for valuable data. Before the next schema version ships, M0-B must
-provide an explicit migration and remove that fallback.
+`MIGRATION_2_3` creates the provenance tables and copies each legacy entry's ID,
+transcript, audio reference, duration, and creation time into a `RawRecord`.
+It creates no hypothesis, conclusion, revision, or evidence link. Legacy
+generated fields remain in `entries` and export as unconfirmed.
 
-For existing alpha installations, the supported reset path is:
+Destructive fallback has been removed. Version 2 databases migrate in place.
+Older unsupported alpha schemas fail closed and use this explicit reset path:
 
 1. optionally export current entries from Settings, acknowledging that the ZIP
    is plaintext;
 2. clear the app's storage or uninstall it;
-3. install the migrated build and review any imported material as unconfirmed.
+3. install the current build and review any imported material as unconfirmed.
 
-The migration must never silently convert legacy generated fields into
-confirmed conclusions.
+The instrumented migration test verifies raw preservation and zero confirmed
+conclusions after upgrade.

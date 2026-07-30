@@ -8,6 +8,7 @@ EchoMind is a private Android thinking environment that turns short reflections 
 
 - [Product vision](VISION.md)
 - [Product roadmap](ROADMAP.md)
+- [Data and privacy contract](DATA_CONTRACT.md)
 - [Development journal](JOURNAL.md)
 
 ## Current Prototype
@@ -16,10 +17,14 @@ EchoMind is a private Android thinking environment that turns short reflections 
 - Voice recording with manual transcript entry
 - OpenAI-compatible text analysis, transcription client, and Q&A
 - Entry timeline, search, filters, details, and export
+- Room v3 provenance storage for raw records, hypotheses, conclusions, revisions, and evidence links
 - Local fallback text analysis
 - Biometric release gate and screenshot protection
 
-Automatic transcription is not yet connected to the main recording flow. The saved `localMode` preference is also not yet a hard repository-level network boundary; both are tracked explicitly in the roadmap.
+Automatic transcription is not yet connected to the main recording flow.
+`localMode` now blocks repository network calls, but disabling it still exposes
+the prototype's raw-entry requests; minimized context preview and per-request
+consent remain tracked in the roadmap.
 
 ## Tech Stack
 

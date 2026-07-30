@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.echomind.data.local.AppDatabase
 import com.echomind.data.local.dao.EntryDao
+import com.echomind.data.local.dao.KnowledgeDao
 import com.echomind.data.local.security.PassphraseProvider
 import dagger.Module
 import dagger.Provides
@@ -30,11 +31,15 @@ object DatabaseModule {
             AppDatabase::class.java,
             "echomind.db"
         ).openHelperFactory(supportFactory)
-            .fallbackToDestructiveMigration()
+            .addMigrations(AppDatabase.MIGRATION_2_3)
             .build()
     }
 
     @Provides
     @Singleton
     fun provideEntryDao(database: AppDatabase): EntryDao = database.entryDao()
+
+    @Provides
+    @Singleton
+    fun provideKnowledgeDao(database: AppDatabase): KnowledgeDao = database.knowledgeDao()
 }
