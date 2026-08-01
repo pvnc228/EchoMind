@@ -114,7 +114,7 @@ No milestone is complete because a screen exists or an LLM returned plausible te
 - [x] The user can identify which words are theirs and which were proposed by AI.
 - [x] Rejecting an AI hypothesis leaves no confirmed claim behind.
 - [x] A confirmed conclusion retains its source and revision history after restart.
-- [ ] A first-session usability check demonstrates a concrete clarification
+- [x] A first-session usability check demonstrates a concrete clarification
   rather than a paraphrased note.
 
 The 2026-07-30 synthetic first-session baseline failed the remaining product
@@ -266,26 +266,136 @@ than a storage or confirmation-flow failure. See
 
 ## Next implementation slice
 
-M0 and the technical M1 vertical slice are implemented and verified. The
-first-session baseline is now recorded and shows that the current analyzer
-mostly paraphrases. The next block is M1-C:
+M0 through M1-C are implemented and verified. The frozen synthetic re-score
+reached `50/50`, so the bounded usefulness gate is closed without claiming
+external-user validation or product-market fit.
 
-1. turn the eight synthetic inputs into regression fixtures, including three
-   controls that must not be over-interpreted;
-2. make proposals relation-aware, non-duplicative, grounded in the source, and
-   language-matched;
-3. produce one scenario-specific alternative or discriminating question
-   without manufacturing facts;
-4. re-score the same five target scenarios and meet the gate in
-   [M1_USABILITY_EVALUATION.md](M1_USABILITY_EVALUATION.md);
-5. only then add a minimal continue-discussion path without letting a follow-up
-   bypass confirmation.
+The next block is the approved UX implementation checkpoint below:
+
+1. select one of three Echo Glass Review compositions;
+2. implement the three confirmed P1 corrections as one coherent flow;
+3. validate accessibility, state coverage, provenance/privacy regressions,
+   API fallbacks, and Pixel 8 API 35 runtime behavior before updating the
+   implemented design language.
 
 Remote raw-content paths remain blocked until a minimized preview and
 per-request approval flow exists.
 
 Do not begin personalization, prediction, 3D visualization, or broad UI polish
 before this product proof is complete.
+
+## UX/UI audit and approved implementation checkpoint
+
+**Status:** audit complete and UX direction approved on 2026-08-01; production
+UI implementation has not started.
+
+**Start condition:** run the primary audit after the M1-C re-score gate is met.
+Before that gate, a session may capture the current flow and document usability
+evidence, but it must not spend the product-proof budget on broad visual polish.
+
+### Start here
+
+1. Read `VISION.md`, `DATA_CONTRACT.md`, this roadmap, and the relevant
+   `JOURNAL.md` decisions before inspecting UI code.
+2. Use `ui-skills-root` to select no more than three skills for the session.
+   The expected starting set is `impeccable` (`shape` or `critique`),
+   `improve-ui`, and `create-design-md`; use `frontend-design` only after the
+   user confirms a direction.
+3. Trace one coherent flow on Pixel 8 API 35:
+   `capture → structure → challenge → review → confirm/reject`.
+4. Inspect the governing Jetpack Compose theme, shared primitives, real copy,
+   and rendered states. Do not apply web-only `design-lab` route assumptions to
+   the Android application.
+5. Produce an evidence-based `DESIGN.md` and prioritized design plans before
+   changing production UI.
+
+### Audit scope
+
+- Make raw user text, AI hypotheses, user edits, and confirmed conclusions
+  unmistakably different without weakening their provenance links.
+- Test whether the primary action and the next reversible choice are clear at
+  every step, including reject and continue-discussion paths.
+- Cover first-run, empty, analyzing, local-only, network-blocked, error,
+  long-text, permission, and restart-recovery states.
+- Review microcopy for agency: AI proposes; the user authors meaning. Semantic
+  confirmation and permission to transmit data must remain separate actions.
+- Check Android accessibility, touch targets, focus order, screen-reader
+  semantics, contrast, reduced motion, and dynamic text.
+- Treat the M3 home experience and advanced provenance/graph views as separate
+  surfaces; do not combine them into the first audit.
+
+### Completion criteria
+
+- A user-confirmed UX brief names the primary job, success condition, anti-goals,
+  platform constraints, and states the builder must not invent.
+- `DESIGN.md` records the evidenced Compose/Material 3 design language rather
+  than generic aesthetic preferences.
+- The audit reports at most three verified, non-overlapping findings for the
+  selected flow and identifies the highest-leverage correction.
+- The approved implementation plan includes default, loading, empty, error,
+  disabled, permission, and long-content behavior plus accessibility checks.
+- Any implemented follow-up is validated on the emulator and cannot blur the
+  raw/proposed/confirmed boundary or the privacy contract.
+
+### Audit result and approved direction
+
+The primary flow scored `20/40` on the bounded Nielsen review and `12/20` on
+the native Android technical audit. The review confirmed three non-overlapping
+P1 findings:
+
+1. Review presents source, five analysis groups, alternative, user wording,
+   and actions as a flat evidence stack; the authorship decision and its
+   accessibility semantics are not dominant.
+2. First-session and transition copy is inconsistent with the current product
+   contract, including stale voice/AI framing, incorrect processing messages,
+   and storage-facing provenance language.
+3. Confirm/reject lack a clear reversible next step; permission denial and
+   interrupted unsaved capture do not have complete recovery states.
+
+The user approved the `1A + 2A + 3A` direction:
+
+- optimize for consciously authoring and confirming the user's own conclusion;
+- make Review a dominant `source -> proposal -> my wording` path with analysis
+  behind explicit progressive disclosure;
+- address all three P1 findings in one implementation stage.
+
+The approved visual direction is **Selective Liquid Glass / Echo Glass**. It
+adapts the idea to Android rather than copying iOS: glass is limited to the
+functional layer (top context, action dock, and disclosure controls), while
+raw source, unconfirmed proposal, editable wording, and confirmed conclusion
+remain readable Material tonal surfaces. Material components, icons, system
+navigation, dynamic color, dark theme, and Android accessibility conventions
+remain authoritative.
+
+`PRODUCT.md` now records durable product truth. `DESIGN.md` records the
+evidenced incumbent Compose/Material 3 language; it must be updated with Echo
+Glass only after the direction is implemented and visually validated. The
+target-specific contract is stored in the Impeccable surface brief for
+`RecordScreen.kt`.
+
+### Approved implementation plan
+
+1. Produce three portrait compositions inside the confirmed Echo Glass world:
+   a glass action dock, an analytical disclosure lens, and an adaptive expanded
+   layout. Select one before production UI edits.
+2. Correct onboarding/product framing, transition-specific status copy, and
+   user-facing provenance terminology.
+3. Restructure Review around source, proposal/alternative, and editable user
+   wording; move detailed analysis behind an explicit disclosure.
+4. Add programmatic field labels, TalkBack announcements and focus handling,
+   permission-denied recovery, unsaved-capture protection, and reversible
+   post-confirm/reject actions.
+5. Implement bounded glass primitives for stationary functional surfaces.
+   Android 12+ may use measured blur/compositing; API 26-30 uses an opaque
+   tonal fallback. Do not blur scrolling content or make color the only state
+   signal.
+6. Validate default, loading, empty, error, disabled, permission, confirmed,
+   rejected, restored, interrupted, and long-content states; include TalkBack,
+   200% font scale, contrast, reduced motion, IME, landscape/expanded width,
+   API fallback, and Pixel 8 API 35 performance.
+7. Re-run the existing provenance/privacy regression suites, complete the
+   bounded visual finish review, then update `DESIGN.md` and this roadmap with
+   implemented evidence.
 
 ## Execution stages
 

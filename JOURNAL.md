@@ -600,3 +600,72 @@ M1-C is complete. The next session may enter the planned UX/UI audit checkpoint
 now that its start condition is met. The local analyzer remains a lexical
 heuristic; unseen relations can fall back to generic clarification and must not
 be treated as confirmed user meaning.
+
+## 2026-08-01 — UX/UI audit and Echo Glass direction approved
+
+### Method and scope
+
+- Used Impeccable `critique`, native `audit`, and `shape` procedures against
+  the M1 reflection flow in `RecordScreen.kt`, with Home/onboarding as entry
+  context and Detail as the saved-provenance endpoint.
+- Ran two independent read-only assessments: a design/Nielsen review and an
+  Android/Compose technical audit.
+- Matched the installed debug APK to the current build on `Pixel_8_2`, API 35.
+  `FLAG_SECURE` correctly produced black screenshots, so the bounded runtime
+  inspection used the accessibility tree for onboarding, empty Home, and
+  Capture. Review and terminal states were assessed from source and Compose
+  tests; no reflection data was created.
+- Preserved the scope boundary: no production UI, schema, repository, network,
+  or analyzer behavior changed during the audit and shape work.
+
+### Results
+
+- Nielsen design health: **20/40** (`Acceptable`).
+- Native Android technical health: **12/20** (`Acceptable`).
+- Confirmed strengths: the raw/proposal/user-authored distinction is explicit;
+  confirmation remains separate from transmission consent; rejection and
+  partial-failure copy preserve provenance honestly.
+- Confirmed exactly three non-overlapping P1 findings: Review hierarchy and
+  accessibility semantics; inconsistent product and transition copy;
+  incomplete reversibility and denial/interruption recovery.
+- Runtime gaps remain explicit: TalkBack service behavior, 200% font scale,
+  dark/dynamic contrast, reduced motion, landscape, multi-window, tablet/fold,
+  and blur performance were not claimed as verified.
+
+### Approved UX brief
+
+The user approved `1A + 2A + 3A`: the primary job is to consciously author and
+confirm the user's own conclusion; Review uses progressive disclosure; and the
+first implementation stage addresses all three P1 findings.
+
+The selected visual direction is **Selective Liquid Glass / Echo Glass**:
+
+- Android Material 3 remains the platform grammar; the design must not copy
+  iOS navigation, controls, icons, or gestures.
+- Glass belongs only to stationary functional surfaces such as the top context,
+  bottom action dock, and analytical disclosure control.
+- Provenance-bearing content remains on readable tonal surfaces: raw source,
+  unconfirmed proposal, editable user wording, and confirmed conclusion must
+  remain visibly and programmatically distinct.
+- Android 12+ may receive a measured blur/compositing treatment; API 26-30 must
+  receive a fully readable opaque tonal fallback. Reduced motion and contrast
+  modes may simplify or remove optical effects without changing hierarchy.
+- Three portrait compositions must be reviewed before production UI changes.
+
+### Documentation
+
+- Added `PRODUCT.md` as the durable Impeccable product record derived from the
+  agreed vision, data contract, implemented flow, and confirmed UX choices.
+- Added evidence-based `DESIGN.md` for the incumbent Compose/Material 3 system.
+  It deliberately does not claim the unbuilt Echo Glass world as implemented.
+- Persisted the audit snapshot under `.impeccable/critique/` and the approved
+  target contract under `.impeccable/surfaces/`.
+- Updated `ROADMAP.md` from a planned audit entry point to an audited, approved,
+  implementation-ready checkpoint with state and validation requirements.
+
+### Next
+
+Create and review the three Echo Glass Review compositions, select one, then
+execute the approved P1 implementation plan end to end. After emulator and
+regression validation, update `DESIGN.md` from the shipped result rather than
+from the plan.
