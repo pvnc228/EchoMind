@@ -553,3 +553,50 @@ Implement the bounded M1-C handoff in `M1_USABILITY_EVALUATION.md`: regression
 fixtures first, relation-aware and language-matched clarification second,
 blind re-score third. Do not enable remote raw-content processing or begin M2
 while the M1 usefulness gate is open.
+
+## 2026-08-01 — M1-C synthetic usefulness gate passed
+
+### Implementation
+
+- Replaced independent keyword buckets with one bounded sentence-role and
+  relation pipeline in `LocalReflectionAnalyzer`.
+- Added all eight exact evaluation inputs as named regression fixtures plus
+  rephrased causal, English, mixed-script, long-input, and unrelated-message
+  checks.
+- Kept storage, schema, provenance, confirmation, rejection, deletion, export,
+  and network boundaries unchanged.
+- Preserved cautious and factual inputs without manufacturing a counterargument
+  or hidden rule.
+
+### Re-score and review
+
+An independent read-only review used the frozen rubric and scored the five
+targets `10/10` each, for **50/50**. It first rejected a duplicated short-reply
+claim and an over-broad communication relation. Both defects were fixed in the
+shared classifier and locked down with negative tests before approval.
+
+This passes the working M1-C threshold of at least `35/50` with no scenario
+below `5/10`. It proves the synthetic deterministic gate, not product-market fit
+or external-user usefulness.
+
+### Verification
+
+- Focused analyzer suite: 15 tests passed.
+- Full debug unit suite, debug APK, and androidTest APK: built successfully.
+- Pixel 8 API 35: the initial Gradle connected run started 12 tests; three
+  Compose tests failed while the AVD was asleep. The unchanged focused repro
+  passed after `mWakefulness=Awake`, followed by a direct **12/12** passing
+  instrumentation run.
+- `git diff --check`: passed.
+
+The failed Gradle connected lifecycle uninstalled the app and removed the eight
+synthetic raw records that had been present on this AVD. The app and test APKs
+were reinstalled for the passing run, so the prior persistence observation is
+historical evidence rather than the current device state.
+
+### Decision
+
+M1-C is complete. The next session may enter the planned UX/UI audit checkpoint
+now that its start condition is met. The local analyzer remains a lexical
+heuristic; unseen relations can fall back to generic clarification and must not
+be treated as confirmed user meaning.

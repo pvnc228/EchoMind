@@ -8,6 +8,8 @@
 
 **Status:** failed product-value baseline; storage evidence passed
 
+**M1-C follow-up (2026-08-01):** synthetic usefulness gate passed at `50/50`
+
 ## Purpose
 
 This evaluation checks the remaining M1 claim: whether one text-first reflection
@@ -212,3 +214,67 @@ M1-C is complete only when:
 
 The numerical gate is a working M1 decision threshold, not a claim of validated
 product-market fit. External-user validation remains a later milestone.
+
+## M1-C follow-up result
+
+### Implemented behavior
+
+`LocalReflectionAnalyzer` now classifies each sentence into one exclusive role,
+detects the dominant Russian or English script, and selects a bounded relation
+type before generating a calibrated thesis, concrete alternative, and
+discriminating question. The five target relations cover a single event used as
+a global claim, an ambiguous short reply, a forced choice with missing
+information, a causal claim with explicit counterevidence, and praise used as
+an identity decision.
+
+The eight exact evaluation inputs are named unit-test fixtures. Additional
+tests cover a rephrased causal input, English output, mixed-script language
+selection, bounded long input, and an unrelated-message negative case. The
+three controls keep empty alternatives and do not receive injected certainty
+or disagreement.
+
+No schema, repository, network, provenance, confirmation, deletion, export, or
+UI contract changed. `ReflectionDraft.suggestedConclusion()` still seeds the
+editable user field, but it now receives a generated calibrated thesis rather
+than a verbatim copy of the source inference.
+
+### Independent re-score
+
+An independent read-only review scored the current analyzer output against the
+frozen rubric without using the old criterion scores:
+
+| Scenario | Separation | Grounding | Alternative | Discrimination | Clarification | Total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| One rejection -> global ability | 2 | 2 | 2 | 2 | 2 | **10/10** |
+| Short reply -> dissatisfaction | 2 | 2 | 2 | 2 | 2 | **10/10** |
+| Urgency -> forced choice | 2 | 2 | 2 | 2 | 2 | **10/10** |
+| Planning correlation -> one cause | 2 | 2 | 2 | 2 | 2 | **10/10** |
+| Praise -> specialization | 2 | 2 | 2 | 2 | 2 | **10/10** |
+
+Total: **50/50**. Every scenario is above the `5/10` floor, and the aggregate
+is above the `35/50` threshold. The reviewer initially blocked a duplicated
+short-reply inference and then an over-broad communication rule; both received
+negative regression tests before final approval.
+
+### Verification and device state
+
+- `:app:testDebugUnitTest --tests com.echomind.data.analysis.LocalReflectionAnalyzerTest`
+  passed with 15 analyzer tests.
+- The full unit suite, debug APK, and androidTest APK built successfully.
+- A first Gradle connected run launched all 12 tests but three Compose tests
+  failed because `Pixel_8_2` was asleep (`mWakefulness=Asleep`). The unchanged
+  one-test repro passed after waking the AVD, and a direct full instrumentation
+  run then passed **12/12** on API 35.
+- The Gradle connected lifecycle uninstalled the app after its failed run,
+  deleting the synthetic archive previously observed on this AVD. Debug and
+  test APKs were then reinstalled for the passing direct run. The earlier
+  persistence evidence remains historical evidence, but the current emulator
+  instance no longer contains those eight raw records.
+
+### Decision and limit
+
+The documented M1-C synthetic gate is complete. This validates the bounded
+deterministic clarification loop for the frozen scenarios and controls; it is
+not external-user validation. The analyzer remains a local lexical heuristic:
+unseen relations or wording can fall back to a generic clarification and must
+not be presented as a learned personal conclusion.

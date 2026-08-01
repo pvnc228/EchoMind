@@ -322,9 +322,9 @@ before this product proof is complete.
 
 - [x] Record a scored synthetic baseline and verify that all eight raw inputs
   persist locally.
-- [ ] Add the eight evaluation inputs as analyzer regression fixtures.
-- [ ] Remove duplicated classifications and verbatim suggested conclusions.
-- [ ] Generate grounded, scenario-specific, language-matched clarification.
-- [ ] Protect cautious and observational control inputs from manufactured
+- [x] Add the eight evaluation inputs as analyzer regression fixtures.
+- [x] Remove duplicated classifications and verbatim suggested conclusions.
+- [x] Generate grounded, scenario-specific, language-matched clarification.
+- [x] Protect cautious and observational control inputs from manufactured
   disagreement.
-- [ ] Meet the documented re-score gate without regressing M0/M1 boundaries.
+- [x] Meet the documented re-score gate without regressing M0/M1 boundaries.
