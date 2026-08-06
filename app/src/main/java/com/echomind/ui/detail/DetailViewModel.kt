@@ -6,9 +6,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.echomind.data.local.security.AudioEncryptionUtil
 import com.echomind.data.repository.EntryRepository
+import com.echomind.data.repository.KnowledgeRepository
 import com.echomind.data.repository.ReflectionRepository
 import com.echomind.domain.model.Entry
+import com.echomind.domain.model.RelatedRecord
 import com.echomind.domain.model.ReflectionSession
+import com.echomind.domain.model.Theme
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.Player
@@ -22,6 +25,10 @@ import javax.inject.Inject
 data class DetailUiState(
     val entry: Entry? = null,
     val reflection: ReflectionSession? = null,
+    val themes: List<Theme> = emptyList(),
+    val availableThemes: List<Theme> = emptyList(),
+    val relatedRecords: List<RelatedRecord> = emptyList(),
+    val otherEntries: List<RelatedRecord> = emptyList(),
     val isLoading: Boolean = true,
     val isPlaying: Boolean = false,
     val isDeleting: Boolean = false,
@@ -35,6 +42,7 @@ class DetailViewModel @Inject constructor(
     application: Application,
     private val entryRepository: EntryRepository,
     private val reflectionRepository: ReflectionRepository,
+    private val knowledgeRepository: KnowledgeRepository,
     private val audioEncryptionUtil: AudioEncryptionUtil
 ) : AndroidViewModel(application) {
 
@@ -49,6 +57,7 @@ class DetailViewModel @Inject constructor(
             try {
                 val entry = entryRepository.getEntryById(id)
                 val reflection = reflectionRepository.loadReflectionForEntry(id)
+                loadLinked(reflection)
                 _uiState.value = _uiState.value.copy(
                     entry = entry,
                     reflection = reflection,
@@ -56,6 +65,73 @@ class DetailViewModel @Inject constructor(
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
+            }
+        }
+    }
+
+    private suspend fun loadLinked(reflection: ReflectionSession?) {
+        val revisionId = reflection?.revisionId
+        if (revisionId == null) {
+            _uiState.value = _uiState.value.copy(
+                themes = emptyList(),
+                availableThemes = emptyList(),
+                relatedRecords = emptyList(),
+                otherEntries = emptyList()
+            )
+            return
+        }
+        val themes = knowledgeRepository.getConclusionsForRevision(revisionId)
+        val availableThemes = knowledgeRepository.getThemes()
+        val relatedRecords = knowledgeRepository.getRelatedRecords(revisionId)
+        val otherEntries = knowledgeRepository.getLinkCandidates(revisionId)
+        _uiState.value = _uiState.value.copy(
+            themes = themes,
+            availableThemes = availableThemes,
+            relatedRecords = relatedRecords,
+            otherEntries = otherEntries
+        )
+    }
+
+    fun linkToTheme(themeId: Long, revisionId: Long) {
+        viewModelScope.launch {
+            runCatching {
+                knowledgeRepository.linkConclusionToTheme(themeId, revisionId)
+                loadLinked(_uiState.value.reflection)
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(error = error.message)
+            }
+        }
+    }
+
+    fun unlinkFromTheme(themeId: Long, revisionId: Long) {
+        viewModelScope.launch {
+            runCatching {
+                knowledgeRepository.unlinkConclusionFromTheme(themeId, revisionId)
+                loadLinked(_uiState.value.reflection)
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(error = error.message)
+            }
+        }
+    }
+
+    fun linkRelatedRecord(revisionId: Long, candidate: RelatedRecord, relationship: String) {
+        viewModelScope.launch {
+            runCatching {
+                knowledgeRepository.linkRelatedRecord(revisionId, candidate.rawRecordId, relationship)
+                loadLinked(_uiState.value.reflection)
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(error = error.message)
+            }
+        }
+    }
+
+    fun unlinkRelatedRecord(revisionId: Long, sourceRecordId: Long) {
+        viewModelScope.launch {
+            runCatching {
+                knowledgeRepository.unlinkRelatedRecord(revisionId, sourceRecordId)
+                loadLinked(_uiState.value.reflection)
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(error = error.message)
             }
         }
     }

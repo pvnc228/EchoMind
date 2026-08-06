@@ -138,3 +138,49 @@ data class EvidenceLinkEntity(
     @ColumnInfo(name = "status")
     val status: String
 )
+
+@Entity(tableName = "themes")
+data class ThemeEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    @ColumnInfo(name = "name")
+    val name: String,
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long,
+    @ColumnInfo(name = "archived_at")
+    val archivedAt: Long? = null
+)
+
+@Entity(
+    tableName = "theme_links",
+    foreignKeys = [
+        ForeignKey(
+            entity = ThemeEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["theme_id"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = ConclusionRevisionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["conclusion_revision_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index("theme_id"),
+        Index("conclusion_revision_id")
+    ]
+)
+data class ThemeLinkEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    @ColumnInfo(name = "theme_id")
+    val themeId: Long,
+    @ColumnInfo(name = "conclusion_revision_id")
+    val conclusionRevisionId: Long,
+    @ColumnInfo(name = "confirmed")
+    val confirmed: Boolean,
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long
+)

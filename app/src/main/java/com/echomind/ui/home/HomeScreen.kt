@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -55,6 +56,7 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToDetail: (Long) -> Unit = {},
     onNavigateToQa: () -> Unit = {},
+    onNavigateToThemes: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -66,6 +68,7 @@ fun HomeScreen(
         onNavigateToSettings = onNavigateToSettings,
         onNavigateToDetail = onNavigateToDetail,
         onNavigateToQa = onNavigateToQa,
+        onNavigateToThemes = onNavigateToThemes,
         onSelectCategory = viewModel::selectCategory
     )
 }
@@ -79,6 +82,7 @@ fun HomeScreenContent(
     onNavigateToSettings: () -> Unit,
     onNavigateToDetail: (Long) -> Unit = {},
     onNavigateToQa: () -> Unit = {},
+    onNavigateToThemes: () -> Unit = {},
     onSelectCategory: (String?) -> Unit = {}
 ) {
     Scaffold(
@@ -88,6 +92,9 @@ fun HomeScreenContent(
                 actions = {
                     IconButton(onClick = onNavigateToQa) {
                         Icon(Icons.Default.QuestionAnswer, contentDescription = "Ask AI")
+                    }
+                    IconButton(onClick = onNavigateToThemes) {
+                        Icon(Icons.Default.Label, contentDescription = "Themes")
                     }
                     IconButton(onClick = onNavigateToSearch) {
                         Icon(Icons.Default.Search, contentDescription = "Search")

@@ -131,13 +131,13 @@ than a storage or confirmation-flow failure. See
 
 ### Scope
 
-- [ ] Link conclusions to supporting and contradicting records.
-- [ ] Create and edit themes without treating AI clustering as truth.
+- [x] Link conclusions to supporting and contradicting records.
+- [x] Create and edit themes without treating AI clustering as truth.
 - [ ] Preserve dated revisions and show what changed.
 - [ ] Add archive and search across raw records, conclusions, and themes.
 - [ ] Detect candidate relationships locally or with minimized remote context.
-- [ ] Require user confirmation for durable semantic links inferred by AI.
-- [ ] Extend export, deletion, and backup to all new objects.
+- [x] Require user confirmation for durable semantic links inferred by AI.
+- [x] Extend export, deletion, and backup to all new objects.
 
 ### Completion criteria
 
@@ -146,6 +146,14 @@ than a storage or confirmation-flow failure. See
 - Contradictory conclusions can coexist without one being silently overwritten.
 - Search can recover both the original record and the current conclusion.
 - Export and restore preserve graph identity and provenance.
+
+**Status (2026-08-07):** the first M2 slice is implemented and verified:
+user-owned themes (schema v4), confirmed theme links, and user-managed
+supports/contradicts relationships between confirmed conclusions (reusing
+`evidence_links`), plus export manifest v3 for all new objects.
+16/16 instrumented tests pass on Pixel 8 API 35.
+Dated revision history and archive/search over the provenance graph remain
+open M2 sub-goals.
 
 ## M3 — Relevant resurfacing and visible capability
 
@@ -282,7 +290,10 @@ before this product proof is complete.
 
 The next product milestone is **M2 — Traceable personal knowledge model**
 (construct links to evidence/contradictions, themes, revisions, archive, and
-search over the provenance graph).
+search over the provenance graph). The first M2 slice — user-owned themes,
+confirmed theme links, and user-managed supports/contradicts relationships —
+is implemented and verified (2026-08-07). The remaining M2 sub-goals are dated
+revision history and archive/search over the provenance graph.
 
 ## UX/UI audit and approved implementation checkpoint
 

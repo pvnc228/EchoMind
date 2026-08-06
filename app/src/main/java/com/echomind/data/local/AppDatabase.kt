@@ -13,6 +13,8 @@ import com.echomind.data.local.entity.ConclusionRevisionEntity
 import com.echomind.data.local.entity.EntryEntity
 import com.echomind.data.local.entity.EvidenceLinkEntity
 import com.echomind.data.local.entity.RawRecordEntity
+import com.echomind.data.local.entity.ThemeEntity
+import com.echomind.data.local.entity.ThemeLinkEntity
 
 @Database(
     entities = [
@@ -21,9 +23,11 @@ import com.echomind.data.local.entity.RawRecordEntity
         AiHypothesisEntity::class,
         ConclusionEntity::class,
         ConclusionRevisionEntity::class,
-        EvidenceLinkEntity::class
+        EvidenceLinkEntity::class,
+        ThemeEntity::class,
+        ThemeLinkEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @androidx.room.TypeConverters(Converters::class)
@@ -150,6 +154,45 @@ abstract class AppDatabase : RoomDatabase() {
                         `created_at`
                     FROM `entries`
                     """.trimIndent()
+                )
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `themes` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `archived_at` INTEGER
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `theme_links` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `theme_id` INTEGER NOT NULL,
+                        `conclusion_revision_id` INTEGER NOT NULL,
+                        `confirmed` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`theme_id`) REFERENCES `themes`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(`conclusion_revision_id`)
+                            REFERENCES `conclusion_revisions`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_theme_links_theme_id` " +
+                        "ON `theme_links` (`theme_id`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_theme_links_conclusion_revision_id` " +
+                        "ON `theme_links` (`conclusion_revision_id`)"
                 )
             }
         }

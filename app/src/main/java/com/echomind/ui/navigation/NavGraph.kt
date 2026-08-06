@@ -20,6 +20,8 @@ import com.echomind.ui.qa.QaScreen
 import com.echomind.ui.record.RecordScreen
 import com.echomind.ui.search.SearchScreen
 import com.echomind.ui.settings.SettingsScreen
+import com.echomind.ui.themes.ThemeDetailScreen
+import com.echomind.ui.themes.ThemesScreen
 import kotlinx.coroutines.launch
 
 @Composable
@@ -59,7 +61,24 @@ fun EchoMindNavGraph(
                 onNavigateToSearch = { navController.navigate(Screen.Search.route) },
                 onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
                 onNavigateToDetail = { entryId -> navController.navigate(Screen.Detail.createRoute(entryId)) },
-                onNavigateToQa = { navController.navigate(Screen.Qa.route) }
+                onNavigateToQa = { navController.navigate(Screen.Qa.route) },
+                onNavigateToThemes = { navController.navigate(Screen.Themes.route) }
+            )
+        }
+        composable(Screen.Themes.route) {
+            ThemesScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onOpenTheme = { themeId -> navController.navigate(Screen.ThemeDetail.createRoute(themeId)) }
+            )
+        }
+        composable(
+            route = Screen.ThemeDetail.route,
+            arguments = listOf(navArgument("themeId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val themeId = backStackEntry.arguments?.getLong("themeId") ?: return@composable
+            ThemeDetailScreen(
+                themeId = themeId,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
         composable(Screen.Qa.route) {

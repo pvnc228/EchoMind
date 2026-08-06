@@ -43,6 +43,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.echomind.domain.model.ReflectionSession
 import com.echomind.domain.model.ReflectionStatus
+import com.echomind.domain.model.RelatedRecord
+import com.echomind.domain.model.Relationship
+import com.echomind.domain.model.Theme
 import com.echomind.ui.theme.DetailSkeleton
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -182,6 +185,29 @@ fun DetailScreen(
                     uiState.reflection?.let { reflection ->
                         Spacer(modifier = Modifier.height(20.dp))
                         SavedReflectionProvenance(reflection)
+
+                        if (reflection.confirmedConclusion != null && reflection.revisionId != null) {
+                            Spacer(modifier = Modifier.height(20.dp))
+                            ConnectionsSection(
+                                themes = uiState.themes,
+                                availableThemes = uiState.availableThemes,
+                                relatedRecords = uiState.relatedRecords,
+                                otherEntries = uiState.otherEntries,
+                                revisionId = reflection.revisionId,
+                                onLinkToTheme = { themeId, revisionId ->
+                                    viewModel.linkToTheme(themeId, revisionId)
+                                },
+                                onUnlinkFromTheme = { themeId, revisionId ->
+                                    viewModel.unlinkFromTheme(themeId, revisionId)
+                                },
+                                onLinkRelated = { candidate, relationship, revisionId ->
+                                    viewModel.linkRelatedRecord(revisionId, candidate, relationship)
+                                },
+                                onUnlinkRelated = { revisionId, sourceId ->
+                                    viewModel.unlinkRelatedRecord(revisionId, sourceId)
+                                }
+                            )
+                        }
                     }
 
                     if (entry.audioPath != null) {
@@ -255,6 +281,176 @@ fun DetailScreen(
             }
         }
     }
+}
+
+@Composable
+fun ConnectionsSection(
+    themes: List<Theme>,
+    availableThemes: List<Theme>,
+    relatedRecords: List<RelatedRecord>,
+    otherEntries: List<RelatedRecord>,
+    revisionId: Long,
+    onLinkToTheme: (Long, Long) -> Unit,
+    onUnlinkFromTheme: (Long, Long) -> Unit,
+    onLinkRelated: (RelatedRecord, String, Long) -> Unit,
+    onUnlinkRelated: (Long, Long) -> Unit
+) {
+    var showThemePicker by remember { mutableStateOf(false) }
+    var relateTarget by remember { mutableStateOf<RelatedRecord?>(null) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionHeader("Connections")
+
+        Text(
+            "Themes",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        if (themes.isEmpty()) {
+            Text(
+                "Not in any theme yet.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            themes.forEach { theme ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(theme.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = { onUnlinkFromTheme(theme.id, revisionId) }) {
+                        Text("Remove")
+                    }
+                }
+            }
+        }
+        TextButton(onClick = { showThemePicker = true }) {
+            Text("Add to theme...")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            "Related records",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        if (relatedRecords.isEmpty()) {
+            Text(
+                "No linked supporting or contradicting records.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            relatedRecords.forEach { record ->
+                RecordRelationshipRow(
+                    record = record,
+                    onSelect = { onUnlinkRelated(revisionId, record.rawRecordId) },
+                    removeLabel = "Remove"
+                )
+            }
+        }
+        if (otherEntries.isNotEmpty()) {
+            TextButton(onClick = { relateTarget = otherEntries.first() }) {
+                Text("Link a record...")
+            }
+        }
+    }
+
+    if (showThemePicker) {
+        val linkedIds = themes.map { it.id }.toSet()
+        ThemePickerDialog(
+            themes = availableThemes.filter { it.id !in linkedIds },
+            onDismiss = { showThemePicker = false },
+            onSelected = { onLinkToTheme(it, revisionId) }
+        )
+    }
+
+    relateTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { relateTarget = null },
+            title = { Text("Link \"${target.sourceText.take(60)}\"?") },
+            text = {
+                Column {
+                    Text(
+                        "Does this record support or contradict the current conclusion?",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(onClick = {
+                        onLinkRelated(target, Relationship.SUPPORTS, revisionId)
+                        relateTarget = null
+                    }) { Text("Supports") }
+                    TextButton(onClick = {
+                        onLinkRelated(target, Relationship.CONTRADICTS, revisionId)
+                        relateTarget = null
+                    }) { Text("Contradicts") }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { relateTarget = null }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun RecordRelationshipRow(
+    record: RelatedRecord,
+    onSelect: () -> Unit,
+    removeLabel: String
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = record.relationship,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (record.relationship == Relationship.CONTRADICTS) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                }
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(record.sourceText, style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(4.dp))
+            TextButton(onClick = onSelect) { Text(removeLabel) }
+        }
+    }
+}
+
+@Composable
+private fun ThemePickerDialog(
+    themes: List<Theme>,
+    onDismiss: () -> Unit,
+    onSelected: (Long) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add to theme") },
+        text = {
+            if (themes.isEmpty()) {
+                Text(
+                    "No themes yet. Create one in the Themes screen, then link it here.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                Column {
+                    themes.forEach { theme ->
+                        TextButton(onClick = { onSelected(theme.id) }) {
+                            Text(theme.name)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
 }
 
 @Composable

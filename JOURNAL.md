@@ -771,3 +771,63 @@ testable hardware available.
 - API 26-30 opaque fallback is implemented but not device-verified; track as a
   maintenance task alongside the deferred measured blur/compositing.
 - Signed: `агент opencode`.
+
+---
+
+## 2026-08-07 — M2 first slice: themes and conclusion relationships
+
+### Skills Used
+
+- **`ponytail`** (full) — scoped M2 to the highest-leverage first slice
+  (themes + user-confirmed relationships), reused the existing `evidence_links`
+  table for supports/contradicts instead of a new schema, and extended export
+  manifest 2 -> 3 additively. No new dependency or graph framework was added.
+
+### Done
+
+- Added Room schema version 4 with `themes` and `theme_links` tables and an
+  explicit `MIGRATION_3_4` that adds them without data loss. Registered the
+  migration in `DatabaseModule`.
+- Added `KnowledgeRepository`:
+  - themes: create, rename, archive, delete, list active, conclusion count;
+  - theme links: link/unlink a confirmed conclusion to/from a theme (confirmed
+    only; no AI clustering), list conclusions per theme, list themes per
+    conclusion;
+  - relationships: link a concluded record as `supports` or `contradicts`
+    another concluded record by reusing `evidence_links`; list related records;
+    unlink.
+- Added `DetailViewModel`/`DetailScreen` "Connections" section shown only for
+  confirmed conclusions: link to a theme, unlink, and mark another confirmed
+  record as supporting or contradicting this one.
+- Added `ThemesScreen` (create/rename/archive) and `ThemeDetailScreen` (list
+  conclusions in a theme), with navigation routes and a Themes entry point on
+  Home.
+- Export manifest bumped to version 3 and now includes `themes` and confirmed
+  `theme_links`; unit and instrumented export tests updated.
+- Data/privacy contract updated: schema v4, themes/themelinks as confirmed
+  user-owned objects, cascade rules, and manifest v3.
+
+### Evidence
+
+- `:app:testDebugUnitTest` — passed (including manifest v3 export coverage).
+- `:app:connectedDebugAndroidTest` — 16/16 passed on Pixel 8 API 35 emulator:
+  new `KnowledgeRepositoryTest` (theme create/rename/link/count/archive,
+  relationship link/unlink, candidates) and `migration3To4` in addition to the
+  existing provenance/privacy/reflection suites.
+- Debug APK installed and launched on `Pixel_8_2` (API 35); `MainActivity`
+  stayed resumed with no crash or `FATAL EXCEPTION` in logcat.
+- `git diff --check` — pending before delivery.
+
+### Remaining limitations
+
+- Themes are confirm-only: no AI clustering, so `theme_links.confirmed` is the
+  only state written. Proposed-links (for a remote-assisted M2) are a later
+  milestone.
+- Relationships reuse `evidence_links`; the field and status semantics are
+  unchanged and remain inspectable, but the UI does not yet render a dedicated
+  relationship-manager view beyond the detail "Connections" section.
+- There is no restore path for archived themes (archive hides them; delete and
+  future restore are separate concerns).
+- Dated revision history (viewing/editing prior revisions) and archive/search
+  over the provenance graph remain open M2 milestones.
+- Signed: `агент opencode`.

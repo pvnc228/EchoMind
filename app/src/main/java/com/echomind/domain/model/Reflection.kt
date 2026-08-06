@@ -23,6 +23,7 @@ data class ReflectionSession(
     val status: String,
     val confirmedConclusion: String? = null,
     val revisionVersion: Int? = null,
+    val revisionId: Long? = null,
     val sourceRelationship: String? = null,
     val sourceLinkStatus: String? = null
 )

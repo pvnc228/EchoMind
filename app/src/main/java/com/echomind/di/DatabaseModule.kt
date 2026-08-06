@@ -31,7 +31,10 @@ object DatabaseModule {
             AppDatabase::class.java,
             "echomind.db"
         ).openHelperFactory(supportFactory)
-            .addMigrations(AppDatabase.MIGRATION_2_3)
+            .addMigrations(
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4
+            )
             .build()
     }
 

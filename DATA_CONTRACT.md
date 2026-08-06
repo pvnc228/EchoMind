@@ -2,12 +2,13 @@
 
 **Status:** M0 implementation contract
 
-**Last updated:** 2026-07-30
+**Last updated:** 2026-08-07
 
 This document turns the promises in [VISION.md](VISION.md) into storage and
-network rules. Room schema version 3 implements the minimum provenance model
-alongside the legacy `entries` table used by the archive UI. M1-B now verifies
-that model across capture, detail display, export, deletion, restart, and the
+network rules. Room schema version 3 implemented the minimum provenance model
+alongside the legacy `entries` table used by the archive UI; schema version 4
+adds user-owned themes and confirmed theme links (M2 first slice). M1-B verifies
+the model across capture, detail display, export, deletion, restart, and the
 network boundary.
 
 ## Data classes
@@ -36,6 +37,8 @@ network boundary.
 | Room `conclusions` | raw source, current revision pointer, creation time | Confirmed + operational | User | Yes |
 | Room `conclusion_revisions` | versioned text, author, creation time | Confirmed + operational | User | Yes |
 | Room `evidence_links` | revision/source IDs, relationship, confirmation status | Derived or confirmed according to status | User | Yes |
+| Room `themes` | user-owned name, creation, archived time | Confirmed + operational | User | Yes |
+| Room `theme_links` | theme/revision IDs, confirmed flag, creation time | Confirmed + operational | User | Yes |
 | Encrypted audio file | recorded audio | Raw | User | Yes, decrypted only in the warned plaintext export |
 | DataStore `settings` | `local_mode` | Operational privacy choice | User | No |
 | DataStore `settings` | `api_endpoint` | Identifying configuration | User | No |
@@ -49,8 +52,9 @@ must not be logged.
 
 ## Local entities
 
-Schema version 3 implements the first five objects. Later milestones add the
-remaining objects without changing the confirmation boundary.
+Schema version 3 implemented the first five objects; schema version 4 added
+themes and theme links (M2). AI linking remains a later milestone. Later
+milestones add the remaining objects without changing the confirmation boundary.
 
 | Object | Minimum fields | Rule |
 |---|---|---|
@@ -60,7 +64,7 @@ remaining objects without changing the confirmation boundary.
 | `ConclusionRevision` | `id`, conclusion ID, text, creation time, author | Append-only; user edits create a revision |
 | `EvidenceLink` | `id`, conclusion revision ID, source object ID, supports/contradicts, confirmation status | AI links remain proposals until confirmed |
 | `Theme` | `id`, user-owned name, creation time, archived time | A durable theme is created or renamed by the user |
-| `ThemeLink` | `id`, theme ID, conclusion ID, confirmation status | AI clustering produces only a proposed link |
+| `ThemeLink` | `id`, theme ID, conclusion revision ID, confirmation status | a link is written only when the user confirms it; AI clustering is not implemented (M2) |
 | `Decision` | `id`, question, user choice, creation time, optional source revision IDs | Stores the user's choice separately from any suggestion |
 | `Outcome` | `id`, decision ID, user report, creation time | Optional and user-authored; it never rewrites a conclusion automatically |
 
@@ -126,9 +130,12 @@ Confirmed wording and its source/revision relationship survive database reopen.
   audio. A filesystem failure is surfaced instead of silently claiming success.
 - Deleting a theme, decision, or outcome never deletes the records or
   conclusions it references.
+- Deleting a conclusion (with its revisions) cascades the removal of its
+  confirmed theme links and evidence links; the theme itself stays.
 - Export uses stable IDs and includes raw records, hypotheses with statuses,
-  conclusions, revisions, evidence links, and encrypted-audio filenames.
-  Manifest version 2 keeps legacy generated fields under
+  conclusions, revisions, evidence links, themes, confirmed theme links, and
+  encrypted-audio filenames.
+  Manifest version 3 keeps legacy generated fields under
   `analysisStatus=legacy_unconfirmed`. Secrets, endpoint configuration, and
   encryption keys are excluded.
 

@@ -55,7 +55,7 @@ class ExportManagerTest {
                 Json.decodeFromString<ExportManifest>(content)
             }
 
-            assertEquals(2, manifest.version)
+            assertEquals(3, manifest.version)
             assertEquals("My original words", manifest.rawRecords.single().originalText)
             assertEquals("confirmed", manifest.hypotheses.single().status)
             assertEquals("My confirmed conclusion", manifest.revisions.single().text)

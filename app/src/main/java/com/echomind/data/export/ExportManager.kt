@@ -12,6 +12,8 @@ import com.echomind.data.local.entity.ConclusionRevisionEntity
 import com.echomind.data.local.entity.EntryEntity
 import com.echomind.data.local.entity.EvidenceLinkEntity
 import com.echomind.data.local.entity.RawRecordEntity
+import com.echomind.data.local.entity.ThemeEntity
+import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.local.security.AudioEncryptionUtil
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.Serializable
@@ -43,7 +45,9 @@ class ExportManager @Inject constructor(
                 hypotheses = knowledgeDao.getAllHypotheses(),
                 conclusions = knowledgeDao.getAllConclusions(),
                 revisions = knowledgeDao.getAllRevisions(),
-                evidenceLinks = knowledgeDao.getAllEvidenceLinks()
+                evidenceLinks = knowledgeDao.getAllEvidenceLinks(),
+                themes = knowledgeDao.getAllThemes(),
+                themeLinks = knowledgeDao.getConfirmedThemeLinksAll()
             )
         }
         val dateStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
@@ -89,12 +93,14 @@ internal data class ExportSnapshot(
     val hypotheses: List<AiHypothesisEntity>,
     val conclusions: List<ConclusionEntity>,
     val revisions: List<ConclusionRevisionEntity>,
-    val evidenceLinks: List<EvidenceLinkEntity>
+    val evidenceLinks: List<EvidenceLinkEntity>,
+    val themes: List<ThemeEntity>,
+    val themeLinks: List<ThemeLinkEntity>
 )
 
 internal fun buildManifest(snapshot: ExportSnapshot, exportedAt: Long = System.currentTimeMillis()) =
     ExportManifest(
-        version = 2,
+        version = 3,
         exportedAt = exportedAt,
         entries = snapshot.entries.map { entity ->
             ExportEntry(
@@ -152,6 +158,18 @@ internal fun buildManifest(snapshot: ExportSnapshot, exportedAt: Long = System.c
                 it.relationship,
                 it.status
             )
+        },
+        themes = snapshot.themes.map {
+            ExportTheme(it.id, it.name, it.createdAt, it.archivedAt)
+        },
+        themeLinks = snapshot.themeLinks.map {
+            ExportThemeLink(
+                it.id,
+                it.themeId,
+                it.conclusionRevisionId,
+                it.confirmed,
+                it.createdAt
+            )
         }
     )
 
@@ -167,7 +185,9 @@ data class ExportManifest(
     val hypotheses: List<ExportHypothesis>,
     val conclusions: List<ExportConclusion>,
     val revisions: List<ExportConclusionRevision>,
-    val evidenceLinks: List<ExportEvidenceLink>
+    val evidenceLinks: List<ExportEvidenceLink>,
+    val themes: List<ExportTheme> = emptyList(),
+    val themeLinks: List<ExportThemeLink> = emptyList()
 )
 
 @Serializable
@@ -231,4 +251,21 @@ data class ExportEvidenceLink(
     val sourceRawRecordId: Long,
     val relationship: String,
     val status: String
+)
+
+@Serializable
+data class ExportTheme(
+    val id: Long,
+    val name: String,
+    val createdAt: Long,
+    val archivedAt: Long?
+)
+
+@Serializable
+data class ExportThemeLink(
+    val id: Long,
+    val themeId: Long,
+    val conclusionRevisionId: Long,
+    val confirmed: Boolean,
+    val createdAt: Long
 )

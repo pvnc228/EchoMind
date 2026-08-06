@@ -111,6 +111,7 @@ class ReflectionRepository @Inject constructor(
             status = hypothesis.status,
             confirmedConclusion = revision?.text,
             revisionVersion = revision?.version,
+            revisionId = revision?.id,
             sourceRelationship = sourceLink?.relationship,
             sourceLinkStatus = sourceLink?.status
         )
