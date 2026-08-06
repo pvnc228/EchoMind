@@ -4,14 +4,15 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,9 +25,14 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -44,9 +50,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -66,6 +78,7 @@ fun RecordScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) viewModel.startRecording()
+        else viewModel.permissionDenied()
     }
 
     val requestRecording = {
@@ -103,6 +116,7 @@ fun RecordScreen(
             onReject = viewModel::rejectProposal,
             onRetry = viewModel::retry,
             onDone = onNavigateBack,
+            onStartNew = viewModel::startNewReflection,
             modifier = Modifier.padding(padding)
         )
     }
@@ -120,6 +134,7 @@ fun RecordScreenContent(
     onReject: () -> Unit,
     onRetry: () -> Unit,
     onDone: () -> Unit,
+    onStartNew: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -127,10 +142,11 @@ fun RecordScreenContent(
         contentAlignment = Alignment.Center
     ) {
         when (uiState.stage) {
-            ReflectionStage.LOADING -> ProcessingContent("Restoring your reflection...")
+            ReflectionStage.LOADING -> ProcessingContent("Restoring your reflection…")
             ReflectionStage.CAPTURE -> CaptureContent(
                 text = uiState.thoughtText,
                 hasAudio = uiState.audioPath != null,
+                permissionDenied = uiState.permissionDenied,
                 onTextChange = onThoughtChange,
                 onSubmit = onSubmit,
                 onStartRecording = onStartRecording
@@ -141,9 +157,9 @@ fun RecordScreenContent(
             )
             ReflectionStage.PROCESSING -> ProcessingContent(
                 if (uiState.rawRecordId == null) {
-                    "Saving your original words..."
+                    "Saving your original words…"
                 } else {
-                    "Original saved. Structuring locally..."
+                    "Original saved. Structuring locally…"
                 }
             )
             ReflectionStage.REVIEW -> ReviewContent(
@@ -160,12 +176,14 @@ fun RecordScreenContent(
                 draft = requireNotNull(uiState.draft),
                 counterargument = uiState.counterargument,
                 conclusion = uiState.confirmedConclusion.orEmpty(),
-                onDone = onDone
+                onDone = onDone,
+                onStartNew = onStartNew
             )
             ReflectionStage.REJECTED -> RejectedContent(
                 originalText = uiState.thoughtText,
                 draft = requireNotNull(uiState.draft),
-                onDone = onDone
+                onDone = onDone,
+                onStartNew = onStartNew
             )
             ReflectionStage.ERROR -> ErrorContent(
                 message = uiState.error ?: "Unknown error",
@@ -179,6 +197,7 @@ fun RecordScreenContent(
 private fun CaptureContent(
     text: String,
     hasAudio: Boolean,
+    permissionDenied: Boolean,
     onTextChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onStartRecording: () -> Unit
@@ -206,7 +225,7 @@ private fun CaptureContent(
             value = text,
             onValueChange = onTextChange,
             label = { Text("Your reflection") },
-            placeholder = { Text("I noticed... I think... What I may be assuming is...") },
+            placeholder = { Text("I noticed… I think… What I may be assuming is…") },
             minLines = 7,
             modifier = Modifier.fillMaxWidth()
         )
@@ -216,6 +235,15 @@ private fun CaptureContent(
                 "Encrypted voice note attached. Add or edit its transcript above.",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
+            )
+        }
+        if (permissionDenied) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Microphone permission was declined. You can still write this reflection with text.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
             )
         }
         Spacer(Modifier.height(16.dp))
@@ -275,7 +303,7 @@ private fun RecordingContent(
                     )
             )
             Spacer(Modifier.width(8.dp))
-            Text("Recording...", color = MaterialTheme.colorScheme.error)
+            Text("Recording…", color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(24.dp))
         Button(onClick = onStopRecording) {
@@ -303,6 +331,8 @@ private fun ReviewContent(
     onConfirm: () -> Unit,
     onReject: () -> Unit
 ) {
+    var showAnalysis by rememberSaveable { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -311,36 +341,119 @@ private fun ReviewContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         LabeledCard("Your words · immutable source", originalText)
-        DraftCard(draft)
-        LabeledCard("Local proposal · alternative", counterargument)
-        HorizontalDivider()
         Text(
-            "Your confirmed wording",
+            "EchoMind's proposal",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
         Text(
-            "Edit freely. Only this field becomes a conclusion when you confirm it.",
+            "A local draft. It is not your belief until you confirm it.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        LabeledCard(
+            "Proposed thesis",
+            draft.tentativeThesis,
+            container = MaterialTheme.colorScheme.secondaryContainer
+        )
+        LabeledCard("Local alternative", counterargument)
+        TextButton(
+            onClick = { showAnalysis = !showAnalysis },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                if (showAnalysis) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = null
+            )
+            Spacer(Modifier.width(6.dp))
+            Text("Show full analysis")
+        }
+        AnimatedVisibility(
+            visible = showAnalysis,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            AnalysisCard(draft)
+        }
+        HorizontalDivider()
+        Text(
+            "My wording",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            "Edit freely. Only this field becomes your conclusion when you confirm it.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         OutlinedTextField(
             value = confirmationText,
             onValueChange = onConfirmationChange,
+            label = { Text("My wording") },
             minLines = 3,
             modifier = Modifier.fillMaxWidth()
         )
+        ActionDock(
+            onConfirm = onConfirm,
+            onReject = onReject,
+            confirmEnabled = confirmationText.isNotBlank()
+        )
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun ActionDock(
+    onConfirm: () -> Unit,
+    onReject: () -> Unit,
+    confirmEnabled: Boolean
+) {
+    // ponytail: bounded glass action dock. Static functional layer only; API 26-30 falls
+    // back to an opaque tonal surface (no blur on scrolling content). Upgrade to measured
+    // blur/compositing only if a validated visual pass requires it.
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), shape)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         Button(
             onClick = onConfirm,
-            enabled = confirmationText.isNotBlank(),
+            enabled = confirmEnabled,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Confirm conclusion")
+            Text("Confirm my conclusion")
         }
         TextButton(onClick = onReject, modifier = Modifier.fillMaxWidth()) {
-            Text("Reject proposal")
+            Text("Reject EchoMind's proposal")
         }
-        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun AnalysisCard(draft: ReflectionDraft) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "Full analysis · local draft",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            DraftField("Observations", draft.observations)
+            DraftField("Interpretations", draft.interpretations)
+            DraftField("Assumptions", draft.assumptions)
+            DraftField("Open questions", draft.openQuestions)
+        }
     }
 }
 
@@ -350,7 +463,8 @@ private fun ConfirmedContent(
     draft: ReflectionDraft,
     counterargument: String,
     conclusion: String,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    onStartNew: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -365,11 +479,14 @@ private fun ConfirmedContent(
             color = MaterialTheme.colorScheme.primary
         )
         LabeledCard("Your words · source", originalText)
-        LabeledCard("Local proposal · tentative thesis", draft.tentativeThesis)
-        LabeledCard("Local proposal · alternative", counterargument)
+        LabeledCard("Proposed thesis", draft.tentativeThesis)
+        LabeledCard("Local alternative", counterargument)
         LabeledCard("Your conclusion · revision 1", conclusion, emphasized = true)
         Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
             Text("Done")
+        }
+        TextButton(onClick = onStartNew, modifier = Modifier.fillMaxWidth()) {
+            Text("Start another reflection")
         }
     }
 }
@@ -378,7 +495,8 @@ private fun ConfirmedContent(
 private fun RejectedContent(
     originalText: String,
     draft: ReflectionDraft,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    onStartNew: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -389,13 +507,16 @@ private fun RejectedContent(
     ) {
         Text("Proposal rejected", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "No confirmed conclusion was created. Your original record remains in your archive.",
+            "No confirmed conclusion was created. Your original record stays in your archive, and you can review the proposal again.",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         LabeledCard("Your words · source", originalText)
         LabeledCard("Rejected local proposal", draft.tentativeThesis)
-        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
-            Text("Done")
+        Button(onClick = onStartNew, modifier = Modifier.fillMaxWidth()) {
+            Text("Start another reflection")
+        }
+        TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+            Text("Back to archive")
         }
     }
 }
@@ -415,32 +536,6 @@ private fun ErrorContent(message: String, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun DraftCard(draft: ReflectionDraft) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                "Local proposal · structured draft",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSecondaryContainer
-            )
-            DraftField("Tentative thesis", listOf(draft.tentativeThesis))
-            DraftField("Observations", draft.observations)
-            DraftField("Interpretations", draft.interpretations)
-            DraftField("Assumptions", draft.assumptions)
-            DraftField("Open questions", draft.openQuestions)
-        }
-    }
-}
-
-@Composable
 private fun DraftField(label: String, values: List<String>) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
@@ -448,7 +543,7 @@ private fun DraftField(label: String, values: List<String>) {
             Text(
                 "None identified in the original text.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
         } else {
             values.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
@@ -460,7 +555,8 @@ private fun DraftField(label: String, values: List<String>) {
 private fun LabeledCard(
     label: String,
     text: String,
-    emphasized: Boolean = false
+    emphasized: Boolean = false,
+    container: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceVariant
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -468,7 +564,7 @@ private fun LabeledCard(
             containerColor = if (emphasized) {
                 MaterialTheme.colorScheme.primaryContainer
             } else {
-                MaterialTheme.colorScheme.surfaceVariant
+                container
             }
         )
     ) {

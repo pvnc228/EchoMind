@@ -32,6 +32,19 @@ Every provenance card has both a human-readable ownership/status label and its c
 
 Loading, success, rejection, error, disabled, permission, and restored-draft states are part of the component contract. State changes must be exposed to accessibility services, and the field that becomes the confirmed conclusion must have its own programmatic label.
 
+### Review surface (implemented)
+
+The review surface reads as a dominant `source -> proposal -> my wording`
+path rather than a flat stack. Detailed analysis (observations,
+interpretations, assumptions, open questions) sits behind an explicit
+"Show full analysis" disclosure, so the authorship decision stays primary.
+
+The progressive disclosure toggle and the action dock are the only glass
+layer: a static, bounded surface with an opaque tonal fallback on API 26-30.
+Blur or compositing is not applied to scrolling content, and no callable
+surface relies on glass alone to signal state. After confirm or reject, a
+reversible "Start another reflection" action is available.
+
 ## Do's and Don'ts
 
 - Do describe analysis as a local, unconfirmed proposal until the user explicitly confirms or edits it.

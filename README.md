@@ -74,6 +74,10 @@ app/src/main/java/com/echomind/
 
 ## Validation
 
+Manual on-device passes (TalkBack, scaled text, landscape, API 26-30 glass
+fallback, recovery states) live in
+[docs/DEVICE_VALIDATION.md](docs/DEVICE_VALIDATION.md). Automated suites:
+
 Use Android Studio's embedded JDK 21 with the Gradle 8.9 wrapper:
 
 ```powershell

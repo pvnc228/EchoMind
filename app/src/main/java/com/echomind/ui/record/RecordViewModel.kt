@@ -36,7 +36,8 @@ data class RecordUiState(
     val durationMs: Long = 0,
     val audioPath: String? = null,
     val error: String? = null,
-    val amplitudes: List<Float> = emptyList()
+    val amplitudes: List<Float> = emptyList(),
+    val permissionDenied: Boolean = false
 )
 
 @HiltViewModel
@@ -178,6 +179,7 @@ class RecordViewModel @Inject constructor(
 
     fun startRecording() {
         if (_uiState.value.stage != ReflectionStage.CAPTURE) return
+        _uiState.value = _uiState.value.copy(permissionDenied = false)
 
         val context = getApplication<Application>()
         val audioDir = File(context.filesDir, "audio")
@@ -222,6 +224,18 @@ class RecordViewModel @Inject constructor(
                 error = error.message ?: "Could not start recording."
             )
         }
+    }
+
+    fun permissionDenied() {
+        if (_uiState.value.stage == ReflectionStage.CAPTURE) {
+            _uiState.value = _uiState.value.copy(permissionDenied = true)
+        }
+    }
+
+    fun startNewReflection() {
+        val state = _uiState.value
+        if (state.stage != ReflectionStage.CONFIRMED && state.stage != ReflectionStage.REJECTED) return
+        _uiState.value = RecordUiState(stage = ReflectionStage.CAPTURE)
     }
 
     fun stopRecording() {

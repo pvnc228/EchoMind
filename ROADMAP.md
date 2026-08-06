@@ -367,6 +367,15 @@ remain readable Material tonal surfaces. Material components, icons, system
 navigation, dynamic color, dark theme, and Android accessibility conventions
 remain authoritative.
 
+The Review flow rework (P1 #1 `source -> proposal -> my wording` with
+progressive disclosure, P1 #2 copy/provenance labels, P1 #3 recoverable
+post-confirm/reject and permission-denied states) is implemented in
+`RecordScreen.kt` / `RecordViewModel.kt`, with a bounded Echo Glass action
+dock. Desktop compile, unit tests, and the full instrumented suite (12/12)
+pass on the Pixel 8 API 35 emulator, including the reworked `ReflectionScreenTest`.
+TalkBack and scaled-font passes remain before this line is marked fully
+validated. Signed: `агент opencode`.
+
 `PRODUCT.md` now records durable product truth. `DESIGN.md` records the
 evidenced incumbent Compose/Material 3 language; it must be updated with Echo
 Glass only after the direction is implemented and visually validated. The

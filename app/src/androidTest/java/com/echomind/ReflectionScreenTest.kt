@@ -45,15 +45,19 @@ class ReflectionScreenTest {
                 onConfirm = {},
                 onReject = {},
                 onRetry = {},
-                onDone = {}
+                onDone = {},
+                onStartNew = {}
             )
         }
 
         composeTestRule.onNodeWithText("Your words · immutable source").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Local proposal · structured draft").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Your confirmed wording").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Confirm conclusion").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Reject proposal").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Proposed thesis").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Local alternative").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithText("My edited conclusion")
+            .assertIsDisplayed()
+        composeTestRule.onNodeWithText("Confirm my conclusion").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Reject EchoMind's proposal").assertIsDisplayed()
     }
 
     @Test

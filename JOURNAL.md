@@ -669,3 +669,57 @@ Create and review the three Echo Glass Review compositions, select one, then
 execute the approved P1 implementation plan end to end. After emulator and
 regression validation, update `DESIGN.md` from the shipped result rather than
 from the plan.
+
+---
+
+## 2026-08-06 — Review Flow Rework and Accessibility (UX checkpoint)
+
+### Skills Used
+
+- **`ui-skills-root`** — selected the smallest useful set for the session.
+- **`improve-ui`** — read-only audit discipline: reproduced the current
+  Review surface, reconstructed the governing system from `DESIGN.md`, and
+  limited findings to the three confirmed P1 corrections.
+- **`create-design-md`** — design-language documentation rules; updated
+  `DESIGN.md` only with implemented evidence, not the unbuilt world.
+- **`impeccable`** — craft/copy direction behind the reworked Review flow
+  without pulling in its CLI-generated context for this stage.
+- **`ponytail`** (full) — kept the diff to `RecordScreen.kt` and
+  `RecordViewModel.kt`, bounded the glass to the static action dock with an
+  opaque tonal fallback, and deferred measured blur/compositing.
+
+### Done
+
+- Restructured `ReviewContent` from a flat evidence stack to a dominant
+  `source -> proposal -> my wording` reading order.
+- Moved detailed analysis (observations, interpretations, assumptions, open
+  questions) behind an explicit "Show full analysis" disclosure with animated
+  collapse (P1 #1).
+- Corrected first-session and transition copy and user-facing provenance
+  labels to the current product contract (P1 #2).
+- Added reversible next steps after confirm/reject: "Start another reflection"
+  on both CONFIRMED and REJECTED surfaces (P1 #3).
+- Added microphone permission-denied recovery state with a polite live-region
+  announcement; the user can still proceed with text (P1 #3).
+- Added a programmatic "My wording" field label on the editable conclusion
+  field, per `DESIGN.md` component contract.
+- Added a bounded Echo Glass action dock (static functional layer; opaque
+  tonal fallback on API 26-30), keeping provenance surfaces on readable
+  tonal cards (`ponytail:` comment names the upgrade path).
+
+### Evidence
+
+- `:app:compileDebugKotlin` — passed.
+- `:app:testDebugUnitTest` — passed (existing local-mode and state suites).
+- `:app:connectedDebugAndroidTest` — 12/12 passed on Pixel 8 API 35 emulator,
+  including `ReflectionScreenTest` (reworked Review structure) and the
+  provenance/privacy instrumented suites.
+- Updated `ReflectionScreenTest` to assert the reworked Review structure.
+
+### Remaining limitations
+
+- TalkBack, 200% font scale, API 26-30 fallback, and landscape/expanded-width
+  passes remain to be re-run on device.
+- Progressive disclosure and action-dock glass are implemented as Compose
+  primitives; measured blur/compositing is deliberately deferred.
+- Signed: `агент opencode`.
