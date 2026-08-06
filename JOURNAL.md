@@ -723,3 +723,51 @@ from the plan.
 - Progressive disclosure and action-dock glass are implemented as Compose
   primitives; measured blur/compositing is deliberately deferred.
 - Signed: `агент opencode`.
+
+---
+
+## 2026-08-07 — UX checkpoint device validation closed
+
+### Skills Used
+
+- **`ponytail`** (full) — closed the checkpoint with a documentation-only
+  pass, reusing the existing device guide; no production code changed.
+
+### Done
+
+- The manual on-device validation (`docs/DEVICE_VALIDATION.md`) was completed
+  and committed by the user (`bc225f9`). Results:
+  - TalkBack: Review flow announces correctly, `source -> thesis -> alternative
+    -> my wording -> actions` focus order holds, "Show full analysis" expands
+    without losing focus, permission-denied message is polite, and
+    "Start another reflection" is reachable after confirm/reject. Pass.
+  - 200% font scale: text wraps, is not clipped, and nothing overlaps. Pass.
+  - Rotation / wide: `source -> proposal -> my wording` order preserved,
+    long text scrolls, IME inset respected. Pass.
+  - Recovery states: mic-denied still allows text; interrupted unsaved capture
+    returns without loss; restart restores confirmed revision and source. Pass.
+  - API 26-30 glass fallback: **not verified on device** — the user has no
+    Android Studio access to API 26-30 (even in the unsupported channel). The
+    opaque tonal fallback remains implemented in code but untested on hardware;
+    deferred to later product-maintenance steps.
+
+### Decision
+
+The UX checkpoint is marked complete for all device-verifiable criteria.
+API 26-30 fallback verification is explicitly downgraded to a future
+product-maintenance item and does not block the checkpoint, because the
+current target devices are API 35 and the fallback is a code path with no
+testable hardware available.
+
+### Evidence
+
+- `docs/DEVICE_VALIDATION.md` filled in by the user (server timestamps
+  07.08.26 0:52–1:15), committed as `bc225f9`.
+- No Gradle or production changes in this closure; the checkpoint already had
+  `compileDebugKotlin`, unit, and 12/12 instrumented test passes recorded.
+
+### Remaining limitations
+
+- API 26-30 opaque fallback is implemented but not device-verified; track as a
+  maintenance task alongside the deferred measured blur/compositing.
+- Signed: `агент opencode`.

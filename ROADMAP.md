@@ -1,6 +1,6 @@
 # EchoMind — Product Roadmap
 
-**Last updated:** 2026-07-29
+**Last updated:** 2026-08-07
 
 **Product direction:** [VISION.md](VISION.md)
 
@@ -270,13 +270,9 @@ M0 through M1-C are implemented and verified. The frozen synthetic re-score
 reached `50/50`, so the bounded usefulness gate is closed without claiming
 external-user validation or product-market fit.
 
-The next block is the approved UX implementation checkpoint below:
-
-1. select one of three Echo Glass Review compositions;
-2. implement the three confirmed P1 corrections as one coherent flow;
-3. validate accessibility, state coverage, provenance/privacy regressions,
-   API fallbacks, and Pixel 8 API 35 runtime behavior before updating the
-   implemented design language.
+The approved UX implementation checkpoint (audit, Echo Glass Review rework,
+accessibility, and device validation) is complete and closed on 2026-08-07;
+see the checkpoint section below.
 
 Remote raw-content paths remain blocked until a minimized preview and
 per-request approval flow exists.
@@ -284,10 +280,15 @@ per-request approval flow exists.
 Do not begin personalization, prediction, 3D visualization, or broad UI polish
 before this product proof is complete.
 
+The next product milestone is **M2 — Traceable personal knowledge model**
+(construct links to evidence/contradictions, themes, revisions, archive, and
+search over the provenance graph).
+
 ## UX/UI audit and approved implementation checkpoint
 
-**Status:** audit complete and UX direction approved on 2026-08-01; production
-UI implementation has not started.
+**Status:** audit complete and UX direction approved on 2026-08-01; the P1
+implementation and device validation are complete, and the checkpoint is closed
+on 2026-08-07.
 
 **Start condition:** run the primary audit after the M1-C re-score gate is met.
 Before that gate, a session may capture the current flow and document usability
@@ -375,6 +376,14 @@ dock. Desktop compile, unit tests, and the full instrumented suite (12/12)
 pass on the Pixel 8 API 35 emulator, including the reworked `ReflectionScreenTest`.
 TalkBack and scaled-font passes remain before this line is marked fully
 validated. Signed: `агент opencode`.
+
+**Device validation result (2026-08-07):** the manual on-device pass
+(`docs/DEVICE_VALIDATION.md`) is complete and committed (`bc225f9`). TalkBack,
+200% font scale, rotation/wide, and recovery-state passes all succeeded. The
+API 26-30 glass fallback is implemented but not device-verified (no accessible
+API 26-30 environment); it is deferred to product-maintenance rather than
+blocking the checkpoint, whose target device is API 35. The checkpoint is
+marked complete on 2026-08-07. Signed: `агент opencode`.
 
 `PRODUCT.md` now records durable product truth. `DESIGN.md` records the
 evidenced incumbent Compose/Material 3 language; it must be updated with Echo
