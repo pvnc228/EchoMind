@@ -84,7 +84,8 @@ class KnowledgeRepository @Inject constructor(
             ThemeConclusion(
                 themeId = themeId,
                 conclusionText = revision.text,
-                revisionVersion = revision.version
+                revisionVersion = revision.version,
+                revisionId = revision.id
             )
         }
     }
@@ -205,8 +206,7 @@ class KnowledgeRepository @Inject constructor(
         else -> null
     }
 
-    suspend fun getHomeRelevance(): HomeRelevance {
-        val now = System.currentTimeMillis()
+    suspend fun getHomeRelevance(): HomeRelevance {        val now = System.currentTimeMillis()
         val suppressed = settingsStore.getSuppressedCards()
             .filterValues { it > now }
             .keys
@@ -247,8 +247,7 @@ class KnowledgeRepository @Inject constructor(
         settingsStore.suppressCard(themeId, until)
     }
 
-    suspend fun search(query: String): List<KnowledgeSearchResult> {
-        val trimmed = query.trim()
+    suspend fun search(query: String): List<KnowledgeSearchResult> {        val trimmed = query.trim()
         if (trimmed.isBlank()) return emptyList()
 
         val rawResults = knowledgeDao.searchRawRecords(trimmed).map { raw ->

@@ -1,0 +1,358 @@
+package com.echomind.ui.decisions
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.echomind.domain.model.Decision
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DecisionsScreen(
+    onNavigateBack: () -> Unit,
+    viewModel: DecisionsViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var showNewDialog by remember { mutableStateOf(false) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Decisions") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showNewDialog = true }) {
+                Icon(Icons.Default.Add, contentDescription = "New decision")
+            }
+        }
+    ) { padding ->
+        when {
+            uiState.isLoading -> {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) { Text("Loading...") }
+            }
+            uiState.error != null -> {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text("Error: ${uiState.error}", color = MaterialTheme.colorScheme.error)
+                }
+            }
+            uiState.decisions.isEmpty() -> {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text("No decisions recorded", style = MaterialTheme.typography.titleLarge)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Turn a question into an explicit decision, then report what happened.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(uiState.decisions, key = { it.id }) { decision ->
+                        DecisionCard(
+                            decision = decision,
+                            onChoose = { choice -> viewModel.choose(decision.id, choice) },
+                            onReportOutcome = { report -> viewModel.reportOutcome(decision.id, report) },
+                            onDelete = { viewModel.delete(decision.id) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showNewDialog) {
+        NewDecisionDialog(
+            onDismiss = { showNewDialog = false },
+            onConfirm = { question, suggestion ->
+                viewModel.add(question, suggestion, null)
+                showNewDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun DecisionCard(
+    decision: Decision,
+    onChoose: (String) -> Unit,
+    onReportOutcome: (String) -> Unit,
+    onDelete: () -> Unit
+) {
+    var showChoiceDialog by remember { mutableStateOf(false) }
+    var showOutcomeDialog by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    decision.question,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    dateFormat.format(Date(decision.createdAt)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            decision.sourceConclusionText?.let { grounds ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Grounds: $grounds",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            decision.suggestion?.let { suggestion ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "EchoMind suggested: $suggestion",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            if (decision.isDecided) {
+                Text(
+                    "Your choice: ${decision.choice}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Text(
+                    "No choice recorded yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (decision.outcomes.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                decision.outcomes.forEach { outcome ->
+                    Text(
+                        "Outcome: ${outcome.report}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "No outcome reported.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!decision.isDecided) {
+                    OutlinedTextButtonSmall("Choose...") { showChoiceDialog = true }
+                }
+                if (decision.hasOutcome) {
+                    OutlinedTextButtonSmall("Add outcome") { showOutcomeDialog = true }
+                } else {
+                    TextButton(onClick = { showOutcomeDialog = true }) {
+                        Text("Report outcome")
+                    }
+                }
+                TextButton(onClick = { confirmDelete = true }) {
+                    Text("Delete")
+                }
+            }
+        }
+    }
+
+    if (showChoiceDialog) {
+        SimpleTextDialog(
+            title = "Record your choice",
+            placeholder = "What did you decide?",
+            onDismiss = { showChoiceDialog = false },
+            onConfirm = {
+                onChoose(it)
+                showChoiceDialog = false
+            }
+        )
+    }
+    if (showOutcomeDialog) {
+        SimpleTextDialog(
+            title = "Report what happened",
+            placeholder = "How did it turn out?",
+            onDismiss = { showOutcomeDialog = false },
+            onConfirm = {
+                onReportOutcome(it)
+                showOutcomeDialog = false
+            }
+        )
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete decision?") },
+            text = {
+                Text(
+                    "This removes the decision and its reported outcomes. It never " +
+                        "deletes the records or conclusions it references.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDelete()
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun OutlinedTextButtonSmall(label: String, onClick: () -> Unit) {
+    TextButton(onClick = onClick) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+@Composable
+private fun SimpleTextDialog(
+    title: String,
+    placeholder: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var value by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it },
+                label = { Text(placeholder) },
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = value.isNotBlank(),
+                onClick = { onConfirm(value.trim()) }
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun NewDecisionDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String, String?) -> Unit
+) {
+    var question by remember { mutableStateOf("") }
+    var suggestion by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New decision") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = question,
+                    onValueChange = { question = it },
+                    label = { Text("The question you are deciding") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = suggestion,
+                    onValueChange = { suggestion = it },
+                    label = { Text("EchoMind suggestion (optional)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = question.isNotBlank(),
+                onClick = {
+                    onConfirm(
+                        question.trim(),
+                        suggestion.trim().takeIf { it.isNotBlank() }
+                    )
+                }
+            ) { Text("Create") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}

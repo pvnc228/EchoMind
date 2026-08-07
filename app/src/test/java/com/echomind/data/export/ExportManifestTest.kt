@@ -3,8 +3,10 @@ package com.echomind.data.export
 import com.echomind.data.local.entity.AiHypothesisEntity
 import com.echomind.data.local.entity.ConclusionEntity
 import com.echomind.data.local.entity.ConclusionRevisionEntity
+import com.echomind.data.local.entity.DecisionEntity
 import com.echomind.data.local.entity.EntryEntity
 import com.echomind.data.local.entity.EvidenceLinkEntity
+import com.echomind.data.local.entity.OutcomeEntity
 import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
@@ -46,12 +48,18 @@ class ExportManifestTest {
             ),
             themeLinks = listOf(
                 ThemeLinkEntity(13, 12, 10, true, 25)
+            ),
+            decisions = listOf(
+                DecisionEntity(14, "Should I change roles?", "Change roles", null, 10, 26)
+            ),
+            outcomes = listOf(
+                OutcomeEntity(15, 14, "It worked out", 27)
             )
         )
 
         val manifest = buildManifest(snapshot, exportedAt = 99)
 
-        assertEquals(3, manifest.version)
+        assertEquals(4, manifest.version)
         assertEquals(99L, manifest.exportedAt)
         assertEquals("legacy_unconfirmed", manifest.entries.single().analysisStatus)
         assertEquals("entry_7.m4a.wav", manifest.rawRecords.single().audioFileName)
@@ -62,5 +70,9 @@ class ExportManifestTest {
         assertEquals("Career", manifest.themes.single().name)
         assertEquals(12L, manifest.themeLinks.single().themeId)
         assertEquals(true, manifest.themeLinks.single().confirmed)
+        assertEquals("Should I change roles?", manifest.decisions.single().question)
+        assertEquals(10L, manifest.decisions.single().sourceRevisionId)
+        assertEquals(14L, manifest.outcomes.single().decisionId)
+        assertEquals("It worked out", manifest.outcomes.single().report)
     }
 }

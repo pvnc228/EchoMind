@@ -53,8 +53,9 @@ must not be logged.
 ## Local entities
 
 Schema version 3 implemented the first five objects; schema version 4 added
-themes and theme links (M2). AI linking remains a later milestone. Later
-milestones add the remaining objects without changing the confirmation boundary.
+themes and theme links (M2); schema version 5 added decisions and outcomes
+(M4). AI linking remains a later milestone. Later milestones add the remaining
+objects without changing the confirmation boundary.
 
 | Object | Minimum fields | Rule |
 |---|---|---|
@@ -133,9 +134,9 @@ Confirmed wording and its source/revision relationship survive database reopen.
 - Deleting a conclusion (with its revisions) cascades the removal of its
   confirmed theme links and evidence links; the theme itself stays.
 - Export uses stable IDs and includes raw records, hypotheses with statuses,
-  conclusions, revisions, evidence links, themes, confirmed theme links, and
-  encrypted-audio filenames.
-  Manifest version 3 keeps legacy generated fields under
+  conclusions, revisions, evidence links, themes, confirmed theme links,
+  decisions, outcomes, and encrypted-audio filenames.
+  Manifest version 4 keeps legacy generated fields under
   `analysisStatus=legacy_unconfirmed`. Secrets, endpoint configuration, and
   encryption keys are excluded.
 

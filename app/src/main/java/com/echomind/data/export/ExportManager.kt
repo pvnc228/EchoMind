@@ -9,8 +9,10 @@ import com.echomind.data.local.dao.KnowledgeDao
 import com.echomind.data.local.entity.AiHypothesisEntity
 import com.echomind.data.local.entity.ConclusionEntity
 import com.echomind.data.local.entity.ConclusionRevisionEntity
+import com.echomind.data.local.entity.DecisionEntity
 import com.echomind.data.local.entity.EntryEntity
 import com.echomind.data.local.entity.EvidenceLinkEntity
+import com.echomind.data.local.entity.OutcomeEntity
 import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
@@ -47,7 +49,9 @@ class ExportManager @Inject constructor(
                 revisions = knowledgeDao.getAllRevisions(),
                 evidenceLinks = knowledgeDao.getAllEvidenceLinks(),
                 themes = knowledgeDao.getAllThemes(),
-                themeLinks = knowledgeDao.getConfirmedThemeLinksAll()
+                themeLinks = knowledgeDao.getConfirmedThemeLinksAll(),
+                decisions = knowledgeDao.getAllDecisions(),
+                outcomes = knowledgeDao.getAllOutcomes()
             )
         }
         val dateStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
@@ -95,12 +99,14 @@ internal data class ExportSnapshot(
     val revisions: List<ConclusionRevisionEntity>,
     val evidenceLinks: List<EvidenceLinkEntity>,
     val themes: List<ThemeEntity>,
-    val themeLinks: List<ThemeLinkEntity>
+    val themeLinks: List<ThemeLinkEntity>,
+    val decisions: List<DecisionEntity>,
+    val outcomes: List<OutcomeEntity>
 )
 
 internal fun buildManifest(snapshot: ExportSnapshot, exportedAt: Long = System.currentTimeMillis()) =
     ExportManifest(
-        version = 3,
+        version = 4,
         exportedAt = exportedAt,
         entries = snapshot.entries.map { entity ->
             ExportEntry(
@@ -170,6 +176,24 @@ internal fun buildManifest(snapshot: ExportSnapshot, exportedAt: Long = System.c
                 it.confirmed,
                 it.createdAt
             )
+        },
+        decisions = snapshot.decisions.map {
+            ExportDecision(
+                it.id,
+                it.question,
+                it.suggestion,
+                it.choice,
+                it.sourceRevisionId,
+                it.createdAt
+            )
+        },
+        outcomes = snapshot.outcomes.map {
+            ExportOutcome(
+                it.id,
+                it.decisionId,
+                it.report,
+                it.createdAt
+            )
         }
     )
 
@@ -187,7 +211,9 @@ data class ExportManifest(
     val revisions: List<ExportConclusionRevision>,
     val evidenceLinks: List<ExportEvidenceLink>,
     val themes: List<ExportTheme> = emptyList(),
-    val themeLinks: List<ExportThemeLink> = emptyList()
+    val themeLinks: List<ExportThemeLink> = emptyList(),
+    val decisions: List<ExportDecision> = emptyList(),
+    val outcomes: List<ExportOutcome> = emptyList()
 )
 
 @Serializable
@@ -267,5 +293,23 @@ data class ExportThemeLink(
     val themeId: Long,
     val conclusionRevisionId: Long,
     val confirmed: Boolean,
+    val createdAt: Long
+)
+
+@Serializable
+data class ExportDecision(
+    val id: Long,
+    val question: String,
+    val suggestion: String?,
+    val choice: String?,
+    val sourceRevisionId: Long?,
+    val createdAt: Long
+)
+
+@Serializable
+data class ExportOutcome(
+    val id: Long,
+    val decisionId: Long,
+    val report: String,
     val createdAt: Long
 )

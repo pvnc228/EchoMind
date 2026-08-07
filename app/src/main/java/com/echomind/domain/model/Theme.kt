@@ -11,7 +11,8 @@ data class Theme(
 data class ThemeConclusion(
     val themeId: Long,
     val conclusionText: String,
-    val revisionVersion: Int
+    val revisionVersion: Int,
+    val revisionId: Long? = null
 )
 
 data class RelatedRecord(

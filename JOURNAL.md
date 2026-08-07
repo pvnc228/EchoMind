@@ -980,7 +980,7 @@ testable hardware available.
 - The card is deterministic and evidence-count based; it does not yet
   distinguish reflection/connection/change/guidance capability types, and
   sparse-domain confidence is not yet message-scoped.
-- Signed: `����� opencode`.
+- Signed: `агент opencode`.
 
 ---
 
@@ -1021,4 +1021,65 @@ testable hardware available.
   theme, but records from one domain are not yet message-scoped against
   confidence in another. Theme-to-domain mapping is a separate concern.
 - Postpone is a fixed 24h preset, not a user-chosen interval.
-- Signed: `����� opencode`.
+- Signed: `агент opencode`.
+
+---
+
+## 2026-08-08 - M4 decision and outcome loop
+
+### Skills Used
+
+- **`ponytail`** (full) - kept the decision loop to two new tables
+  (`decisions`, `outcomes`) and one additive schema v5 migration, reusing the
+  existing `knowledgeDao`, Room transaction, and export manifest. No new
+  dependency or framework was added; choice and outcome are separate stored
+  values, and an outcome never rewrites a conclusion automatically.
+
+### Done
+
+- **Decision records.** Added `decisions` (question, optional EchoMind
+  suggestion, optional user choice, optional source revision id) and
+  `outcomes` (decision id, user report) tables with schema v5 migration
+  `MIGRATION_4_5`. `DecisionRepository` stores the user's choice separately
+  from EchoMind's suggestion (`setChoice` is guarded to record a choice once).
+- **Inspectable chain.** `DecisionRepository.getDecisions()`/`getDecision()`
+  return full `question -> suggestion -> choice -> outcome` records, including
+  the linked conclusion's current text as `grounds`.
+- **Outcome reporting.** `recordOutcome` appends a user-authored reported
+  result; a decision can have multiple outcomes. `hasOutcomeForRevision`
+  powers the theme detail "has outcome evidence / no outcome evidence" state
+  (the M4 criterion "Show when a theme lacks outcome evidence").
+- **Export manifest v4.** Added `decisions` and `outcomes` to the manifest and
+  snapshot; version bumped 3 -> 4. Outcome/decision deletion never deletes the
+  referenced records or conclusions (no FK restriction on source revision).
+- **Decisions UI.** New `DecisionsScreen`/`DecisionsViewModel` with a list of
+  decisions, "Choose..." / "Report outcome" / "Add outcome" / "Delete" actions,
+  and a New decision dialog. Home top bar gains a Decisions entry point; a new
+  `decisions` nav route is registered.
+
+### Evidence
+
+- `:app:compileDebugKotlin`, `:app:compileDebugAndroidTestKotlin` - passed.
+- `:app:testDebugUnitTest` - **33/33** (verified from `TEST-*.xml`: tests=33,
+  failures=0), including the updated manifest v4 export test.
+- `:app:connectedDebugAndroidTest` on Pixel 8 API 35 - **22/22** (verified from
+  `TEST-*.xml`: `tests="22" failures="0"`), including new
+  `DecisionRepositoryTest` (question->choice->outcome chain, single choice,
+  delete keeps conclusion) and `migration4To5AddsDecisionAndOutcomeTables`
+  (existing migration tests updated to chain 2->3->4->5).
+- `:app:assembleDebug` - passed; debug APK installed and `MainActivity` ran
+  resumed on `Pixel_8_2` with no `FATAL EXCEPTION` in logcat.
+- `git diff --check` - clean before delivery.
+
+### Remaining limitations
+
+- A reported outcome does not yet propose or auto-revise a conclusion; the
+  "compare outcome with expectation and revise only after review" sub-goal
+  remains deferred to a later slice (the roadmap list has it as optional
+  follow-up `Compare an outcome ... and revise relevant conclusions only after
+  review`).
+- Reminders/follow-up (`Offer an optional, user-controlled follow-up`) are not
+  implemented; the decision flow is manual and non-intrusive by design.
+- The suggestion is a hand-entered text field, not yet powered by the remote
+  context pipeline; it remains visually separated from the user's choice.
+- Signed: `агент opencode`.

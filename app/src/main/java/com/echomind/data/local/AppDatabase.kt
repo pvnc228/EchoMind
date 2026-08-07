@@ -10,8 +10,10 @@ import com.echomind.data.local.dao.KnowledgeDao
 import com.echomind.data.local.entity.AiHypothesisEntity
 import com.echomind.data.local.entity.ConclusionEntity
 import com.echomind.data.local.entity.ConclusionRevisionEntity
+import com.echomind.data.local.entity.DecisionEntity
 import com.echomind.data.local.entity.EntryEntity
 import com.echomind.data.local.entity.EvidenceLinkEntity
+import com.echomind.data.local.entity.OutcomeEntity
 import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
@@ -25,9 +27,11 @@ import com.echomind.data.local.entity.ThemeLinkEntity
         ConclusionRevisionEntity::class,
         EvidenceLinkEntity::class,
         ThemeEntity::class,
-        ThemeLinkEntity::class
+        ThemeLinkEntity::class,
+        DecisionEntity::class,
+        OutcomeEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @androidx.room.TypeConverters(Converters::class)
@@ -193,6 +197,43 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE INDEX IF NOT EXISTS `index_theme_links_conclusion_revision_id` " +
                         "ON `theme_links` (`conclusion_revision_id`)"
+                )
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `decisions` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `question` TEXT NOT NULL,
+                        `suggestion` TEXT,
+                        `choice` TEXT,
+                        `source_revision_id` INTEGER,
+                        `created_at` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_decisions_source_revision_id` " +
+                        "ON `decisions` (`source_revision_id`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `outcomes` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `decision_id` INTEGER NOT NULL,
+                        `report` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`decision_id`) REFERENCES `decisions`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_outcomes_decision_id` " +
+                        "ON `outcomes` (`decision_id`)"
                 )
             }
         }

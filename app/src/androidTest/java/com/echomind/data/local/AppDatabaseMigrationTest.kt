@@ -38,7 +38,7 @@ class AppDatabaseMigrationTest {
         createVersion2Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
-            .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
+            .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
 
@@ -176,7 +176,7 @@ class AppDatabaseMigrationTest {
         val database = createVersion3DatabaseWithProvenance()
 
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
-            .addMigrations(AppDatabase.MIGRATION_3_4)
+            .addMigrations(AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
 
@@ -207,6 +207,219 @@ class AppDatabaseMigrationTest {
         } finally {
             migrated.close()
         }
+    }
+
+    @Test
+    fun migration4To5AddsDecisionAndOutcomeTablesWithoutLosingProvenance() {
+        createVersion4DatabaseWithProvenance()
+
+        val migrated = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
+            .addMigrations(AppDatabase.MIGRATION_4_5)
+            .allowMainThreadQueries()
+            .build()
+
+        try {
+            val dao = migrated.knowledgeDao()
+            assertEquals(1, runBlocking { dao.getAllRawRecords() }.size)
+            assertEquals(1, runBlocking { dao.getAllRevisions() }.size)
+            assertTrue(runBlocking { dao.getAllDecisions() }.isEmpty())
+            assertTrue(runBlocking { dao.getAllOutcomes() }.isEmpty())
+
+            val revisionId = runBlocking { dao.getAllRevisions().single().id }
+            val decisionId = runBlocking {
+                dao.insertDecision(
+                    com.echomind.data.local.entity.DecisionEntity(
+                        question = "Should I?",
+                        suggestion = null,
+                        choice = null,
+                        sourceRevisionId = revisionId,
+                        createdAt = 40
+                    )
+                )
+            }
+            runBlocking {
+                dao.insertOutcome(
+                    com.echomind.data.local.entity.OutcomeEntity(
+                        decisionId = decisionId,
+                        report = "It worked",
+                        createdAt = 41
+                    )
+                )
+            }
+            assertEquals(1, runBlocking { dao.getAllDecisions() }.size)
+            assertEquals(1, runBlocking { dao.getOutcomesForDecision(decisionId) }.size)
+        } finally {
+            migrated.close()
+        }
+    }
+
+    private fun createVersion4DatabaseWithProvenance() {
+        val callback = object : SupportSQLiteOpenHelper.Callback(4) {
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                db.execSQL(CREATE_ENTRIES)
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `raw_records` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `legacy_entry_id` INTEGER,
+                        `original_text` TEXT NOT NULL,
+                        `audio_path` TEXT,
+                        `duration_ms` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_raw_records_legacy_entry_id` " +
+                        "ON `raw_records` (`legacy_entry_id`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `ai_hypotheses` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `raw_record_id` INTEGER NOT NULL,
+                        `draft_json` TEXT NOT NULL,
+                        `counterargument` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`raw_record_id`) REFERENCES `raw_records`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_ai_hypotheses_raw_record_id` " +
+                        "ON `ai_hypotheses` (`raw_record_id`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `conclusions` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `raw_record_id` INTEGER NOT NULL,
+                        `current_revision_id` INTEGER,
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`raw_record_id`) REFERENCES `raw_records`(`id`)
+                            ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_conclusions_raw_record_id` " +
+                        "ON `conclusions` (`raw_record_id`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `conclusion_revisions` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `conclusion_id` INTEGER NOT NULL,
+                        `version` INTEGER NOT NULL,
+                        `text` TEXT NOT NULL,
+                        `author` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`conclusion_id`) REFERENCES `conclusions`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_conclusion_revisions_conclusion_id` " +
+                        "ON `conclusion_revisions` (`conclusion_id`)"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                        "`index_conclusion_revisions_conclusion_id_version` " +
+                        "ON `conclusion_revisions` (`conclusion_id`, `version`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `evidence_links` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `conclusion_revision_id` INTEGER NOT NULL,
+                        `source_raw_record_id` INTEGER NOT NULL,
+                        `relationship` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        FOREIGN KEY(`conclusion_revision_id`)
+                            REFERENCES `conclusion_revisions`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(`source_raw_record_id`) REFERENCES `raw_records`(`id`)
+                            ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_evidence_links_conclusion_revision_id` " +
+                        "ON `evidence_links` (`conclusion_revision_id`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_evidence_links_source_raw_record_id` " +
+                        "ON `evidence_links` (`source_raw_record_id`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `themes` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `archived_at` INTEGER
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `theme_links` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `theme_id` INTEGER NOT NULL,
+                        `conclusion_revision_id` INTEGER NOT NULL,
+                        `confirmed` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`theme_id`) REFERENCES `themes`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(`conclusion_revision_id`)
+                            REFERENCES `conclusion_revisions`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_theme_links_theme_id` " +
+                        "ON `theme_links` (`theme_id`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_theme_links_conclusion_revision_id` " +
+                        "ON `theme_links` (`conclusion_revision_id`)"
+                )
+                db.execSQL(
+                    "INSERT INTO `entries` (" +
+                        "`id`,`transcript`,`audio_path`,`duration_ms`,`created_at`," +
+                        "`category`,`tags`,`summary`,`tasks`,`ideas`,`emotions`" +
+                        ") VALUES (5,'Source text',NULL,0,10,'idea','[]','', '[]','[]','[]')"
+                )
+                db.execSQL(
+                    "INSERT INTO `raw_records` (" +
+                        "`id`,`legacy_entry_id`,`original_text`,`audio_path`,`duration_ms`,`created_at`" +
+                        ") VALUES (6,5,'Source text',NULL,0,10)"
+                )
+                db.execSQL(
+                    "INSERT INTO `conclusions` (" +
+                        "`id`,`raw_record_id`,`current_revision_id`,`created_at`" +
+                        ") VALUES (7,6,8,11)"
+                )
+                db.execSQL(
+                    "INSERT INTO `conclusion_revisions` (" +
+                        "`id`,`conclusion_id`,`version`,`text`,`author`,`created_at`" +
+                        ") VALUES (8,7,1,'Confirmed','user',12)"
+                )
+            }
+
+            override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(TEST_DATABASE)
+            .callback(callback)
+            .build()
+        val helper = FrameworkSQLiteOpenHelperFactory().create(configuration)
+        helper.writableDatabase
+        helper.close()
     }
 
     private fun createVersion3DatabaseWithProvenance() {

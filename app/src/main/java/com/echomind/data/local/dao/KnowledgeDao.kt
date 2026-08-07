@@ -8,7 +8,9 @@ import androidx.room.Query
 import com.echomind.data.local.entity.AiHypothesisEntity
 import com.echomind.data.local.entity.ConclusionEntity
 import com.echomind.data.local.entity.ConclusionRevisionEntity
+import com.echomind.data.local.entity.DecisionEntity
 import com.echomind.data.local.entity.EvidenceLinkEntity
+import com.echomind.data.local.entity.OutcomeEntity
 import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
@@ -200,4 +202,36 @@ interface KnowledgeDao {
         "SELECT * FROM themes WHERE name LIKE '%' || :query || '%' ORDER BY name"
     )
     suspend fun searchThemes(query: String): List<ThemeEntity>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertDecision(decision: DecisionEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertOutcome(outcome: OutcomeEntity): Long
+
+    @Query("SELECT * FROM decisions ORDER BY created_at DESC, id DESC")
+    suspend fun getAllDecisions(): List<DecisionEntity>
+
+    @Query("SELECT * FROM outcomes ORDER BY created_at DESC, id DESC")
+    suspend fun getAllOutcomes(): List<OutcomeEntity>
+
+    @Query("SELECT * FROM decisions WHERE id = :id")
+    suspend fun getDecisionById(id: Long): DecisionEntity?
+
+    @Query("SELECT * FROM decisions WHERE source_revision_id = :revisionId")
+    suspend fun getDecisionsForSourceRevision(revisionId: Long): List<DecisionEntity>
+
+    @Query("SELECT * FROM outcomes WHERE decision_id = :decisionId ORDER BY created_at, id")
+    suspend fun getOutcomesForDecision(decisionId: Long): List<OutcomeEntity>
+
+    @Query(
+        "UPDATE decisions SET choice = :choice WHERE id = :id AND choice IS NULL"
+    )
+    suspend fun setDecisionChoice(id: Long, choice: String): Int
+
+    @Query("DELETE FROM outcomes WHERE decision_id = :decisionId")
+    suspend fun deleteOutcomesForDecision(decisionId: Long): Int
+
+    @Query("DELETE FROM decisions WHERE id = :id")
+    suspend fun deleteDecisionById(id: Long): Int
 }

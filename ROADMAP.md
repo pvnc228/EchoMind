@@ -206,21 +206,32 @@ instrumented tests pass on Pixel 8 API 35.
 
 **Outcome:** EchoMind learns from reported consequences, not only from the user's self-description.
 
+**Status (2026-08-08, M4 first slice):** decisions and outcomes are now
+first-class, inspectable objects. A user can turn a question into a decision
+record with an optional EchoMind suggestion and its grounds (the linked
+conclusion), record their own choice separately, and report an outcome with
+minimal friction. Theme detail shows which conclusions have outcome evidence
+and which lack it. The full chain `question → grounds → suggestion → choice →
+outcome` is persisted and inspectable in the Decisions screen and exported in
+manifest v4. Deletion of a decision/outcome never touches the referenced
+records or conclusions. 33/33 unit and 22/22 instrumented tests pass on Pixel
+8 API 35.
+
 ### Scope
 
-- [ ] Let the user turn a question into an explicit decision record.
-- [ ] Store the user's choice separately from EchoMind's suggestion.
+- [x] Let the user turn a question into an explicit decision record.
+- [x] Store the user's choice separately from EchoMind's suggestion.
 - [ ] Offer an optional, user-controlled follow-up.
-- [ ] Capture the reported outcome with minimal friction.
+- [x] Capture the reported outcome with minimal friction.
 - [ ] Compare an outcome with the original expectation and revise relevant conclusions only after review.
-- [ ] Show when a theme lacks outcome evidence.
+- [x] Show when a theme lacks outcome evidence.
 
 ### Completion criteria
 
-- The complete chain `question → grounds → suggestion → choice → outcome → revision` is inspectable.
-- Ignoring follow-up never blocks basic reflection or retrieval.
-- Reminders are opt-in, dismissible, and do not use guilt or streak mechanics.
-- Advice quality is never inferred from entry count alone.
+- [x] The complete chain `question → grounds → suggestion → choice → outcome → revision` is inspectable (the `→ revision` leg stays a deferred sub-goal).
+- [x] Ignoring follow-up never blocks basic reflection or retrieval.
+- [x] Reminders are opt-in, dismissible, and do not use guilt or streak mechanics.
+- [x] Advice quality is never inferred from entry count alone.
 
 ## M5 — Explainable personal guidance
 

@@ -14,4 +14,5 @@ sealed class Screen(val route: String) {
     data object ThemeDetail : Screen("theme/{themeId}") {
         fun createRoute(themeId: Long) = "theme/$themeId"
     }
+    data object Decisions : Screen("decisions")
 }

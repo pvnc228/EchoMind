@@ -184,3 +184,45 @@ data class ThemeLinkEntity(
     @ColumnInfo(name = "created_at")
     val createdAt: Long
 )
+
+@Entity(
+    tableName = "decisions",
+    indices = [Index(value = ["source_revision_id"])]
+)
+data class DecisionEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    @ColumnInfo(name = "question")
+    val question: String,
+    @ColumnInfo(name = "suggestion")
+    val suggestion: String? = null,
+    @ColumnInfo(name = "choice")
+    val choice: String? = null,
+    @ColumnInfo(name = "source_revision_id")
+    val sourceRevisionId: Long? = null,
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long
+)
+
+@Entity(
+    tableName = "outcomes",
+    foreignKeys = [
+        ForeignKey(
+            entity = DecisionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["decision_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("decision_id")]
+)
+data class OutcomeEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    @ColumnInfo(name = "decision_id")
+    val decisionId: Long,
+    @ColumnInfo(name = "report")
+    val report: String,
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long
+)
