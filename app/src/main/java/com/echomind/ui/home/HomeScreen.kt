@@ -1,7 +1,6 @@
 package com.echomind.ui.home
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,9 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Label
@@ -25,11 +24,11 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -37,12 +36,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.echomind.domain.model.Entry
-import com.echomind.domain.model.EntryCategory
+import com.echomind.domain.model.HomeCard
+import com.echomind.domain.model.HomeCardType
+import com.echomind.domain.model.ThemeCoverage
 import com.echomind.ui.theme.HomeSkeleton
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -57,6 +59,7 @@ fun HomeScreen(
     onNavigateToDetail: (Long) -> Unit = {},
     onNavigateToQa: () -> Unit = {},
     onNavigateToThemes: () -> Unit = {},
+    onNavigateToTheme: (Long) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -69,7 +72,7 @@ fun HomeScreen(
         onNavigateToDetail = onNavigateToDetail,
         onNavigateToQa = onNavigateToQa,
         onNavigateToThemes = onNavigateToThemes,
-        onSelectCategory = viewModel::selectCategory
+        onNavigateToTheme = onNavigateToTheme
     )
 }
 
@@ -83,7 +86,7 @@ fun HomeScreenContent(
     onNavigateToDetail: (Long) -> Unit = {},
     onNavigateToQa: () -> Unit = {},
     onNavigateToThemes: () -> Unit = {},
-    onSelectCategory: (String?) -> Unit = {}
+    onNavigateToTheme: (Long) -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -113,7 +116,7 @@ fun HomeScreenContent(
     ) { padding ->
         if (uiState.isLoading) {
             HomeSkeleton()
-        } else if (uiState.entries.isEmpty()) {
+        } else if (!uiState.hasKnowledge && uiState.recent.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
@@ -135,32 +138,148 @@ fun HomeScreenContent(
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        FilterChip(
-                            selected = uiState.selectedCategory == null,
-                            onClick = { onSelectCategory(null) },
-                            label = { Text("All") }
+                item { PromptHeader(onNavigateToRecord = onNavigateToRecord) }
+
+                uiState.card?.let { card ->
+                    item {
+                        RelevantCard(
+                            card = card,
+                            onOpen = { onNavigateToTheme(card.themeId) },
+                            onContinue = { onNavigateToRecord() },
+                            onInspect = { onNavigateToTheme(card.themeId) }
                         )
-                        EntryCategory.entries.forEach { category ->
-                            FilterChip(
-                                selected = uiState.selectedCategory == category.name.lowercase(),
-                                onClick = { onSelectCategory(category.name.lowercase()) },
-                                label = { Text(category.displayName) }
-                            )
-                        }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
                 }
-                items(uiState.entries, key = { it.id }) { entry ->
-                    EntryCard(entry = entry, onClick = { onNavigateToDetail(entry.id) })
+
+                if (uiState.coverage.isNotEmpty()) {
+                    item {
+                        EvidenceCoverageSection(
+                            coverage = uiState.coverage,
+                            onOpenTheme = onNavigateToTheme
+                        )
+                    }
+                }
+
+                if (uiState.recent.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Recent",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    items(uiState.recent.take(5), key = { it.id }) { entry ->
+                        EntryCard(entry = entry, onClick = { onNavigateToDetail(entry.id) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PromptHeader(onNavigateToRecord: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "What are you thinking about?",
+                style = MaterialTheme.typography.titleLarge
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Capture a thought, or revisit one something reminds you of.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedButton(onClick = onNavigateToRecord) {
+                Text("Write a reflection")
+            }
+        }
+    }
+}
+
+@Composable
+private fun RelevantCard(
+    card: HomeCard,
+    onOpen: () -> Unit,
+    onContinue: () -> Unit,
+    onInspect: () -> Unit
+) {
+    val accent = when (card.type) {
+        HomeCardType.CONTRADICTION -> MaterialTheme.colorScheme.error
+        HomeCardType.THIN_THEME -> MaterialTheme.colorScheme.tertiary
+        HomeCardType.THEME -> MaterialTheme.colorScheme.primary
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "For you",
+                style = MaterialTheme.typography.labelMedium,
+                color = accent
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                card.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(card.detail, style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                card.reason,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onInspect) { Text("Inspect") }
+                OutlinedButton(onClick = onContinue) { Text("Continue") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EvidenceCoverageSection(
+    coverage: List<ThemeCoverage>,
+    onOpenTheme: (Long) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "Evidence by theme",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        coverage.forEach { theme ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenTheme(theme.themeId) }
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(theme.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                if (theme.conclusionCount == 0 || theme.evidenceCount == 0) {
+                    Text(
+                        "insufficient evidence",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                } else {
+                    Text(
+                        "${theme.evidenceCount} record(s) · ${theme.conclusionCount} conclusion(s)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

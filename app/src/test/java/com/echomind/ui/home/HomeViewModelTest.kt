@@ -1,6 +1,7 @@
 package com.echomind.ui.home
 
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import com.echomind.data.repository.KnowledgeRepository
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.EntryCategory
 import com.echomind.domain.usecase.GetEntriesUseCase
@@ -15,6 +16,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -26,6 +28,7 @@ class HomeViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private val getEntriesUseCase: GetEntriesUseCase = mockk()
+    private val knowledgeRepository: KnowledgeRepository = mockk()
     private lateinit var viewModel: HomeViewModel
 
     @Before
@@ -39,30 +42,35 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `init loads entries`() = runTest(testDispatcher) {
+    fun `init loads entries and relevance`() = runTest(testDispatcher) {
         val entries = listOf(
             Entry(1, "Entry 1", null, 1000, 1000L, EntryCategory.GENERAL, emptyList(), "", emptyList(), emptyList(), emptyList()),
             Entry(2, "Entry 2", null, 2000, 2000L, EntryCategory.IDEA, emptyList(), "", emptyList(), emptyList(), emptyList())
         )
+        coEvery { getEntriesUseCase.getRecentEntries(any()) } returns entries
         coEvery { getEntriesUseCase.getAllEntries() } returns flowOf(entries)
+        coEvery { knowledgeRepository.getHomeRelevance() } returns com.echomind.domain.model.HomeRelevance(hasKnowledge = false)
 
-        viewModel = HomeViewModel(getEntriesUseCase)
+        viewModel = HomeViewModel(getEntriesUseCase, knowledgeRepository)
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
         assertEquals(2, state.entries.size)
-        assertEquals(false, state.isLoading)
+        assertEquals(2, state.recent.size)
+        assertFalse(state.isLoading)
     }
 
     @Test
     fun `selectCategory filters entries`() = runTest(testDispatcher) {
+        coEvery { getEntriesUseCase.getRecentEntries(any()) } returns emptyList()
         coEvery { getEntriesUseCase.getAllEntries() } returns flowOf(emptyList())
+        coEvery { knowledgeRepository.getHomeRelevance() } returns com.echomind.domain.model.HomeRelevance(hasKnowledge = false)
         val taskEntries = listOf(
             Entry(3, "Task", null, 1000, 1000L, EntryCategory.TASK, emptyList(), "", emptyList(), emptyList(), emptyList())
         )
         coEvery { getEntriesUseCase.getEntriesByCategory("task") } returns flowOf(taskEntries)
 
-        viewModel = HomeViewModel(getEntriesUseCase)
+        viewModel = HomeViewModel(getEntriesUseCase, knowledgeRepository)
         advanceUntilIdle()
         viewModel.selectCategory("task")
         advanceUntilIdle()

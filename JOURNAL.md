@@ -932,3 +932,52 @@ testable hardware available.
 - Remote-assisted candidate detection still awaits the minimized
   remote-context preview and per-request approval pipeline.
 - Signed: `агент opencode`.
+
+---
+
+## 2026-08-08 - M3 relevant resurfacing (first slice)
+
+### Skills Used
+
+- **`ponytail`** (full) - reused the existing `knowledgeDao`, `Theme`,
+  `ThemeConclusion`, and `RelatedRecord` graph primitives instead of adding a
+  new relevance engine or any schema change. Card selection is a pure function
+  (`HomeRelevanceBuilder`) over cheap COUNT queries, so the decision logic is
+  unit-testable without a database.
+
+### Done
+
+- Added `HomeRelevance` domain model and `HomeRelevanceBuilder` (pure): picks
+  one card deterministically - (1) a theme with contradicting records, else
+  (2) a confirmed conclusion with no supporting records, else (3) the theme
+  with the most evidence; and builds per-theme `ThemeCoverage`
+  (conclusionCount, evidenceCount).
+- `KnowledgeRepository.getHomeRelevance()` counts confirmed conclusions and
+  evidence/contradiction links per active theme from the existing graph. No
+  remote calls; no provenance leaks.
+- Reworked `HomeViewModel` to also load relevance and recent entries, and
+  `HomeScreen` from timeline-first to prompt + one relevant card (with an
+  explicit reason) + "Evidence by theme" coverage + Recent.
+- Card actions: Inspect and Continue both open the theme detail / capture.
+  Dismiss/postpone are not yet separate states.
+- Wired `onNavigateToTheme` from Home to `ThemeDetail`.
+
+### Evidence
+
+- `:app:compileDebugUnitTestKotlin`, `:app:compileDebugAndroidTestKotlin`,
+  `:app:assembleDebug` - passed.
+- New unit tests: `HomeRelevanceBuilderTest` (priority ordering, thin-theme
+  flag, coverage) - 4/4.
+- `:app:testDebugUnitTest` - **31/31** (verified from `TEST-*.xml`).
+- `:app:connectedDebugAndroidTest` on Pixel 8 API 35 - **18/18**
+  (verified from `TEST-*.xml`: `tests="18" failures="0"`).
+- `git diff --check` - clean.
+
+### Remaining limitations
+
+- Inspect and Continue are the only card actions; dismiss/postpone is a
+  separate concern.
+- The card is deterministic and evidence-count based; it does not yet
+  distinguish reflection/connection/change/guidance capability types, and
+  sparse-domain confidence is not yet message-scoped.
+- Signed: `����� opencode`.

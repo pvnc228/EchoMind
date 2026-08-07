@@ -62,7 +62,8 @@ fun EchoMindNavGraph(
                 onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
                 onNavigateToDetail = { entryId -> navController.navigate(Screen.Detail.createRoute(entryId)) },
                 onNavigateToQa = { navController.navigate(Screen.Qa.route) },
-                onNavigateToThemes = { navController.navigate(Screen.Themes.route) }
+                onNavigateToThemes = { navController.navigate(Screen.Themes.route) },
+                onNavigateToTheme = { themeId -> navController.navigate(Screen.ThemeDetail.createRoute(themeId)) }
             )
         }
         composable(Screen.Themes.route) {

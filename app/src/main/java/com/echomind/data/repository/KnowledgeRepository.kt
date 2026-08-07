@@ -6,10 +6,13 @@ import com.echomind.data.local.dao.KnowledgeDao
 import com.echomind.data.local.entity.EvidenceLinkEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
+import com.echomind.domain.model.HomeRelevance
+import com.echomind.domain.model.HomeRelevanceBuilder
 import com.echomind.domain.model.KnowledgeSearchResult
 import com.echomind.domain.model.RelatedRecord
 import com.echomind.domain.model.Relationship
 import com.echomind.domain.model.Theme
+import com.echomind.domain.model.ThemeCandidate
 import com.echomind.domain.model.ThemeConclusion
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -198,6 +201,34 @@ class KnowledgeRepository @Inject constructor(
         sharedWithThemes.isNotEmpty() ->
             "Mentions a theme: ${sharedWithThemes.joinToString(", ")}"
         else -> null
+    }
+
+    suspend fun getHomeRelevance(): HomeRelevance {
+        val themes = knowledgeDao.getActiveThemes()
+        val candidates = themes.mapNotNull { theme ->
+            val links = knowledgeDao.getConfirmedLinksForTheme(theme.id)
+            if (links.isEmpty()) return@mapNotNull null
+            var contradictionCount = 0
+            var evidenceCount = 0
+            links.forEach { link ->
+                val revision = knowledgeDao.getRevisionById(link.conclusionRevisionId) ?: return@forEach
+                val conclusion = knowledgeDao.getConclusionById(revision.conclusionId)
+                val ownRaw = conclusion?.rawRecordId
+                knowledgeDao.getEvidenceLinksForRevision(revision.id).forEach { ev ->
+                    if (ev.sourceRawRecordId == ownRaw) return@forEach
+                    evidenceCount++
+                    if (ev.relationship == Relationship.CONTRADICTS) contradictionCount++
+                }
+            }
+            ThemeCandidate(
+                themeId = theme.id,
+                name = theme.name,
+                conclusionCount = links.size,
+                evidenceCount = evidenceCount,
+                contradictionCount = contradictionCount
+            )
+        }
+        return HomeRelevanceBuilder.build(candidates)
     }
 
     suspend fun search(query: String): List<KnowledgeSearchResult> {
