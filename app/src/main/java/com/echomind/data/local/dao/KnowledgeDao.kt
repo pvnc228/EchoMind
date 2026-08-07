@@ -83,6 +83,24 @@ interface KnowledgeDao {
     @Query("SELECT * FROM conclusion_revisions WHERE id = :id")
     suspend fun getRevisionById(id: Long): ConclusionRevisionEntity?
 
+    @Query("SELECT * FROM conclusion_revisions WHERE conclusion_id = :conclusionId ORDER BY version")
+    suspend fun getRevisionsForConclusion(conclusionId: Long): List<ConclusionRevisionEntity>
+
+    @Query("SELECT MAX(version) FROM conclusion_revisions WHERE conclusion_id = :conclusionId")
+    suspend fun getMaxRevisionVersion(conclusionId: Long): Int?
+
+    @Query(
+        "UPDATE evidence_links SET conclusion_revision_id = :toRevisionId " +
+            "WHERE conclusion_revision_id = :fromRevisionId"
+    )
+    suspend fun rebaseEvidenceLinks(fromRevisionId: Long, toRevisionId: Long): Int
+
+    @Query(
+        "UPDATE theme_links SET conclusion_revision_id = :toRevisionId " +
+            "WHERE conclusion_revision_id = :fromRevisionId"
+    )
+    suspend fun rebaseThemeLinks(fromRevisionId: Long, toRevisionId: Long): Int
+
     @Query(
         "SELECT * FROM evidence_links WHERE conclusion_revision_id = :revisionId " +
             "ORDER BY id LIMIT 1"
@@ -164,4 +182,22 @@ interface KnowledgeDao {
 
     @Query("DELETE FROM themes WHERE id = :themeId")
     suspend fun deleteThemeById(themeId: Long): Int
+
+    @Query(
+        "SELECT * FROM raw_records WHERE original_text LIKE '%' || :query || '%' " +
+            "ORDER BY created_at DESC, id DESC"
+    )
+    suspend fun searchRawRecords(query: String): List<RawRecordEntity>
+
+    @Query(
+        "SELECT * FROM conclusion_revisions " +
+            "WHERE text LIKE '%' || :query || '%' " +
+            "ORDER BY created_at DESC, id DESC"
+    )
+    suspend fun searchRevisions(query: String): List<ConclusionRevisionEntity>
+
+    @Query(
+        "SELECT * FROM themes WHERE name LIKE '%' || :query || '%' ORDER BY name"
+    )
+    suspend fun searchThemes(query: String): List<ThemeEntity>
 }

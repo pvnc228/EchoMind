@@ -1,7 +1,6 @@
 # EchoMind — Development Journal
 
 ## Development Rules
-
 ### Rule 1: Commit and Push Completed Steps
 Every completed development step must end with a descriptive local commit and
 `git push` after validation. Push only the current project branch and report the
@@ -830,4 +829,63 @@ testable hardware available.
   future restore are separate concerns).
 - Dated revision history (viewing/editing prior revisions) and archive/search
   over the provenance graph remain open M2 milestones.
+- Signed: `агент opencode`.
+
+---
+
+## 2026-08-08 — M2 complete: revision history and graph-wide search
+
+### Skills Used
+
+- **`ponytail`** (full) — closed both open M2 sub-goals without a schema
+  migration or new dependency: revisions reuse the existing
+  `conclusion_revisions` table, links rebase in place, and search reuses the
+  existing `KnowledgeDao` `LIKE` queries over the raw/revision/theme tables.
+  A fragile word-level diff idea was cut in favor of showing the full ordered
+  revision list.
+
+### Done
+
+- **Dated revision history.** Added `ReflectionRepository.revise()`: a
+  confirmed conclusion can be revised to a new dated revision; the previous
+  version stays in `conclusion_revisions`, the current-revision pointer moves,
+  and existing `evidence_links` and `theme_links` rebase onto the new
+  revision so connections track the current wording.
+- Added `ReflectionRepository.getRevisionHistory()` returning domain `Revision`
+  objects with a `isCurrent` flag, and the DAO helpers behind it
+  (`getRevisionsForConclusion`, `getMaxRevisionVersion`, `rebaseEvidenceLinks`,
+  `rebaseThemeLinks`).
+- Added a **Revision history** section to the confirmed-conclusion detail view
+  listing each dated version with a "current" marker and a "Revise
+  conclusion..." action that records a new version without deleting the old
+  ones.
+
+- **Graph-wide search.** Added `KnowledgeRepository.search()` returning typed
+  results across raw records, current conclusions, and themes
+  (`KnowledgeSearchResult`), reusing the existing DAO with three `LIKE`
+  queries. Extended `SearchViewModel`/`SearchScreen` to surface these results
+  and navigate to entry detail (raw/conclusion) or theme detail (theme),
+  while keeping the legacy entry search.
+
+### Evidence
+
+- `:app:compileDebugKotlin` and `:app:compileDebugAndroidTestKotlin` — passed.
+- `:app:testDebugUnitTest` — passed.
+- `:app:connectedDebugAndroidTest` on Pixel 8 API 35 — **18/18 passed**,
+  including new `reviseCreatesNewRevisionKeepsHistoryAndRebasesLinks` and
+  `searchReturnsRawConclusionsAndThemesAcrossTheGraph`.
+- The first instrumented run failed one assertion (new revision carries both
+  its own source link and the related record = 2 links); the assertion was
+  corrected to the real count and the suite passed.
+- `:app:assembleDebug` — passed; `git diff --check` — passed.
+
+### Remaining limitations
+
+- Candidate-relationship detection (M2 item) stays open; it requires the
+  minimized remote-context preview and per-request approval pipeline, deferred
+  to a later milestone.
+- The revision-list view is read-only history with edit; viewing a diff
+  between two specific revisions is not a separate screen.
+- Archive/search now index the provenance graph in addition to legacy entries;
+  raw record and its confirmed conclusion appear as separate results by design.
 - Signed: `агент opencode`.

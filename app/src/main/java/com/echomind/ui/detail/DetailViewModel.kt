@@ -11,6 +11,7 @@ import com.echomind.data.repository.ReflectionRepository
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.RelatedRecord
 import com.echomind.domain.model.ReflectionSession
+import com.echomind.domain.model.Revision
 import com.echomind.domain.model.Theme
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
@@ -29,6 +30,8 @@ data class DetailUiState(
     val availableThemes: List<Theme> = emptyList(),
     val relatedRecords: List<RelatedRecord> = emptyList(),
     val otherEntries: List<RelatedRecord> = emptyList(),
+    val revisions: List<Revision> = emptyList(),
+    val isRevising: Boolean = false,
     val isLoading: Boolean = true,
     val isPlaying: Boolean = false,
     val isDeleting: Boolean = false,
@@ -58,9 +61,15 @@ class DetailViewModel @Inject constructor(
                 val entry = entryRepository.getEntryById(id)
                 val reflection = reflectionRepository.loadReflectionForEntry(id)
                 loadLinked(reflection)
+                val revisions = if (reflection != null) {
+                    reflectionRepository.getRevisionHistory(reflection.hypothesisId)
+                } else {
+                    emptyList()
+                }
                 _uiState.value = _uiState.value.copy(
                     entry = entry,
                     reflection = reflection,
+                    revisions = revisions,
                     isLoading = false
                 )
             } catch (e: Exception) {
@@ -132,6 +141,29 @@ class DetailViewModel @Inject constructor(
                 loadLinked(_uiState.value.reflection)
             }.onFailure { error ->
                 _uiState.value = _uiState.value.copy(error = error.message)
+            }
+        }
+    }
+
+    fun revise(newWording: String) {
+        val reflection = _uiState.value.reflection ?: return
+        if (_uiState.value.isRevising) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isRevising = true, error = null)
+            runCatching {
+                val revised = reflectionRepository.revise(reflection.hypothesisId, newWording)
+                loadLinked(revised)
+                val revisions = reflectionRepository.getRevisionHistory(reflection.hypothesisId)
+                _uiState.value = _uiState.value.copy(
+                    reflection = revised,
+                    revisions = revisions,
+                    isRevising = false
+                )
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    isRevising = false,
+                    error = error.message ?: "Could not revise the conclusion."
+                )
             }
         }
     }

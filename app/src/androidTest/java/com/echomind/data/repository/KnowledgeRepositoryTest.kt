@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
+import com.echomind.domain.model.KnowledgeSearchResult
 import com.echomind.domain.model.Relationship
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -123,6 +124,41 @@ class KnowledgeRepositoryTest {
 
                 assertTrue(knowledgeRepository.getThemes().isEmpty())
                 assertEquals(1, knowledgeRepository.getThemeConclusions(themeId).size)
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun searchReturnsRawConclusionsAndThemesAcrossTheGraph() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val knowledgeRepository = knowledgeRepository(database)
+            runBlocking {
+                val rawId = reflectionRepository.captureRawText("A career decision source")
+                val proposal = reflectionRepository.createLocalProposal(rawId)
+                val session = reflectionRepository.confirm(
+                    proposal.hypothesisId,
+                    "The career decision is clear"
+                )
+                val themeId = knowledgeRepository.createTheme("Career planning")
+                knowledgeRepository.linkConclusionToTheme(
+                    requireNotNull(session.revisionId),
+                    themeId
+                )
+
+                val results = knowledgeRepository.search("career")
+                assertEquals(1, results.count { it is KnowledgeSearchResult.RawRecord })
+                assertEquals(1, results.count { it is KnowledgeSearchResult.Conclusion })
+                assertTrue(results.any { it is KnowledgeSearchResult.Theme })
+
+                val onlyTheme = knowledgeRepository.search("planning")
+                assertEquals(
+                    1,
+                    onlyTheme.count { it is KnowledgeSearchResult.Theme }
+                )
             }
         } finally {
             database.close()

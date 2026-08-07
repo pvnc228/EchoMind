@@ -6,6 +6,7 @@ import com.echomind.data.local.dao.KnowledgeDao
 import com.echomind.data.local.entity.EvidenceLinkEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
+import com.echomind.domain.model.KnowledgeSearchResult
 import com.echomind.domain.model.RelatedRecord
 import com.echomind.domain.model.Relationship
 import com.echomind.domain.model.Theme
@@ -154,5 +155,39 @@ class KnowledgeRepository @Inject constructor(
                 recordedAt = raw.createdAt
             )
         }
+    }
+
+    suspend fun search(query: String): List<KnowledgeSearchResult> {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return emptyList()
+
+        val rawResults = knowledgeDao.searchRawRecords(trimmed).map { raw ->
+            KnowledgeSearchResult.RawRecord(
+                rawRecordId = raw.id,
+                entryId = raw.legacyEntryId,
+                text = raw.originalText,
+                createdAt = raw.createdAt
+            )
+        }
+        val conclusionResults = knowledgeDao.searchRevisions(trimmed).mapNotNull { revision ->
+            val conclusion = knowledgeDao.getConclusionById(revision.conclusionId) ?: return@mapNotNull null
+            if (conclusion.currentRevisionId != revision.id) return@mapNotNull null
+            val raw = knowledgeDao.getRawRecordById(conclusion.rawRecordId)
+            KnowledgeSearchResult.Conclusion(
+                conclusionId = conclusion.id,
+                entryId = raw?.legacyEntryId,
+                text = revision.text,
+                revisionVersion = revision.version,
+                createdAt = revision.createdAt
+            )
+        }
+        val themeResults = knowledgeDao.searchThemes(trimmed).map { theme ->
+            KnowledgeSearchResult.Theme(
+                themeId = theme.id,
+                text = theme.name,
+                conclusionCount = knowledgeDao.getConfirmedLinksForTheme(theme.id).size
+            )
+        }
+        return rawResults + conclusionResults + themeResults
     }
 }

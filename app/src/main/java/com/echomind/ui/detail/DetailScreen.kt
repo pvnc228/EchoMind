@@ -25,6 +25,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +46,7 @@ import com.echomind.domain.model.ReflectionSession
 import com.echomind.domain.model.ReflectionStatus
 import com.echomind.domain.model.RelatedRecord
 import com.echomind.domain.model.Relationship
+import com.echomind.domain.model.Revision
 import com.echomind.domain.model.Theme
 import com.echomind.ui.theme.DetailSkeleton
 import java.text.SimpleDateFormat
@@ -187,6 +189,13 @@ fun DetailScreen(
                         SavedReflectionProvenance(reflection)
 
                         if (reflection.confirmedConclusion != null && reflection.revisionId != null) {
+                            Spacer(modifier = Modifier.height(20.dp))
+                            RevisionHistorySection(
+                                revisions = uiState.revisions,
+                                isRevising = uiState.isRevising,
+                                onRevise = { wording -> viewModel.revise(wording) }
+                            )
+
                             Spacer(modifier = Modifier.height(20.dp))
                             ConnectionsSection(
                                 themes = uiState.themes,
@@ -397,6 +406,102 @@ fun ConnectionsSection(
 }
 
 @Composable
+private fun RevisionHistorySection(
+    revisions: List<Revision>,
+    isRevising: Boolean,
+    onRevise: (String) -> Unit
+) {
+    var showRevise by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf("") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionHeader("Revision history")
+        if (revisions.isEmpty()) {
+            Text(
+                "No revisions recorded.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            revisions.sortedBy { it.version }.forEach { revision ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Revision ${revision.version}",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            if (revision.isCurrent) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "current",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.weight(1f))
+                            Text(
+                                revisionDate(revision.createdAt),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(revision.text, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+        TextButton(
+            enabled = !isRevising,
+            onClick = {
+                draft = revisions.sortedBy { it.version }.lastOrNull()?.text.orEmpty()
+                showRevise = true
+            }
+        ) {
+            Text("Revise conclusion...")
+        }
+    }
+
+    if (showRevise) {
+        AlertDialog(
+            onDismissRequest = { showRevise = false },
+            title = { Text("Revise conclusion") },
+            text = {
+                Column {
+                    Text(
+                        "This records a new version and keeps the previous ones.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        label = { Text("Conclusion wording") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = draft.isNotBlank() && !isRevising,
+                    onClick = {
+                        showRevise = false
+                        onRevise(draft.trim())
+                    }
+                ) {
+                    Text("Save revision")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRevise = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
 private fun RecordRelationshipRow(
     record: RelatedRecord,
     onSelect: () -> Unit,
@@ -513,3 +618,6 @@ private fun SectionHeader(title: String) {
         fontWeight = FontWeight.SemiBold
     )
 }
+
+private fun revisionDate(epochMillis: Long): String =
+    SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()).format(Date(epochMillis))

@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
+import com.echomind.domain.model.Relationship
 import com.echomind.domain.model.ReflectionStatus
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -144,6 +145,56 @@ class ReflectionRepositoryTest {
             assertEquals("I think I need more evidence.", restored?.originalText)
         } finally {
             reopenedDatabase.close()
+        }
+    }
+
+    @Test
+    fun reviseCreatesNewRevisionKeepsHistoryAndRebasesLinks() {
+        val database = inMemoryDatabase()
+        try {
+            val repository = repository(database)
+            val knowledgeRepository = KnowledgeRepository(database, database.knowledgeDao())
+            runBlocking {
+                val rawId = repository.captureRawText("I am torn about changing roles.")
+                val proposal = repository.createLocalProposal(rawId)
+                val confirmed = repository.confirm(proposal.hypothesisId, "I should change roles.")
+                val revisionId = requireNotNull(confirmed.revisionId)
+
+                val themeId = knowledgeRepository.createTheme("Career")
+                knowledgeRepository.linkConclusionToTheme(themeId, revisionId)
+                val secondRawId = repository.captureRawText("Past role changes added stress.")
+                val secondProposal = repository.createLocalProposal(secondRawId)
+                repository.confirm(secondProposal.hypothesisId, "Role changes add stress.")
+                knowledgeRepository.linkRelatedRecord(
+                    revisionId = revisionId,
+                    sourceRecordId = secondRawId,
+                    relationship = Relationship.CONTRADICTS
+                )
+
+                val revised = repository.revise(proposal.hypothesisId, "I should change roles carefully.")
+                assertEquals(2, revised.revisionVersion)
+                assertEquals("I should change roles carefully.", revised.confirmedConclusion)
+
+                val conclusion = database.knowledgeDao().getConclusionForRawRecord(rawId)!!
+                val revisions = database.knowledgeDao().getRevisionsForConclusion(conclusion.id)
+                assertEquals(2, revisions.size)
+                assertEquals(1, revisions[0].version)
+                assertEquals("I should change roles.", revisions[0].text)
+                assertEquals(2, revisions[1].version)
+
+                val newRevisionId = requireNotNull(revised.revisionId)
+                assertEquals(newRevisionId, conclusion.currentRevisionId)
+                assertEquals(
+                    1,
+                    database.knowledgeDao().getConfirmedThemeLink(themeId, newRevisionId)?.let { 1 }
+                )
+                assertEquals(
+                    2,
+                    database.knowledgeDao().getEvidenceLinksForRevision(newRevisionId).size
+                )
+            }
+        } finally {
+            database.close()
         }
     }
 

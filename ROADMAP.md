@@ -133,8 +133,8 @@ than a storage or confirmation-flow failure. See
 
 - [x] Link conclusions to supporting and contradicting records.
 - [x] Create and edit themes without treating AI clustering as truth.
-- [ ] Preserve dated revisions and show what changed.
-- [ ] Add archive and search across raw records, conclusions, and themes.
+- [x] Preserve dated revisions and show what changed.
+- [x] Add archive and search across raw records, conclusions, and themes.
 - [ ] Detect candidate relationships locally or with minimized remote context.
 - [x] Require user confirmation for durable semantic links inferred by AI.
 - [x] Extend export, deletion, and backup to all new objects.
@@ -152,8 +152,16 @@ user-owned themes (schema v4), confirmed theme links, and user-managed
 supports/contradicts relationships between confirmed conclusions (reusing
 `evidence_links`), plus export manifest v3 for all new objects.
 16/16 instrumented tests pass on Pixel 8 API 35.
-Dated revision history and archive/search over the provenance graph remain
-open M2 sub-goals.
+
+**Status (2026-08-07, M2 complete):** the second M2 slice closes dated
+revision history and graph-wide search. Confirmed conclusions can be revised
+to a new dated revision while the previous versions remain inspectable in the
+detail screen; theme and evidence links rebase onto the current revision.
+Search now returns raw records, current conclusions, and themes across the
+provenance graph and navigates to detail or theme screens. 18/18 instrumented
+tests pass on Pixel 8 API 35. The remaining open M2 item is AI-detected
+candidate relationships, which require the minimized remote-context approval
+pipeline and are deferred to a later milestone.
 
 ## M3 — Relevant resurfacing and visible capability
 
@@ -290,10 +298,11 @@ before this product proof is complete.
 
 The next product milestone is **M2 — Traceable personal knowledge model**
 (construct links to evidence/contradictions, themes, revisions, archive, and
-search over the provenance graph). The first M2 slice — user-owned themes,
-confirmed theme links, and user-managed supports/contradicts relationships —
-is implemented and verified (2026-08-07). The remaining M2 sub-goals are dated
-revision history and archive/search over the provenance graph.
+search over the provenance graph). It is now complete: user-owned themes,
+confirmed theme links, user-managed supports/contradicts relationships, dated
+revision history, and graph-wide search (2026-08-07). The only open M2 item is
+AI-detected candidate relationships, which depends on the minimized
+remote-context approval pipeline and is deferred to a later milestone.
 
 ## UX/UI audit and approved implementation checkpoint
 

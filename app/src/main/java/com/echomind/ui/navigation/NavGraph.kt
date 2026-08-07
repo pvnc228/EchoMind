@@ -95,7 +95,8 @@ fun EchoMindNavGraph(
         composable(Screen.Search.route) {
             SearchScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToDetail = { entryId -> navController.navigate(Screen.Detail.createRoute(entryId)) }
+                onNavigateToDetail = { entryId -> navController.navigate(Screen.Detail.createRoute(entryId)) },
+                onNavigateToTheme = { themeId -> navController.navigate(Screen.ThemeDetail.createRoute(themeId)) }
             )
         }
         composable(Screen.Settings.route) {

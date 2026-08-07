@@ -13,6 +13,7 @@ import com.echomind.data.local.entity.EvidenceLinkEntity
 import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.domain.model.ReflectionSession
 import com.echomind.domain.model.ReflectionStatus
+import com.echomind.domain.model.Revision
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.serialization.decodeFromString
@@ -162,6 +163,68 @@ class ReflectionRepository @Inject constructor(
                     status = ReflectionStatus.CONFIRMED
                 )
             )
+        }
+
+        return loadReflection(hypothesisId)
+    }
+
+    suspend fun getRevisionHistory(hypothesisId: Long): List<Revision> {
+        val hypothesis = requireNotNull(
+            knowledgeDao.getHypothesisById(hypothesisId)
+        ) { "Reflection proposal $hypothesisId does not exist." }
+        val conclusion = knowledgeDao.getConclusionForRawRecord(hypothesis.rawRecordId)
+            ?: return emptyList()
+        val currentRevisionId = conclusion.currentRevisionId
+        return knowledgeDao.getRevisionsForConclusion(conclusion.id).map { entity ->
+            Revision(
+                version = entity.version,
+                text = entity.text,
+                author = entity.author,
+                createdAt = entity.createdAt,
+                isCurrent = entity.id == currentRevisionId
+            )
+        }
+    }
+
+    suspend fun getCurrentRevisionId(hypothesisId: Long): Long? {
+        val hypothesis = requireNotNull(
+            knowledgeDao.getHypothesisById(hypothesisId)
+        ) { "Reflection proposal $hypothesisId does not exist." }
+        return knowledgeDao.getConclusionForRawRecord(hypothesis.rawRecordId)?.currentRevisionId
+    }
+
+    suspend fun revise(hypothesisId: Long, newWording: String): ReflectionSession {
+        require(newWording.isNotBlank()) { "A revised conclusion cannot be blank." }
+
+        database.withTransaction {
+            val hypothesis = requireNotNull(knowledgeDao.getHypothesisById(hypothesisId)) {
+                "Reflection proposal $hypothesisId does not exist."
+            }
+            check(hypothesis.status == ReflectionStatus.CONFIRMED) {
+                "Only a confirmed reflection can be revised."
+            }
+            val conclusion = requireNotNull(
+                knowledgeDao.getConclusionForRawRecord(hypothesis.rawRecordId)
+            ) { "No confirmed conclusion to revise." }
+            val currentRevision = conclusion.currentRevisionId?.let { revisionId ->
+                requireNotNull(knowledgeDao.getRevisionById(revisionId)) {
+                    "Current revision $revisionId does not exist."
+                }
+            } ?: throw IllegalStateException("No current revision to revise.")
+
+            val createdAt = System.currentTimeMillis()
+            val newRevisionId = knowledgeDao.insertRevision(
+                ConclusionRevisionEntity(
+                    conclusionId = conclusion.id,
+                    version = (knowledgeDao.getMaxRevisionVersion(conclusion.id) ?: currentRevision.version) + 1,
+                    text = newWording,
+                    author = "user",
+                    createdAt = createdAt
+                )
+            )
+            knowledgeDao.rebaseEvidenceLinks(currentRevision.id, newRevisionId)
+            knowledgeDao.rebaseThemeLinks(currentRevision.id, newRevisionId)
+            check(knowledgeDao.setCurrentRevision(conclusion.id, newRevisionId) == 1)
         }
 
         return loadReflection(hypothesisId)

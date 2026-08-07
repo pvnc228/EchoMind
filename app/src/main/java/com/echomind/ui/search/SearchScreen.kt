@@ -23,12 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.echomind.domain.model.KnowledgeSearchResult
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     onNavigateBack: () -> Unit,
     onNavigateToDetail: (Long) -> Unit = {},
+    onNavigateToTheme: (Long) -> Unit = {},
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -54,12 +56,38 @@ fun SearchScreen(
                 OutlinedTextField(
                     value = uiState.query,
                     onValueChange = { viewModel.onQueryChanged(it) },
-                    label = { Text("Search entries...") },
+                    label = { Text("Search thoughts, conclusions, themes...") },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
             if (uiState.isLoading) {
                 item { Text("Searching...") }
+            }
+            items(uiState.knowledgeResults) { result ->
+                when (result) {
+                    is KnowledgeSearchResult.Theme -> {
+                        Text(
+                            text = "${result.text} · ${result.label}",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onNavigateToTheme(result.themeId)
+                                }
+                                .padding(8.dp)
+                        )
+                    }
+                    else -> {
+                        Text(
+                            text = "${result.snippet} · ${result.label}",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    result.entryId?.let(onNavigateToDetail)
+                                }
+                                .padding(8.dp)
+                        )
+                    }
+                }
             }
             items(uiState.results, key = { it.id }) { entry ->
                 Text(
@@ -70,7 +98,9 @@ fun SearchScreen(
                         .padding(8.dp)
                 )
             }
-            if (uiState.query.isNotBlank() && !uiState.isLoading && uiState.results.isEmpty()) {
+            if (uiState.query.isNotBlank() && !uiState.isLoading &&
+                uiState.results.isEmpty() && uiState.knowledgeResults.isEmpty()
+            ) {
                 item { Text("No results found") }
             }
         }
