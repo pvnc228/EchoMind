@@ -159,7 +159,7 @@ search are implemented and verified, and candidate relationship detection is
 covered by a local term-overlap heuristic that surfaces suggestions in the
 detail screen for the user to review before linking. Remote-assisted candidate
 detection remains deferred until the minimized remote-context approval
-pipeline exists. 19/19 instrumented tests pass on Pixel 8 API 35.
+pipeline exists. 18/18 instrumented tests pass on Pixel 8 API 35.
 
 ## M3 — Relevant resurfacing and visible capability
 

@@ -917,8 +917,9 @@ testable hardware available.
 ### Evidence
 
 - `:app:compileDebugKotlin` and `:app:compileDebugAndroidTestKotlin` — passed.
-- `:app:connectedDebugAndroidTest` on Pixel 8 API 35 — **19/19 passed**,
-  including the updated `relationshipsLinkAndUnlinkRecordsAsSupportsOrContradicts`
+- `:app:connectedDebugAndroidTest` on Pixel 8 API 35 — **18/18 passed**
+  (verified from `TEST-*.xml`: `tests="18" failures="0"`), including the
+  updated `relationshipsLinkAndUnlinkRecordsAsSupportsOrContradicts`
   (suggestion appears before linking and disappears after).
 - `:app:testDebugUnitTest` — passed.
 - `:app:assembleDebug` — passed; `git diff --check` — passed.
