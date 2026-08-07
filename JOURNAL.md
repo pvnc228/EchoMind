@@ -881,11 +881,53 @@ testable hardware available.
 
 ### Remaining limitations
 
-- Candidate-relationship detection (M2 item) stays open; it requires the
-  minimized remote-context preview and per-request approval pipeline, deferred
-  to a later milestone.
 - The revision-list view is read-only history with edit; viewing a diff
   between two specific revisions is not a separate screen.
 - Archive/search now index the provenance graph in addition to legacy entries;
   raw record and its confirmed conclusion appear as separate results by design.
+- Signed: `агент opencode`.
+
+---
+
+## 2026-08-08 — M2 candidate-relationship detection (local heuristic)
+
+### Skills Used
+
+- **`ponytail`** (full) — added the local candidate heuristic inside the
+  existing `getLinkCandidates`, reusing `knowledgeDao` and the existing
+  `RelatedRecord` model: no new dependency, no remote path, no schema change.
+  A scored list replaces the previous "return everything" behavior and stops
+  at a small limit.
+
+### Done
+
+- Reworked `KnowledgeRepository.getLinkCandidates(currentRevisionId, limit=5)`
+  to rank raw records by term overlap with the current conclusion and its
+  linked theme names. Candidate records carry a `suggestedReason`
+  ("Shares a term with your conclusion: ..." / "Mentions a theme: ...") and a
+  score, are sorted by score, and capped at five.
+- Excludes the record's own raw source and already-linked records, so a
+  confirmed link stops appearing as a suggestion.
+- Added a **Suggested connections** block in the detail screen's Connections
+  section: local guesses shown with their reason, requiring the user to tap
+  "Review" and then pick Supports/Contradicts before any durable
+  `evidence_links` row is created. AI/heuristic output stays unconfirmed until
+  the user acts.
+
+### Evidence
+
+- `:app:compileDebugKotlin` and `:app:compileDebugAndroidTestKotlin` — passed.
+- `:app:connectedDebugAndroidTest` on Pixel 8 API 35 — **19/19 passed**,
+  including the updated `relationshipsLinkAndUnlinkRecordsAsSupportsOrContradicts`
+  (suggestion appears before linking and disappears after).
+- `:app:testDebugUnitTest` — passed.
+- `:app:assembleDebug` — passed; `git diff --check` — passed.
+
+### Remaining limitations
+
+- The heuristic is lexical term overlap with stop-word filtering. It can
+  produce false positives and misses semantic similarity; it is framed as a
+  local guess for the user to confirm, not as a verdict.
+- Remote-assisted candidate detection still awaits the minimized
+  remote-context preview and per-request approval pipeline.
 - Signed: `агент opencode`.

@@ -365,6 +365,40 @@ fun ConnectionsSection(
                 Text("Link a record...")
             }
         }
+
+        val suggestions = otherEntries.filter { it.suggestedReason != null }
+        if (suggestions.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Suggested connections",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "Local guesses based on shared terms. Review before linking.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            suggestions.forEach { candidate ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Why: ${candidate.suggestedReason}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(candidate.sourceText, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { relateTarget = candidate }) {
+                                Text("Review")
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (showThemePicker) {

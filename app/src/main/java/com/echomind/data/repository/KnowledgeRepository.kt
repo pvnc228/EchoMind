@@ -140,21 +140,64 @@ class KnowledgeRepository @Inject constructor(
         }
     }
 
-    suspend fun getLinkCandidates(excludeRawRecordId: Long): List<RelatedRecord> {
-        val rawIds = buildSet {
-            for (conclusion in knowledgeDao.getAllConclusions()) {
-                if (conclusion.rawRecordId != excludeRawRecordId) add(conclusion.rawRecordId)
+    suspend fun getLinkCandidates(currentRevisionId: Long, limit: Int = 5): List<RelatedRecord> {
+        val currentRevision = knowledgeDao.getRevisionById(currentRevisionId) ?: return emptyList()
+        val currentConclusion = currentRevision.text
+        val currentRaw = knowledgeDao.getConclusionById(currentRevision.conclusionId)
+            ?.rawRecordId
+        val currentThemeNames = knowledgeDao.getConfirmedLinksForRevision(currentRevisionId)
+            .mapNotNull { link -> knowledgeDao.getThemeById(link.themeId)?.name.orEmpty() }
+        val linkedSourceIds = knowledgeDao.getEvidenceLinksForRevision(currentRevisionId)
+            .map { it.sourceRawRecordId }
+            .toSet()
+        val conclusionTokens = tokenize(currentConclusion)
+        val themeTokens = tokenize(currentThemeNames.joinToString(" "))
+
+        return knowledgeDao.getAllRawRecords()
+            .filter { it.id != currentRaw && it.id !in linkedSourceIds }
+            .mapNotNull { raw ->
+                val candidateTokens = tokenize(raw.originalText)
+                val sharedWithConclusion = conclusionTokens.intersect(candidateTokens)
+                val sharedWithThemes = themeTokens.intersect(candidateTokens)
+                val score = sharedWithConclusion.size + sharedWithThemes.size
+                if (score <= 0) null else RelatedRecord(
+                    rawRecordId = raw.id,
+                    relationship = "",
+                    sourceText = raw.originalText,
+                    recordedAt = raw.createdAt,
+                    suggestedReason = suggestReason(sharedWithConclusion, sharedWithThemes),
+                    score = score
+                )
             }
-        }
-        return rawIds.mapNotNull { id ->
-            val raw = knowledgeDao.getRawRecordById(id) ?: return@mapNotNull null
-            RelatedRecord(
-                rawRecordId = raw.id,
-                relationship = "",
-                sourceText = raw.originalText,
-                recordedAt = raw.createdAt
-            )
-        }
+            .sortedByDescending { it.score }
+            .take(limit)
+    }
+
+    private fun tokenize(text: String): Set<String> {
+        val stop = setOf(
+            "the", "a", "an", "and", "or", "but", "to", "of", "in", "on", "at",
+            "i", "you", "it", "is", "are", "was", "were", "be", "been", "have",
+            "has", "had", "that", "this", "these", "those", "my", "we", "our",
+            "with", "for", "not", "so", "if", "can", "could", "would", "should",
+            "я", "и", "в", "о", "не", "на", "что", "это", "мой", "моя", "мои",
+            "мы", "нам", "для", "с", "по", "как", "но", "или", "если", "то",
+            "быть", "был", "была", "были", "есть"
+        )
+        return text.lowercase()
+            .split(Regex("\\W+"))
+            .filter { it.length > 2 && it !in stop }
+            .toSet()
+    }
+
+    private fun suggestReason(
+        sharedWithConclusion: Set<String>,
+        sharedWithThemes: Set<String>
+    ): String? = when {
+        sharedWithConclusion.isNotEmpty() ->
+            "Shares a term with your conclusion: ${sharedWithConclusion.joinToString(", ")}"
+        sharedWithThemes.isNotEmpty() ->
+            "Mentions a theme: ${sharedWithThemes.joinToString(", ")}"
+        else -> null
     }
 
     suspend fun search(query: String): List<KnowledgeSearchResult> {

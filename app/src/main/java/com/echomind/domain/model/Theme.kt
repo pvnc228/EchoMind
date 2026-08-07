@@ -18,7 +18,9 @@ data class RelatedRecord(
     val rawRecordId: Long,
     val relationship: String,
     val sourceText: String,
-    val recordedAt: Long
+    val recordedAt: Long,
+    val suggestedReason: String? = null,
+    val score: Int = 0
 )
 
 object Relationship {

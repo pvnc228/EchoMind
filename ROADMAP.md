@@ -135,7 +135,8 @@ than a storage or confirmation-flow failure. See
 - [x] Create and edit themes without treating AI clustering as truth.
 - [x] Preserve dated revisions and show what changed.
 - [x] Add archive and search across raw records, conclusions, and themes.
-- [ ] Detect candidate relationships locally or with minimized remote context.
+- [x] Detect candidate relationships locally or with minimized remote context
+  (local heuristic is implemented; remote candidates await the approval pipeline).
 - [x] Require user confirmation for durable semantic links inferred by AI.
 - [x] Extend export, deletion, and backup to all new objects.
 
@@ -153,15 +154,12 @@ supports/contradicts relationships between confirmed conclusions (reusing
 `evidence_links`), plus export manifest v3 for all new objects.
 16/16 instrumented tests pass on Pixel 8 API 35.
 
-**Status (2026-08-07, M2 complete):** the second M2 slice closes dated
-revision history and graph-wide search. Confirmed conclusions can be revised
-to a new dated revision while the previous versions remain inspectable in the
-detail screen; theme and evidence links rebase onto the current revision.
-Search now returns raw records, current conclusions, and themes across the
-provenance graph and navigates to detail or theme screens. 18/18 instrumented
-tests pass on Pixel 8 API 35. The remaining open M2 item is AI-detected
-candidate relationships, which require the minimized remote-context approval
-pipeline and are deferred to a later milestone.
+**Status (2026-08-08, M2 complete):** dated revision history and graph-wide
+search are implemented and verified, and candidate relationship detection is
+covered by a local term-overlap heuristic that surfaces suggestions in the
+detail screen for the user to review before linking. Remote-assisted candidate
+detection remains deferred until the minimized remote-context approval
+pipeline exists. 19/19 instrumented tests pass on Pixel 8 API 35.
 
 ## M3 — Relevant resurfacing and visible capability
 
@@ -300,9 +298,9 @@ The next product milestone is **M2 — Traceable personal knowledge model**
 (construct links to evidence/contradictions, themes, revisions, archive, and
 search over the provenance graph). It is now complete: user-owned themes,
 confirmed theme links, user-managed supports/contradicts relationships, dated
-revision history, and graph-wide search (2026-08-07). The only open M2 item is
-AI-detected candidate relationships, which depends on the minimized
-remote-context approval pipeline and is deferred to a later milestone.
+revision history, graph-wide search, and a local candidate-relationship
+heuristic (2026-08-08). Remote-assisted candidate detection remains deferred
+until the minimized remote-context approval pipeline exists.
 
 ## UX/UI audit and approved implementation checkpoint
 

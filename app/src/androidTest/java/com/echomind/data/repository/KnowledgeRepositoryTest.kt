@@ -84,6 +84,11 @@ class KnowledgeRepositoryTest {
                 )
 
                 val revisionId = requireNotNull(firstSession.revisionId)
+
+                val candidatesBefore = knowledgeRepository.getLinkCandidates(revisionId)
+                assertTrue(candidatesBefore.any { it.rawRecordId == secondRawId })
+                assertTrue(candidatesBefore.all { it.suggestedReason != null })
+
                 knowledgeRepository.linkRelatedRecord(
                     revisionId = revisionId,
                     sourceRecordId = secondRawId,
@@ -94,9 +99,8 @@ class KnowledgeRepositoryTest {
                 assertEquals(1, related.size)
                 assertEquals(Relationship.CONTRADICTS, related.single().relationship)
 
-                val candidates = knowledgeRepository.getLinkCandidates(firstRawId)
-                assertEquals(1, candidates.size)
-                assertEquals(secondRawId, candidates.single().rawRecordId)
+                val candidates = knowledgeRepository.getLinkCandidates(revisionId)
+                assertTrue(candidates.none { it.rawRecordId == secondRawId })
 
                 knowledgeRepository.unlinkRelatedRecord(revisionId, secondRawId)
                 assertTrue(knowledgeRepository.getRelatedRecords(revisionId).isEmpty())
