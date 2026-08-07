@@ -167,16 +167,18 @@ pipeline exists. 18/18 instrumented tests pass on Pixel 8 API 35.
 
 **Outcome:** the home screen returns one meaningful line of thought and honestly shows what EchoMind currently knows.
 
-**Status (2026-08-08, M3 first slice complete):** the home screen is no longer
+**Status (2026-08-08, M3 complete):** the home screen is no longer
 timeline-first. It now leads with a prompt to capture or continue a thought,
 then shows one evidence-backed relevant card with an explicit "why this is
-shown" reason, per-theme evidence coverage, and recent entries. Card selection
-is deterministic from the graph: a theme with contradicting evidence is shown
-first, then a confirmed conclusion with no supporting records, then the theme
-with the most evidence. No remote calls and no global personality percentages,
-streaks, or levels. Card actions support Inspect (open the theme detail) and
-Continue (capture a reflection); dismiss/postpone are not separate states.
-31/31 unit and 18/18 instrumented tests pass on Pixel 8 API 35.
+shown" reason and its capability label, per-theme evidence coverage, and
+recent entries. Card selection is deterministic from the graph: a theme with
+contradicting evidence is shown first, then a confirmed conclusion with no
+supporting records, then the theme with the most evidence. The card can be
+inspected, continued, dismissed, or postponed (24h); dismissal and
+postponement persist in DataStore. No remote calls and no global personality
+percentages, streaks, or levels. Capabilities (reflection, connection, change
+tracking, guidance) are labelled on each card. 33/33 unit and 18/18
+instrumented tests pass on Pixel 8 API 35.
 
 ### Scope
 
@@ -185,9 +187,9 @@ Continue (capture a reflection); dismiss/postpone are not separate states.
   - one evidence-backed relevant card;
   - fast access to capture and archive.
 - [x] Explain why a theme, contradiction, or unfinished question is shown now.
-- [ ] Let the user inspect sources, continue, dismiss, or postpone the card.
+- [x] Let the user inspect sources, continue, dismiss, or postpone the card.
 - [x] Show evidence coverage separately per theme.
-- [ ] Distinguish reflection, connection, change tracking, and guidance capabilities.
+- [x] Distinguish reflection, connection, change tracking, and guidance capabilities.
 - [x] Avoid global personality percentages, streak pressure, and arbitrary levels.
 
 ### Completion criteria

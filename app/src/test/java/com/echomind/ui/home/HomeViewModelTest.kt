@@ -4,8 +4,12 @@ import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import com.echomind.data.repository.KnowledgeRepository
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.EntryCategory
+import com.echomind.domain.model.HomeCard
+import com.echomind.domain.model.HomeCardType
+import com.echomind.domain.model.HomeRelevance
 import com.echomind.domain.usecase.GetEntriesUseCase
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
@@ -17,6 +21,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -78,5 +83,32 @@ class HomeViewModelTest {
         val state = viewModel.uiState.value
         assertEquals("task", state.selectedCategory)
         assertEquals(1, state.entries.size)
+    }
+
+    @Test
+    fun `dismissCard clears card and calls repository`() = runTest(testDispatcher) {
+        coEvery { getEntriesUseCase.getRecentEntries(any()) } returns emptyList()
+        coEvery { getEntriesUseCase.getAllEntries() } returns flowOf(emptyList())
+        val card = HomeCard(
+            type = HomeCardType.THEME,
+            themeId = 7,
+            themeName = "A",
+            title = "T",
+            detail = "D",
+            reason = "R",
+            capability = com.echomind.domain.model.Capability.CONNECTION
+        )
+        coEvery { knowledgeRepository.getHomeRelevance() } returns HomeRelevance(card = card, hasKnowledge = true)
+        coEvery { knowledgeRepository.dismissCard(7L) } returns Unit
+
+        viewModel = HomeViewModel(getEntriesUseCase, knowledgeRepository)
+        advanceUntilIdle()
+        assertEquals(card, viewModel.uiState.value.card)
+
+        viewModel.dismissCard()
+        advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.card)
+        coVerify { knowledgeRepository.dismissCard(7L) }
     }
 }

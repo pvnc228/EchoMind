@@ -981,3 +981,44 @@ testable hardware available.
   distinguish reflection/connection/change/guidance capability types, and
   sparse-domain confidence is not yet message-scoped.
 - Signed: `����� opencode`.
+
+---
+
+## 2026-08-08 - M3 completion: dismiss/postpone + capability labels
+
+### Skills Used
+
+- **`ponytail`** (full) - reused DataStore (`SettingsStore`) for suppression
+  persistence instead of a new table/migration; no DB schema change. Capability
+  distinction is a pure `enum` on the card model, not a new mechanism.
+
+### Done
+
+- **Dismiss / postpone the card.** `HomeRelevanceBuilder` remains pure and
+  deterministic; `KnowledgeRepository.getHomeRelevance()` now filters out
+  themes whose card was suppressed (dismiss = forever, postpone = 24h), read
+  from DataStore via `SettingsStore.getSuppressedCards()`. `dismissCard()` and
+  `postponeCard()` persist `themeId:until` pairs. Home card now has Inspect,
+  Continue, Dismiss, and Later actions.
+- **Capability labels.** Added `Capability` enum (reflection, connection,
+  change tracking, guidance) on `HomeCard`; each card type maps to one: thin
+  conclusion -> reflection, most-supported theme -> connection, contradiction
+  -> change tracking. The card renders "· <capability>" next to "For you".
+
+### Evidence
+
+- `:app:testDebugUnitTest` - **33/33** (verified from `TEST-*.xml`),
+  including new `HomeRelevanceBuilderTest.capabilityIsDistinctPerCardType`
+  and `HomeViewModelTest.dismissCardClearsCardAndCallsRepository`.
+- `:app:connectedDebugAndroidTest` on Pixel 8 API 35 - **18/18**
+  (verified from `TEST-*.xml`: `tests="18" failures="0"`).
+- `:app:assembleDebug`, `:app:compileDebugAndroidTestKotlin` - passed.
+- `git diff --check` - clean.
+
+### Remaining limitations
+
+- Sparse-domain confidence is narrow: "insufficient evidence" is shown per
+  theme, but records from one domain are not yet message-scoped against
+  confidence in another. Theme-to-domain mapping is a separate concern.
+- Postpone is a fixed 24h preset, not a user-chosen interval.
+- Signed: `����� opencode`.

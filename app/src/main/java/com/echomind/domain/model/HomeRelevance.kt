@@ -17,13 +17,21 @@ data class ThemeCandidate(
 
 enum class HomeCardType { CONTRADICTION, THIN_THEME, THEME }
 
+enum class Capability(val label: String) {
+    REFLECTION("Reflection"),
+    CONNECTION("Connection"),
+    CHANGE_TRACKING("Change tracking"),
+    GUIDANCE("Guidance")
+}
+
 data class HomeCard(
     val type: HomeCardType,
     val themeId: Long,
     val themeName: String,
     val title: String,
     val detail: String,
-    val reason: String
+    val reason: String,
+    val capability: Capability
 )
 
 data class HomeRelevance(
@@ -47,7 +55,8 @@ object HomeRelevanceBuilder {
                     title = "Contradicting evidence in \"${contradiction.name}\"",
                     detail = "${contradiction.conclusionCount} conclusion(s) vs " +
                         "${contradiction.contradictionCount} contradicting record(s).",
-                    reason = "Shown because opposing records challenge this conclusion."
+                    reason = "Shown because opposing records challenge this conclusion.",
+                    capability = Capability.CHANGE_TRACKING
                 ),
                 coverage = coverage,
                 hasKnowledge = true
@@ -62,7 +71,8 @@ object HomeRelevanceBuilder {
                     themeName = thin.name,
                     title = "\"${thin.name}\" has a conclusion with no evidence yet",
                     detail = "A conclusion exists but no records support it yet.",
-                    reason = "Shown because this conclusion needs supporting records."
+                    reason = "Shown because this conclusion needs supporting records.",
+                    capability = Capability.REFLECTION
                 ),
                 coverage = coverage,
                 hasKnowledge = true
@@ -78,7 +88,8 @@ object HomeRelevanceBuilder {
                     title = "\"${theme.name}\" is the most supported theme",
                     detail = "${theme.conclusionCount} confirmed conclusion(s) backed by " +
                         "${theme.evidenceCount} record(s).",
-                    reason = "Shown as the theme with the most evidence you can continue."
+                    reason = "Shown as the theme with the most evidence you can continue.",
+                    capability = Capability.CONNECTION
                 ),
                 coverage = coverage,
                 hasKnowledge = true

@@ -51,4 +51,20 @@ class HomeRelevanceBuilderTest {
         assertEquals("B", result.card?.themeName)
         assertEquals(2, result.coverage.size)
     }
+
+    @Test
+    fun `capability is distinct per card type`() {
+        val contradiction = HomeRelevanceBuilder.build(
+            listOf(ThemeCandidate(1, "A", 1, 1, contradictionCount = 1))
+        ).card!!
+        val thin = HomeRelevanceBuilder.build(
+            listOf(ThemeCandidate(1, "A", 1, 0, contradictionCount = 0))
+        ).card!!
+        val theme = HomeRelevanceBuilder.build(
+            listOf(ThemeCandidate(1, "A", 1, 3, contradictionCount = 0))
+        ).card!!
+        assertEquals(Capability.CHANGE_TRACKING, contradiction.capability)
+        assertEquals(Capability.REFLECTION, thin.capability)
+        assertEquals(Capability.CONNECTION, theme.capability)
+    }
 }

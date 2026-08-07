@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
+import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.Relationship
 import com.echomind.domain.model.ReflectionStatus
 import kotlinx.coroutines.runBlocking
@@ -153,7 +154,7 @@ class ReflectionRepositoryTest {
         val database = inMemoryDatabase()
         try {
             val repository = repository(database)
-            val knowledgeRepository = KnowledgeRepository(database, database.knowledgeDao())
+            val knowledgeRepository = KnowledgeRepository(database, database.knowledgeDao(), SettingsStore(context))
             runBlocking {
                 val rawId = repository.captureRawText("I am torn about changing roles.")
                 val proposal = repository.createLocalProposal(rawId)

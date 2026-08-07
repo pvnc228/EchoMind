@@ -72,7 +72,9 @@ fun HomeScreen(
         onNavigateToDetail = onNavigateToDetail,
         onNavigateToQa = onNavigateToQa,
         onNavigateToThemes = onNavigateToThemes,
-        onNavigateToTheme = onNavigateToTheme
+        onNavigateToTheme = onNavigateToTheme,
+        onDismissCard = viewModel::dismissCard,
+        onPostponeCard = { viewModel.postponeCard(System.currentTimeMillis() + 24L * 60 * 60 * 1000) }
     )
 }
 
@@ -86,7 +88,9 @@ fun HomeScreenContent(
     onNavigateToDetail: (Long) -> Unit = {},
     onNavigateToQa: () -> Unit = {},
     onNavigateToThemes: () -> Unit = {},
-    onNavigateToTheme: (Long) -> Unit = {}
+    onNavigateToTheme: (Long) -> Unit = {},
+    onDismissCard: () -> Unit = {},
+    onPostponeCard: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -148,7 +152,9 @@ fun HomeScreenContent(
                             card = card,
                             onOpen = { onNavigateToTheme(card.themeId) },
                             onContinue = { onNavigateToRecord() },
-                            onInspect = { onNavigateToTheme(card.themeId) }
+                            onInspect = { onNavigateToTheme(card.themeId) },
+                            onDismiss = onDismissCard,
+                            onPostpone = onPostponeCard
                         )
                     }
                 }
@@ -211,7 +217,9 @@ private fun RelevantCard(
     card: HomeCard,
     onOpen: () -> Unit,
     onContinue: () -> Unit,
-    onInspect: () -> Unit
+    onInspect: () -> Unit,
+    onDismiss: () -> Unit,
+    onPostpone: () -> Unit
 ) {
     val accent = when (card.type) {
         HomeCardType.CONTRADICTION -> MaterialTheme.colorScheme.error
@@ -220,11 +228,19 @@ private fun RelevantCard(
     }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                "For you",
-                style = MaterialTheme.typography.labelMedium,
-                color = accent
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "For you",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = accent
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "· ${card.capability.label}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 card.title,
@@ -243,6 +259,8 @@ private fun RelevantCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onInspect) { Text("Inspect") }
                 OutlinedButton(onClick = onContinue) { Text("Continue") }
+                OutlinedButton(onClick = onDismiss) { Text("Dismiss") }
+                OutlinedButton(onClick = onPostpone) { Text("Later") }
             }
         }
     }

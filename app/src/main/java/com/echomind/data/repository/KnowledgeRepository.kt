@@ -6,6 +6,7 @@ import com.echomind.data.local.dao.KnowledgeDao
 import com.echomind.data.local.entity.EvidenceLinkEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
+import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.HomeRelevance
 import com.echomind.domain.model.HomeRelevanceBuilder
 import com.echomind.domain.model.KnowledgeSearchResult
@@ -20,7 +21,8 @@ import javax.inject.Singleton
 @Singleton
 class KnowledgeRepository @Inject constructor(
     private val database: AppDatabase,
-    private val knowledgeDao: KnowledgeDao
+    private val knowledgeDao: KnowledgeDao,
+    private val settingsStore: SettingsStore
 ) {
     suspend fun getThemes(): List<Theme> =
         knowledgeDao.getActiveThemes().map { theme ->
@@ -204,8 +206,14 @@ class KnowledgeRepository @Inject constructor(
     }
 
     suspend fun getHomeRelevance(): HomeRelevance {
+        val now = System.currentTimeMillis()
+        val suppressed = settingsStore.getSuppressedCards()
+            .filterValues { it > now }
+            .keys
+            .toSet()
         val themes = knowledgeDao.getActiveThemes()
         val candidates = themes.mapNotNull { theme ->
+            if (theme.id in suppressed) return@mapNotNull null
             val links = knowledgeDao.getConfirmedLinksForTheme(theme.id)
             if (links.isEmpty()) return@mapNotNull null
             var contradictionCount = 0
@@ -229,6 +237,14 @@ class KnowledgeRepository @Inject constructor(
             )
         }
         return HomeRelevanceBuilder.build(candidates)
+    }
+
+    suspend fun dismissCard(themeId: Long) {
+        settingsStore.suppressCard(themeId, Long.MAX_VALUE)
+    }
+
+    suspend fun postponeCard(themeId: Long, until: Long) {
+        settingsStore.suppressCard(themeId, until)
     }
 
     suspend fun search(query: String): List<KnowledgeSearchResult> {

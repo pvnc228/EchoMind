@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
+import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.KnowledgeSearchResult
 import com.echomind.domain.model.Relationship
 import kotlinx.coroutines.runBlocking
@@ -170,7 +171,7 @@ class KnowledgeRepositoryTest {
     }
 
     private fun knowledgeRepository(database: AppDatabase) =
-        KnowledgeRepository(database, database.knowledgeDao())
+        KnowledgeRepository(database, database.knowledgeDao(), SettingsStore(context))
 
     private fun reflectionRepository(database: AppDatabase) = ReflectionRepository(
         database = database,

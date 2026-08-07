@@ -79,6 +79,22 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun dismissCard() {
+        val card = _uiState.value.card ?: return
+        viewModelScope.launch {
+            runCatching { knowledgeRepository.dismissCard(card.themeId) }
+                .onSuccess { _uiState.value = _uiState.value.copy(card = null) }
+        }
+    }
+
+    fun postponeCard(until: Long) {
+        val card = _uiState.value.card ?: return
+        viewModelScope.launch {
+            runCatching { knowledgeRepository.postponeCard(card.themeId, until) }
+                .onSuccess { _uiState.value = _uiState.value.copy(card = null) }
+        }
+    }
+
     fun selectCategory(category: String?) {
         load(category)
     }

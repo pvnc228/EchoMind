@@ -39,6 +39,33 @@ class SettingsStore @Inject constructor(
         )
     }
 
+    suspend fun getSuppressedCards(): Map<Long, Long> {
+        val prefs = try {
+            dataStore.data.first()
+        } catch (_: IOException) {
+            return emptyMap()
+        }
+        val raw = prefs[KEY_SUPPRESSED_CARDS] ?: return emptyMap()
+        return raw.split(",")
+            .mapNotNull { part ->
+                val idx = part.indexOf(':')
+                if (idx <= 0) return@mapNotNull null
+                val id = part.substring(0, idx).toLongOrNull() ?: return@mapNotNull null
+                val until = part.substring(idx + 1).toLongOrNull() ?: return@mapNotNull null
+                id to until
+            }
+            .toMap()
+    }
+
+    suspend fun suppressCard(themeId: Long, until: Long) {
+        dataStore.edit {
+            val raw = it[KEY_SUPPRESSED_CARDS].orEmpty()
+            val entries = raw.split(",").filter { p -> p.isNotBlank() && !p.startsWith("$themeId:") }.toMutableList()
+            entries.add("$themeId:$until")
+            it[KEY_SUPPRESSED_CARDS] = entries.joinToString(",")
+        }
+    }
+
     suspend fun isLocalMode(): Boolean = localModeOverride ?: load().localMode
 
     suspend fun setApiEndpoint(endpoint: String) {
@@ -56,5 +83,6 @@ class SettingsStore @Inject constructor(
     private companion object {
         val KEY_API_ENDPOINT = stringPreferencesKey("api_endpoint")
         val KEY_LOCAL_MODE = booleanPreferencesKey("local_mode")
+        val KEY_SUPPRESSED_CARDS = stringPreferencesKey("suppressed_cards")
     }
 }
