@@ -12,6 +12,19 @@ data class DecisionDeletionDependency(
     val outcomeCount: Int
 )
 
+data class ThemeLinkDeletionDependency(
+    val linkId: Long,
+    val themeId: Long,
+    val themeName: String,
+    val revisionId: Long,
+    val confirmed: Boolean
+)
+
+data class ReflectionProposalDeletionDependency(
+    val hypothesisId: Long,
+    val status: String
+)
+
 data class EntryDeletionPlan(
     val entryId: Long,
     val rawRecordId: Long,
@@ -19,7 +32,9 @@ data class EntryDeletionPlan(
     val revisionIds: List<Long>,
     val incomingEvidence: List<EvidenceDeletionDependency>,
     val decisions: List<DecisionDeletionDependency>,
-    val audioPath: String?
+    val audioPath: String?,
+    val themeLinks: List<ThemeLinkDeletionDependency> = emptyList(),
+    val proposals: List<ReflectionProposalDeletionDependency> = emptyList()
 ) {
     val requiresExplicitChoice: Boolean
         get() = ownConclusionId != null || incomingEvidence.isNotEmpty() || decisions.isNotEmpty()

@@ -299,3 +299,16 @@ data class HomeCardDispositionEntity(
     @ColumnInfo(name = "created_at")
     val createdAt: Long
 )
+
+@Entity(tableName = "audio_cleanup_queue")
+data class AudioCleanupEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "path")
+    val path: String,
+    @ColumnInfo(name = "entry_id")
+    val entryId: Long,
+    @ColumnInfo(name = "failed_at")
+    val failedAt: Long,
+    @ColumnInfo(name = "attempt_count")
+    val attemptCount: Int = 1
+)

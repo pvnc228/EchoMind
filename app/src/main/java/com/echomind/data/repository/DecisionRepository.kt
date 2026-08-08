@@ -36,23 +36,32 @@ class DecisionRepository @Inject constructor(
                 "A system suggestion needs a valid status."
             }
         }
-        if (sourceRevisionId != null) {
-            requireNotNull(knowledgeDao.getRevisionById(sourceRevisionId)) {
-                "Source revision $sourceRevisionId does not exist."
-            }
+        val groundedRevisionId = requireNotNull(sourceRevisionId) {
+            "A decision must be grounded in a current conclusion revision."
         }
-        return knowledgeDao.insertDecision(
-            DecisionEntity(
-                question = question.trim(),
-                suggestion = suggestion?.trim()?.takeIf { it.isNotBlank() },
-                suggestionAuthor = suggestionAuthor,
-                suggestionSource = suggestionSource,
-                suggestionStatus = suggestionStatus,
-                choice = null,
-                sourceRevisionId = sourceRevisionId,
-                createdAt = System.currentTimeMillis()
+        return database.withTransaction {
+            val revision = requireNotNull(knowledgeDao.getRevisionById(groundedRevisionId)) {
+                "Source revision $groundedRevisionId does not exist."
+            }
+            val conclusion = requireNotNull(knowledgeDao.getConclusionById(revision.conclusionId)) {
+                "Source revision $groundedRevisionId has no conclusion."
+            }
+            require(conclusion.currentRevisionId == groundedRevisionId) {
+                "A decision must use the current revision as its grounds."
+            }
+            knowledgeDao.insertDecision(
+                DecisionEntity(
+                    question = question.trim(),
+                    suggestion = suggestion?.trim()?.takeIf { it.isNotBlank() },
+                    suggestionAuthor = suggestionAuthor,
+                    suggestionSource = suggestionSource,
+                    suggestionStatus = suggestionStatus,
+                    choice = null,
+                    sourceRevisionId = groundedRevisionId,
+                    createdAt = System.currentTimeMillis()
+                )
             )
-        )
+        }
     }
 
     suspend fun setChoice(decisionId: Long, choice: String) {
@@ -71,6 +80,18 @@ class DecisionRepository @Inject constructor(
             requireNotNull(knowledgeDao.getDecisionById(decisionId)) { "Decision $decisionId missing." }
             check(knowledgeDao.replaceDecisionChoice(decisionId, choice.trim()) == 1) {
                 "A choice cannot be replaced after an outcome has been reported."
+            }
+        }
+    }
+
+    suspend fun replaceGrounds(decisionId: Long, sourceRevisionId: Long) {
+        database.withTransaction {
+            requireCurrentRevision(sourceRevisionId)
+            requireNotNull(knowledgeDao.getDecisionById(decisionId)) {
+                "Decision $decisionId missing."
+            }
+            check(knowledgeDao.replaceDecisionGrounds(decisionId, sourceRevisionId) == 1) {
+                "Decision grounds can only change before a choice is recorded."
             }
         }
     }
@@ -99,6 +120,14 @@ class DecisionRepository @Inject constructor(
             knowledgeDao.deleteOutcomesForDecision(decisionId)
             check(knowledgeDao.deleteDecisionById(decisionId) == 1) {
                 "Decision $decisionId does not exist."
+            }
+        }
+    }
+
+    suspend fun deleteOutcome(decisionId: Long, outcomeId: Long) {
+        database.withTransaction {
+            check(knowledgeDao.deleteOutcome(decisionId, outcomeId) == 1) {
+                "Outcome $outcomeId does not belong to decision $decisionId."
             }
         }
     }
@@ -145,5 +174,17 @@ class DecisionRepository @Inject constructor(
                 DecisionOutcome(it.id, it.decisionId, it.report, it.createdAt)
             }
         )
+    }
+
+    private suspend fun requireCurrentRevision(revisionId: Long) {
+        val revision = requireNotNull(knowledgeDao.getRevisionById(revisionId)) {
+            "Source revision $revisionId does not exist."
+        }
+        val conclusion = requireNotNull(knowledgeDao.getConclusionById(revision.conclusionId)) {
+            "Source revision $revisionId has no conclusion."
+        }
+        require(conclusion.currentRevisionId == revisionId) {
+            "Decision grounds must use the current conclusion revision."
+        }
     }
 }

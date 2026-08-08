@@ -1,17 +1,22 @@
 package com.echomind.data.repository
 
+import android.content.Context
 import androidx.room.withTransaction
 import com.echomind.data.local.AppDatabase
 import com.echomind.data.local.dao.EntryDao
 import com.echomind.data.local.dao.KnowledgeDao
 import com.echomind.data.local.entity.EntryEntity
 import com.echomind.data.local.entity.RawRecordEntity
+import com.echomind.data.local.entity.AudioCleanupEntity
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.EntryCategory
 import com.echomind.domain.model.DecisionDeletionDependency
 import com.echomind.domain.model.EntryDeletionChoice
 import com.echomind.domain.model.EntryDeletionPlan
 import com.echomind.domain.model.EvidenceDeletionDependency
+import com.echomind.domain.model.ReflectionProposalDeletionDependency
+import com.echomind.domain.model.ThemeLinkDeletionDependency
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -22,8 +27,13 @@ import javax.inject.Singleton
 class EntryRepository @Inject constructor(
     private val database: AppDatabase,
     private val entryDao: EntryDao,
-    private val knowledgeDao: KnowledgeDao
+    private val knowledgeDao: KnowledgeDao,
+    @ApplicationContext private val context: Context
 ) {
+    companion object {
+        const val MAX_AUDIO_CLEANUP_BATCH = 32
+    }
+
     fun getAllEntries(): Flow<List<Entry>> =
         entryDao.getAllEntries().map { entities -> entities.map { it.toDomain() } }
 
@@ -48,6 +58,10 @@ class EntryRepository @Inject constructor(
     }
 
     suspend fun getDeletionPlan(id: Long): EntryDeletionPlan? {
+        return database.withTransaction { buildDeletionPlan(id) }
+    }
+
+    private suspend fun buildDeletionPlan(id: Long): EntryDeletionPlan? {
         val entry = entryDao.getEntryById(id) ?: return null
         val rawRecord = knowledgeDao.getRawRecordByLegacyEntryId(id) ?: return null
         val conclusion = knowledgeDao.getConclusionForRawRecord(rawRecord.id)
@@ -72,6 +86,20 @@ class EntryRepository @Inject constructor(
                 )
             }
         }.distinctBy { it.decisionId }
+        val themeLinks = revisionIds.flatMap { revisionId ->
+            knowledgeDao.getThemeLinksForRevision(revisionId).mapNotNull { link ->
+                val theme = knowledgeDao.getThemeById(link.themeId) ?: return@mapNotNull null
+                ThemeLinkDeletionDependency(
+                    linkId = link.id,
+                    themeId = theme.id,
+                    themeName = theme.name,
+                    revisionId = revisionId,
+                    confirmed = link.confirmed
+                )
+            }
+        }.distinctBy { it.linkId }
+        val proposals = knowledgeDao.getHypothesesForRawRecord(rawRecord.id)
+            .map { ReflectionProposalDeletionDependency(it.id, it.status) }
         return EntryDeletionPlan(
             entryId = entry.id,
             rawRecordId = rawRecord.id,
@@ -79,7 +107,9 @@ class EntryRepository @Inject constructor(
             revisionIds = revisionIds,
             incomingEvidence = incomingEvidence,
             decisions = decisions,
-            audioPath = entry.audioPath
+            audioPath = entry.audioPath,
+            themeLinks = themeLinks,
+            proposals = proposals
         )
     }
 
@@ -100,10 +130,105 @@ class EntryRepository @Inject constructor(
     }
 
     suspend fun deleteEntry(id: Long, choice: EntryDeletionChoice) {
-        val plan = getDeletionPlan(id) ?: return
+        val deletedPlan = database.withTransaction {
+            val plan = buildDeletionPlan(id) ?: return@withTransaction null
+            validateDeletionChoice(plan, choice)
+            choice.deleteDecisionIds.forEach { decisionId ->
+                val dependency = plan.decisions.first { it.decisionId == decisionId }
+                check(
+                    knowledgeDao.deleteOutcomesForDecision(decisionId) == dependency.outcomeCount
+                ) { "Decision $decisionId changed before deletion." }
+                check(knowledgeDao.deleteDecisionById(decisionId) == 1) {
+                    "Decision $decisionId changed before deletion."
+                }
+            }
+            choice.unlinkIncomingEvidenceLinkIds.forEach { linkId ->
+                check(knowledgeDao.deleteEvidenceLinkById(linkId) == 1) {
+                    "Evidence link $linkId changed before deletion."
+                }
+            }
+            if (choice.deleteOwnConclusion) {
+                val conclusion = knowledgeDao.getConclusionById(plan.ownConclusionId!!)
+                check(conclusion != null) { "Conclusion ${plan.ownConclusionId} changed before deletion." }
+                knowledgeDao.deleteConclusion(conclusion)
+            }
+            check(knowledgeDao.deleteRawRecordByLegacyEntryId(id) == 1) {
+                "Raw record for entry $id changed before deletion."
+            }
+            check(entryDao.deleteEntryById(id) == 1) { "Entry $id changed before deletion." }
+            plan
+        } ?: return
+        // DB commit precedes filesystem cleanup; persist a bounded retry state for failures.
+        deletedPlan.audioPath?.let { path ->
+            if (!deleteAudioFile(path)) {
+                rememberAudioCleanupFailure(path, deletedPlan.entryId)
+                throw AudioDeletionFailedException(path)
+            }
+            knowledgeDao.deleteAudioCleanup(path)
+        }
+    }
+
+    suspend fun getPendingAudioCleanup(
+        limit: Int = MAX_AUDIO_CLEANUP_BATCH
+    ): List<AudioCleanupEntity> {
+        require(limit in 1..MAX_AUDIO_CLEANUP_BATCH) {
+            "Audio cleanup batch must be between 1 and $MAX_AUDIO_CLEANUP_BATCH."
+        }
+        return knowledgeDao.getPendingAudioCleanup(limit)
+    }
+
+    suspend fun retryPendingAudioCleanup(limit: Int = MAX_AUDIO_CLEANUP_BATCH): Int {
+        val pending = getPendingAudioCleanup(limit)
+        var cleaned = 0
+        pending.forEach { cleanup ->
+            if (deleteAudioFile(cleanup.path)) {
+                knowledgeDao.deleteAudioCleanup(cleanup.path)
+                cleaned += 1
+            } else {
+                knowledgeDao.upsertAudioCleanup(
+                    cleanup.copy(
+                        failedAt = System.currentTimeMillis(),
+                        attemptCount = cleanup.attemptCount + 1
+                    )
+                )
+            }
+        }
+        return cleaned
+    }
+
+    private suspend fun rememberAudioCleanupFailure(path: String, entryId: Long) {
+        val previous = knowledgeDao.getAudioCleanup(path)
+        knowledgeDao.upsertAudioCleanup(
+            AudioCleanupEntity(
+                path = path,
+                entryId = entryId,
+                failedAt = System.currentTimeMillis(),
+                attemptCount = (previous?.attemptCount ?: 0) + 1
+            )
+        )
+    }
+
+    private fun deleteAudioFile(path: String): Boolean {
+        if (!isAppOwnedAudioPath(path)) return false
+        val audioFile = File(path)
+        if (!audioFile.exists()) return true
+        return audioFile.isFile && audioFile.delete()
+    }
+
+    private fun validateDeletionChoice(plan: EntryDeletionPlan, choice: EntryDeletionChoice) {
+        require(choice.unlinkIncomingEvidenceLinkIds.all { linkId ->
+            plan.incomingEvidence.any { it.linkId == linkId }
+        }) { "Deletion choice contains an evidence link outside the deletion plan." }
+        require(choice.deleteDecisionIds.all { decisionId ->
+            plan.decisions.any { it.decisionId == decisionId }
+        }) { "Deletion choice contains a decision outside the deletion plan." }
         if (plan.ownConclusionId != null && !choice.deleteOwnConclusion) {
             throw ConfirmedConclusionDeletionRequiredException()
         }
+        require(!choice.deleteOwnConclusion || plan.ownConclusionId != null) {
+            "Deletion choice requests a conclusion outside the deletion plan."
+        }
+
         val unresolvedLinks = plan.incomingEvidence
             .map { it.linkId }
             .filterNot { it in choice.unlinkIncomingEvidenceLinkIds }
@@ -120,28 +245,18 @@ class EntryRepository @Inject constructor(
                 "Choose delete or cancel for decisions: ${unresolvedDecisions.joinToString()}"
             )
         }
+    }
 
-        database.withTransaction {
-            choice.deleteDecisionIds.forEach { decisionId ->
-                knowledgeDao.deleteOutcomesForDecision(decisionId)
-                knowledgeDao.deleteDecisionById(decisionId)
-            }
-            choice.unlinkIncomingEvidenceLinkIds.forEach { linkId ->
-                knowledgeDao.deleteEvidenceLinkById(linkId)
-            }
-            if (choice.deleteOwnConclusion) {
-                val conclusion = knowledgeDao.getConclusionById(plan.ownConclusionId!!)
-                if (conclusion != null) knowledgeDao.deleteConclusion(conclusion)
-            }
-            knowledgeDao.deleteRawRecordByLegacyEntryId(id)
-            entryDao.deleteEntryById(id)
-        }
-        // DB commit precedes filesystem cleanup; callers must surface a partial cleanup failure.
-        plan.audioPath?.let { path ->
-            val audioFile = File(path)
-            if (audioFile.exists() && !audioFile.delete()) {
-                throw AudioDeletionFailedException(path)
-            }
+    private fun isAppOwnedAudioPath(path: String): Boolean {
+        val canonical = File(path).canonicalFile
+        val roots = listOfNotNull(
+            context.filesDir,
+            context.noBackupFilesDir,
+            context.cacheDir,
+            context.getExternalFilesDir(null)
+        ).map(File::getCanonicalFile)
+        return roots.any { root ->
+            canonical == root || canonical.path.startsWith(root.path + File.separator)
         }
     }
 

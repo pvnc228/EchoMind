@@ -234,7 +234,8 @@ class ReflectionRepositoryTest {
             val entryRepository = EntryRepository(
                 database,
                 database.entryDao(),
-                database.knowledgeDao()
+                database.knowledgeDao(),
+                context
             )
             runBlocking {
                 val rawRecordId = reflectionRepository.captureRawText(
@@ -312,12 +313,35 @@ class ReflectionRepositoryTest {
     }
 
     @Test
+    fun blankDraftStateRemovesThePersistedDraft() {
+        val database = inMemoryDatabase()
+        try {
+            val repository = repository(database)
+            runBlocking {
+                repository.saveCaptureDraft(text = "abc")
+                assertNotNull(repository.loadCaptureDraft())
+
+                repository.saveCaptureDraft(text = "")
+
+                assertTrue(repository.loadCaptureDraft() == null)
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun externalEvidenceDeletionRequiresPreviewAndExplicitUnlink() {
         val database = inMemoryDatabase()
         try {
             val reflectionRepository = repository(database)
             val knowledgeRepository = KnowledgeRepository(database, database.knowledgeDao(), SettingsStore(context))
-            val entryRepository = EntryRepository(database, database.entryDao(), database.knowledgeDao())
+            val entryRepository = EntryRepository(
+                database,
+                database.entryDao(),
+                database.knowledgeDao(),
+                context
+            )
             runBlocking {
                 val sourceRawId = reflectionRepository.captureRawText("External source")
                 val conclusionRawId = reflectionRepository.captureRawText("Conclusion source")
@@ -358,6 +382,120 @@ class ReflectionRepositoryTest {
             }
         } finally {
             database.close()
+        }
+    }
+
+    @Test
+    fun deletionChoiceRejectsForeignDecisionAndLinkWithoutChangingTheGraph() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = repository(database)
+            val knowledgeRepository = KnowledgeRepository(database, database.knowledgeDao(), SettingsStore(context))
+            val entryRepository = EntryRepository(
+                database,
+                database.entryDao(),
+                database.knowledgeDao(),
+                context
+            )
+            runBlocking {
+                val targetRawId = reflectionRepository.captureRawText("Target without graph dependencies")
+                val conclusionRawId = reflectionRepository.captureRawText("Unrelated conclusion")
+                val foreignSourceRawId = reflectionRepository.captureRawText("Unrelated evidence")
+                val proposal = reflectionRepository.createLocalProposal(conclusionRawId)
+                val session = reflectionRepository.confirm(proposal.hypothesisId, "Unrelated conclusion wording")
+                val revisionId = requireNotNull(session.revisionId)
+                knowledgeRepository.linkRelatedRecord(
+                    revisionId = revisionId,
+                    sourceRecordId = foreignSourceRawId,
+                    relationship = Relationship.SUPPORTS
+                )
+                val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+                val decisionId = decisionRepository.createDecision(
+                    question = "Unrelated question",
+                    sourceRevisionId = revisionId
+                )
+                val foreignLinkId = database.knowledgeDao()
+                    .getEvidenceLinksForRevision(revisionId)
+                    .first { it.sourceRawRecordId == foreignSourceRawId }
+                    .id
+                val targetEntryId = requireNotNull(
+                    database.knowledgeDao().getRawRecordById(targetRawId)?.legacyEntryId
+                )
+                val beforeRaw = database.knowledgeDao().getAllRawRecords()
+                val beforeDecisions = database.knowledgeDao().getAllDecisions()
+                val beforeLinks = database.knowledgeDao().getAllEvidenceLinks()
+
+                assertThrows(IllegalArgumentException::class.java) {
+                    runBlocking {
+                        entryRepository.deleteEntry(
+                            targetEntryId,
+                            EntryDeletionChoice(
+                                deleteDecisionIds = setOf(decisionId),
+                                unlinkIncomingEvidenceLinkIds = setOf(foreignLinkId)
+                            )
+                        )
+                    }
+                }
+
+                assertEquals(beforeRaw, database.knowledgeDao().getAllRawRecords())
+                assertEquals(beforeDecisions, database.knowledgeDao().getAllDecisions())
+                assertEquals(beforeLinks, database.knowledgeDao().getAllEvidenceLinks())
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun failedAudioCleanupIsPersistedAndRetriedInBoundedBatches() {
+        val database = inMemoryDatabase()
+        val audioDirectory = File(
+            context.cacheDir,
+            "failed-audio-cleanup-${System.nanoTime()}"
+        ).apply { mkdirs() }
+        try {
+            val reflectionRepository = repository(database)
+            val entryRepository = EntryRepository(
+                database,
+                database.entryDao(),
+                database.knowledgeDao(),
+                context
+            )
+            runBlocking {
+                val rawRecordId = reflectionRepository.captureRawText(
+                    originalText = "Audio cleanup failure",
+                    audioPath = audioDirectory.absolutePath
+                )
+                val entryId = requireNotNull(
+                    database.knowledgeDao().getRawRecordById(rawRecordId)?.legacyEntryId
+                )
+
+                assertThrows(AudioDeletionFailedException::class.java) {
+                    runBlocking { entryRepository.deleteEntry(entryId) }
+                }
+                assertTrue(database.entryDao().getEntryById(entryId) == null)
+                assertEquals(1, entryRepository.getPendingAudioCleanup().size)
+                assertEquals(
+                    audioDirectory.absolutePath,
+                    entryRepository.getPendingAudioCleanup().single().path
+                )
+                assertEquals(0, entryRepository.retryPendingAudioCleanup())
+                assertEquals(2, entryRepository.getPendingAudioCleanup().single().attemptCount)
+
+                assertTrue(audioDirectory.delete())
+                assertEquals(1, entryRepository.retryPendingAudioCleanup())
+                assertTrue(entryRepository.getPendingAudioCleanup().isEmpty())
+                assertThrows(IllegalArgumentException::class.java) {
+                    runBlocking {
+                        entryRepository.getPendingAudioCleanup(
+                            EntryRepository.MAX_AUDIO_CLEANUP_BATCH + 1
+                        )
+                    }
+                }
+            }
+        } finally {
+            database.close()
+            audioDirectory.delete()
         }
     }
 

@@ -23,6 +23,7 @@ import com.echomind.ui.search.SearchScreen
 import com.echomind.ui.settings.SettingsScreen
 import com.echomind.ui.themes.ThemeDetailScreen
 import com.echomind.ui.themes.ThemesScreen
+import com.echomind.domain.model.HomeNavigationTarget
 import kotlinx.coroutines.launch
 
 @Composable
@@ -65,6 +66,16 @@ fun EchoMindNavGraph(
                 onNavigateToQa = { navController.navigate(Screen.Qa.route) },
                 onNavigateToThemes = { navController.navigate(Screen.Themes.route) },
                 onNavigateToTheme = { themeId -> navController.navigate(Screen.ThemeDetail.createRoute(themeId)) },
+                onNavigateToHomeTarget = { target ->
+                    when (target) {
+                        is HomeNavigationTarget.Theme ->
+                            navController.navigate(Screen.ThemeDetail.createRoute(target.themeId))
+                        is HomeNavigationTarget.Entry ->
+                            navController.navigate(Screen.Detail.createRoute(target.entryId))
+                        is HomeNavigationTarget.ReflectionProposal ->
+                            navController.navigate(Screen.ReflectionProposal.createRoute(target.hypothesisId))
+                    }
+                },
                 onNavigateToDecisions = { navController.navigate(Screen.Decisions.route) }
             )
         }
@@ -96,6 +107,14 @@ fun EchoMindNavGraph(
             )
         }
         composable(Screen.Record.route) {
+            RecordScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+        composable(
+            route = Screen.ReflectionProposal.route,
+            arguments = listOf(navArgument("hypothesisId") { type = NavType.LongType })
+        ) {
             RecordScreen(
                 onNavigateBack = { navController.popBackStack() }
             )

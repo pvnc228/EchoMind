@@ -70,18 +70,24 @@ class ReflectionRepository @Inject constructor(
     ) {
         require(captureStage != "RECORDING") { "Transient recording stage cannot be persisted." }
         val now = System.currentTimeMillis()
-        val existing = knowledgeDao.getCaptureDraft()
-        knowledgeDao.upsertCaptureDraft(
-            CaptureDraftEntity(
-                id = 1L,
-                text = text,
-                encryptedAudioPath = encryptedAudioPath,
-                durationMs = durationMs,
-                captureStage = captureStage,
-                createdAt = existing?.createdAt ?: now,
-                updatedAt = now
-            )
-        )
+        database.withTransaction {
+            if (text.isBlank() && encryptedAudioPath == null) {
+                knowledgeDao.deleteCaptureDraft()
+            } else {
+                val existing = knowledgeDao.getCaptureDraft()
+                knowledgeDao.upsertCaptureDraft(
+                    CaptureDraftEntity(
+                        id = 1L,
+                        text = text,
+                        encryptedAudioPath = encryptedAudioPath,
+                        durationMs = durationMs,
+                        captureStage = captureStage,
+                        createdAt = existing?.createdAt ?: now,
+                        updatedAt = now
+                    )
+                )
+            }
+        }
     }
 
     suspend fun loadCaptureDraft(): CaptureDraft? =

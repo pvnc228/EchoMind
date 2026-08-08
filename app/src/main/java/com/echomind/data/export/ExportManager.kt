@@ -19,11 +19,16 @@ import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.local.security.AudioEncryptionUtil
+import com.echomind.domain.model.CoverageScopeType
+import com.echomind.domain.model.HomeCardType
+import com.echomind.domain.model.Relationship
+import com.echomind.domain.model.ReflectionStatus
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.security.MessageDigest
@@ -36,6 +41,10 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+
+internal const val MAX_RESTORE_ARCHIVE_BYTES = 512L * 1024 * 1024
+private const val MAX_RESTORE_MANIFEST_BYTES = 8L * 1024 * 1024
+private const val MAX_RESTORE_COMPRESSION_RATIO = 100L
 
 @Singleton
 class ExportManager @Inject constructor(
@@ -268,19 +277,33 @@ class ExportManager @Inject constructor(
     }
 
     private fun readAndValidateArchive(archive: File): ValidatedArchive {
+        require(archive.length() in 1..MAX_RESTORE_ARCHIVE_BYTES) {
+            "Restore archive is missing or too large."
+        }
         ZipFile(archive).use { zip ->
+            val entries = zip.entries().toList()
+            require(entries.size <= MAX_ARCHIVE_ENTRIES) { "Restore archive has too many files." }
+            require(entries.map { it.name }.distinct().size == entries.size) {
+                "Duplicate archive entry names are not allowed."
+            }
             val manifestEntry = requireNotNull(zip.getEntry("manifest.json")) {
                 "Restore archive has no manifest."
             }
+            require(entries.count { it.name == "manifest.json" } == 1) {
+                "Restore archive must contain exactly one manifest."
+            }
+            require(manifestEntry.size in 0..MAX_RESTORE_MANIFEST_BYTES) {
+                "Restore manifest is too large."
+            }
             val manifest = Json { ignoreUnknownKeys = false }
-                .decodeFromString<ExportManifest>(zip.getInputStream(manifestEntry).bufferedReader().use { it.readText() })
+                .decodeFromString<ExportManifest>(
+                    zip.getInputStream(manifestEntry).use { it.readBoundedText(MAX_RESTORE_MANIFEST_BYTES) }
+                )
             require(manifest.version == 5 && manifest.schemaVersion == 6) {
                 "Unsupported restore manifest version."
             }
             validateCounts(manifest)
             validateIdsAndReferences(manifest)
-            val entries = zip.entries().toList()
-            require(entries.size <= MAX_ARCHIVE_ENTRIES) { "Restore archive has too many files." }
             val metadataNames = manifest.files.map { it.name }
             require(metadataNames.distinct().size == metadataNames.size) { "Duplicate archive file metadata." }
             require(entries.map { it.name }.filterNot { it == "manifest.json" }.toSet() == metadataNames.toSet()) {
@@ -296,6 +319,14 @@ class ExportManager @Inject constructor(
                 require(entry.isDirectory.not()) { "Archive file is a directory." }
                 require(entry.size in 0..MAX_AUDIO_BYTES) { "Invalid archive file size." }
                 require(entry.size == file.size) { "Archive size hash metadata mismatch." }
+                require(file.sha256.matches(Regex("[0-9a-fA-F]{64}"))) {
+                    "Archive hash metadata is invalid."
+                }
+                require(entry.compressedSize >= 0L) { "Archive compression metadata is invalid." }
+                require(
+                    file.size == 0L ||
+                        (entry.compressedSize > 0L && file.size <= entry.compressedSize * MAX_RESTORE_COMPRESSION_RATIO)
+                ) { "Archive compression ratio is excessive." }
                 val actualHash = zip.getInputStream(entry).use(::sha256)
                 require(actualHash == file.sha256) { "Archive hash mismatch for ${file.name}." }
             }
@@ -342,14 +373,80 @@ class ExportManager @Inject constructor(
         val revisions = manifest.revisions.map { it.id }.toSet()
         val themes = manifest.themes.map { it.id }.toSet()
         val decisions = manifest.decisions.map { it.id }.toSet()
+        val conclusionById = manifest.conclusions.associateBy { it.id }
+        val revisionById = manifest.revisions.associateBy { it.id }
         require(manifest.rawRecords.all { it.legacyEntryId == null || it.legacyEntryId in entries })
         require(manifest.hypotheses.all { it.rawRecordId in raws })
         require(manifest.conclusions.all { it.rawRecordId in raws })
         require(manifest.revisions.all { it.conclusionId in conclusions })
+        require(manifest.conclusions.all { conclusion ->
+            val currentRevisionId = conclusion.currentRevisionId
+            currentRevisionId != null && revisionById[currentRevisionId]?.conclusionId == conclusion.id
+        }) { "Every conclusion must point to its own current revision." }
+        manifest.revisions.groupBy { it.conclusionId }.forEach { (conclusionId, revisionsForConclusion) ->
+            val versions = revisionsForConclusion.map { it.version }.sorted()
+            require(versions == (1..versions.size).toList()) {
+                "Revision versions must be unique and contiguous for conclusion $conclusionId."
+            }
+        }
+        require(manifest.entries.all { it.category.lowercase() in setOf("general", "task", "idea", "feeling", "plan") }) {
+            "Entry has an invalid category."
+        }
+        require(manifest.entries.all { it.transcript.isNotBlank() && it.durationMs >= 0L }) {
+            "Entry has invalid capture data."
+        }
+        require(manifest.rawRecords.all { it.originalText.isNotBlank() && it.durationMs >= 0L }) {
+            "Raw record has invalid capture data."
+        }
+        require(manifest.hypotheses.all { it.status in setOf(
+            ReflectionStatus.PROPOSED,
+            ReflectionStatus.CONFIRMED,
+            ReflectionStatus.REJECTED
+        ) }) { "Hypothesis has an invalid status." }
+        require(manifest.revisions.all { it.version > 0 && it.text.isNotBlank() && it.author.isNotBlank() }) {
+            "Revision has invalid content."
+        }
         require(manifest.evidenceLinks.all { it.conclusionRevisionId in revisions && it.sourceRawRecordId in raws })
+        require(manifest.evidenceLinks.all {
+            it.relationship in setOf(Relationship.SUPPORTS, Relationship.CONTRADICTS) &&
+                it.status in setOf(ReflectionStatus.CONFIRMED, "needs_review") &&
+                it.origin in setOf("intrinsic_source", "user_confirmed", "proposed_inherited", "legacy_pending")
+        }) { "Evidence link has an invalid relationship or provenance state." }
         require(manifest.themeLinks.all { it.themeId in themes && it.conclusionRevisionId in revisions })
-        require(manifest.decisions.all { it.sourceRevisionId == null || it.sourceRevisionId in revisions })
+        require(manifest.themeLinks.all {
+            it.origin in setOf("user_confirmed", "proposed_inherited", "legacy_pending") &&
+                it.reviewRequired == !it.confirmed
+        }) { "Theme link has an invalid review state." }
+        require(manifest.decisions.all { decision ->
+            val sourceRevisionId = decision.sourceRevisionId
+            sourceRevisionId != null &&
+                sourceRevisionId in revisions &&
+                conclusionById[revisionById[sourceRevisionId]?.conclusionId]?.currentRevisionId == sourceRevisionId
+        }) { "Every decision must be grounded in a current revision." }
+        require(manifest.decisions.all { decision ->
+            decision.question.isNotBlank() &&
+                (decision.choice == null || decision.choice.isNotBlank()) &&
+                (decision.suggestion == null || (
+                    decision.suggestionAuthor == "echomind" &&
+                        !decision.suggestionSource.isNullOrBlank() &&
+                        decision.suggestionStatus in setOf("proposal", "confirmed", "rejected")
+                    ))
+        }) { "Decision has invalid state or suggestion metadata." }
         require(manifest.outcomes.all { it.decisionId in decisions })
+        require(manifest.outcomes.all { it.report.isNotBlank() && manifest.decisions.first { decision -> decision.id == it.decisionId }.choice?.isNotBlank() == true }) {
+            "An outcome requires a non-empty decision choice."
+        }
+        manifest.captureDraft?.let { draft ->
+            require(draft.id == 1L) { "Capture draft must use the singleton id." }
+            require(draft.captureStage == "CAPTURE") { "Capture draft has an invalid stage." }
+            require(draft.updatedAt >= draft.createdAt) { "Capture draft timestamps are invalid." }
+        }
+        require(manifest.dispositions.all {
+            it.cardKey.isNotBlank() &&
+                it.cardType in HomeCardType.entries.map { type -> type.name } &&
+                it.scopeType in CoverageScopeType.entries.map { scope -> scope.name } &&
+                it.scopeId != 0L
+        }) { "Home-card disposition has an invalid scope or type." }
         val files = manifest.files.map { it.name }.toSet()
         require(manifest.entries.all { it.audioFileName == null || it.audioFileName in files })
         require(manifest.rawRecords.all { it.audioFileName == null || it.audioFileName in files })
@@ -370,6 +467,22 @@ class ExportManager @Inject constructor(
             count = input.read(buffer)
         }
         digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun InputStream.readBoundedText(maxBytes: Long): String {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        var count = read(buffer)
+        while (count >= 0) {
+            if (count > 0) {
+                total += count
+                require(total <= maxBytes) { "Restore manifest is too large." }
+                output.write(buffer, 0, count)
+            }
+            count = read(buffer)
+        }
+        return output.toString(Charsets.UTF_8.name())
     }
 
     private data class ValidatedArchive(val manifest: ExportManifest)

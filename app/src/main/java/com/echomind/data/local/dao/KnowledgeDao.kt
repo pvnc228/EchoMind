@@ -16,6 +16,7 @@ import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.local.entity.HomeCardDispositionEntity
+import com.echomind.data.local.entity.AudioCleanupEntity
 
 @Dao
 interface KnowledgeDao {
@@ -83,6 +84,9 @@ interface KnowledgeDao {
             "WHERE raw_record_id = :rawRecordId ORDER BY created_at DESC, id DESC LIMIT 1"
     )
     suspend fun getLatestHypothesisForRawRecord(rawRecordId: Long): AiHypothesisEntity?
+
+    @Query("SELECT * FROM ai_hypotheses WHERE raw_record_id = :rawRecordId ORDER BY id")
+    suspend fun getHypothesesForRawRecord(rawRecordId: Long): List<AiHypothesisEntity>
 
     @Query(
         "SELECT * FROM ai_hypotheses WHERE status = 'proposed' " +
@@ -292,8 +296,17 @@ interface KnowledgeDao {
     )
     suspend fun replaceDecisionChoice(id: Long, choice: String): Int
 
+    @Query(
+        "UPDATE decisions SET source_revision_id = :revisionId " +
+            "WHERE id = :id AND choice IS NULL"
+    )
+    suspend fun replaceDecisionGrounds(id: Long, revisionId: Long): Int
+
     @Query("DELETE FROM outcomes WHERE decision_id = :decisionId")
     suspend fun deleteOutcomesForDecision(decisionId: Long): Int
+
+    @Query("DELETE FROM outcomes WHERE id = :outcomeId AND decision_id = :decisionId")
+    suspend fun deleteOutcome(decisionId: Long, outcomeId: Long): Int
 
     @Query("DELETE FROM decisions WHERE id = :id")
     suspend fun deleteDecisionById(id: Long): Int
@@ -315,6 +328,21 @@ interface KnowledgeDao {
 
     @Query("DELETE FROM home_card_dispositions WHERE card_key = :cardKey")
     suspend fun deleteHomeCardDisposition(cardKey: String): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAudioCleanup(cleanup: AudioCleanupEntity)
+
+    @Query("SELECT * FROM audio_cleanup_queue WHERE path = :path")
+    suspend fun getAudioCleanup(path: String): AudioCleanupEntity?
+
+    @Query(
+        "SELECT * FROM audio_cleanup_queue " +
+            "ORDER BY failed_at, path LIMIT :limit"
+    )
+    suspend fun getPendingAudioCleanup(limit: Int): List<AudioCleanupEntity>
+
+    @Query("DELETE FROM audio_cleanup_queue WHERE path = :path")
+    suspend fun deleteAudioCleanup(path: String): Int
 
     @Query("SELECT * FROM evidence_links WHERE source_raw_record_id = :sourceId ORDER BY id")
     suspend fun getIncomingEvidenceLinks(sourceId: Long): List<EvidenceLinkEntity>

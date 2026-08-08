@@ -47,6 +47,55 @@ class HomeRelevanceBuilderTest {
     }
 
     @Test
+    fun `unfinished proposals are actionable but do not appear as coverage`() {
+        val result = HomeRelevanceBuilder.build(
+            listOf(
+                ThemeCandidate(
+                    themeId = 0L,
+                    name = "",
+                    conclusionCount = 0,
+                    evidenceCount = 0,
+                    contradictionCount = 0,
+                    scopeType = CoverageScopeType.UNTHEMED,
+                    scopeId = -9L,
+                    unfinishedSince = now - HomeRelevanceBuilder.DAY_MS,
+                    navigationTarget = HomeNavigationTarget.ReflectionProposal(9L)
+                )
+            ),
+            now
+        )
+
+        assertTrue(result.coverage.isEmpty())
+        assertEquals(
+            HomeNavigationTarget.ReflectionProposal(9L),
+            result.card?.navigationTarget
+        )
+    }
+
+    @Test
+    fun `unthemed current conclusion keeps an entry navigation target`() {
+        val result = HomeRelevanceBuilder.build(
+            listOf(
+                ThemeCandidate(
+                    themeId = 0L,
+                    name = "A current wording",
+                    conclusionCount = 1,
+                    evidenceCount = 0,
+                    contradictionCount = 0,
+                    scopeType = CoverageScopeType.UNTHEMED,
+                    scopeId = 42L,
+                    currentRevisionIds = listOf(7L),
+                    evidenceState = EvidenceState.NO_EXTERNAL_EVIDENCE,
+                    navigationTarget = HomeNavigationTarget.Entry(123L)
+                )
+            ),
+            now
+        )
+
+        assertEquals(HomeNavigationTarget.Entry(123L), result.coverage.single().navigationTarget)
+    }
+
+    @Test
     fun `contradiction is immediate and outranks thin evidence`() {
         val result = HomeRelevanceBuilder.build(
             listOf(
@@ -80,6 +129,24 @@ class HomeRelevanceBuilderTest {
                 listOf(supported.copy(lastGraphChangeAt = now - HomeRelevanceBuilder.WEEK_MS)), now
             ).card?.type
         )
+    }
+
+    @Test
+    fun `knowledge without an eligible card is represented as no attention`() {
+        val result = HomeRelevanceBuilder.build(
+            listOf(
+                candidate(
+                    1,
+                    "Stable conclusion",
+                    EvidenceState.NO_EXTERNAL_EVIDENCE,
+                    now
+                )
+            ),
+            now
+        )
+
+        assertTrue(result.hasKnowledge)
+        assertNull(result.card)
     }
 
     @Test

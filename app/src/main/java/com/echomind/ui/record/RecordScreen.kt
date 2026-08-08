@@ -123,17 +123,16 @@ fun RecordScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showDraftExitDialog = false
-                    onNavigateBack()
+                    viewModel.keepDraft(onNavigateBack)
                 }) { Text("Keep draft") }
             },
             dismissButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { showDraftExitDialog = false }) { Text("Cancel") }
-                    TextButton(onClick = {
-                        showDraftExitDialog = false
-                        viewModel.discardDraft()
-                        onNavigateBack()
-                    }) { Text("Discard") }
+                     TextButton(onClick = {
+                         showDraftExitDialog = false
+                         viewModel.discardDraft(onNavigateBack)
+                     }) { Text("Discard") }
                 }
             }
         )

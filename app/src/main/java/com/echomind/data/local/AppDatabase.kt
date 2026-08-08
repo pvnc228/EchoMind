@@ -19,6 +19,7 @@ import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.local.entity.HomeCardDispositionEntity
+import com.echomind.data.local.entity.AudioCleanupEntity
 
 @Database(
     entities = [
@@ -33,9 +34,10 @@ import com.echomind.data.local.entity.HomeCardDispositionEntity
         DecisionEntity::class,
         OutcomeEntity::class,
         CaptureDraftEntity::class,
-        HomeCardDispositionEntity::class
+        HomeCardDispositionEntity::class,
+        AudioCleanupEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @androidx.room.TypeConverters(Converters::class)
@@ -529,6 +531,22 @@ abstract class AppDatabase : RoomDatabase() {
                         "MIGRATION_5_6 produced a foreign-key violation."
                     }
                 }
+            }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `audio_cleanup_queue` (
+                        `path` TEXT NOT NULL,
+                        `entry_id` INTEGER NOT NULL,
+                        `failed_at` INTEGER NOT NULL,
+                        `attempt_count` INTEGER NOT NULL,
+                        PRIMARY KEY(`path`)
+                    )
+                    """.trimIndent()
+                )
             }
         }
     }

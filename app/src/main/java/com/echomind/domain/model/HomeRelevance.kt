@@ -4,6 +4,12 @@ import java.security.MessageDigest
 
 enum class CoverageScopeType { THEME, UNTHEMED }
 
+sealed interface HomeNavigationTarget {
+    data class Theme(val themeId: Long) : HomeNavigationTarget
+    data class Entry(val entryId: Long) : HomeNavigationTarget
+    data class ReflectionProposal(val hypothesisId: Long) : HomeNavigationTarget
+}
+
 enum class EvidenceState {
     EMPTY_THEME,
     NO_EXTERNAL_EVIDENCE,
@@ -20,7 +26,8 @@ data class CoverageItem(
     val hasOutcome: Boolean,
     val externalEvidenceCount: Int,
     val contradictionCount: Int,
-    val lastGraphChangeAt: Long
+    val lastGraphChangeAt: Long,
+    val navigationTarget: HomeNavigationTarget? = null
 ) {
     // Compatibility projections for existing callers while the UI migrates to typed state.
     val themeId: Long get() = if (scopeType == CoverageScopeType.THEME) scopeId else 0L
@@ -50,7 +57,8 @@ data class ThemeCandidate(
     val relevantSourceRevisionKeys: List<String> = emptyList(),
     val sourceRawRecordIds: List<Long> = emptyList(),
     val relevantOutcomeIds: List<Long> = emptyList(),
-    val unfinishedSince: Long? = null
+    val unfinishedSince: Long? = null,
+    val navigationTarget: HomeNavigationTarget? = null
 )
 
 enum class HomeCardType {
@@ -82,7 +90,8 @@ data class HomeCard(
     val sourceRawRecordIds: List<Long> = emptyList(),
     val evidenceState: EvidenceState? = null,
     val hasOutcome: Boolean = false,
-    val lastGraphChangeAt: Long = 0L
+    val lastGraphChangeAt: Long = 0L,
+    val navigationTarget: HomeNavigationTarget? = null
 )
 
 data class HomeRelevance(
@@ -102,6 +111,7 @@ object HomeRelevanceBuilder {
         suppressedCardKeys: Set<String> = emptySet()
     ): HomeRelevance {
         val coverage = candidates
+            .filter { it.unfinishedSince == null }
             .sortedWith(compareBy<ThemeCandidate> { it.scopeType.ordinal }.thenBy { it.scopeId })
             .map { it.toCoverageItem() }
         val eligible = candidates.mapNotNull { candidate ->
@@ -143,7 +153,11 @@ object HomeRelevanceBuilder {
         hasOutcome = hasOutcome,
         externalEvidenceCount = evidenceCount,
         contradictionCount = contradictionCount,
-        lastGraphChangeAt = lastGraphChangeAt
+        lastGraphChangeAt = lastGraphChangeAt,
+        navigationTarget = navigationTarget ?: when (scopeType) {
+            CoverageScopeType.THEME -> HomeNavigationTarget.Theme(scopeId)
+            CoverageScopeType.UNTHEMED -> null
+        }
     )
 
     private fun ThemeCandidate.toCard(type: HomeCardType): HomeCard {
@@ -192,7 +206,11 @@ object HomeRelevanceBuilder {
             },
             evidenceState = state,
             hasOutcome = hasOutcome,
-            lastGraphChangeAt = lastGraphChangeAt
+            lastGraphChangeAt = lastGraphChangeAt,
+            navigationTarget = navigationTarget ?: when (scopeType) {
+                CoverageScopeType.THEME -> HomeNavigationTarget.Theme(scopeId)
+                CoverageScopeType.UNTHEMED -> null
+            }
         )
     }
 

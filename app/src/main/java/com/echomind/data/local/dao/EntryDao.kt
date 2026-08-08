@@ -36,7 +36,7 @@ interface EntryDao {
     suspend fun deleteEntry(entry: EntryEntity)
 
     @Query("DELETE FROM entries WHERE id = :id")
-    suspend fun deleteEntryById(id: Long)
+    suspend fun deleteEntryById(id: Long): Int
 
     @Query("SELECT * FROM entries ORDER BY created_at DESC LIMIT :limit")
     suspend fun getRecentEntries(limit: Int): List<EntryEntity>

@@ -11,6 +11,7 @@ import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.HomeRelevance
 import com.echomind.domain.model.HomeRelevanceBuilder
 import com.echomind.domain.model.HomeCard
+import com.echomind.domain.model.HomeNavigationTarget
 import com.echomind.domain.model.LinkCandidateInput
 import com.echomind.domain.model.LinkCandidateRanker
 import com.echomind.domain.model.KnowledgeSearchResult
@@ -67,14 +68,17 @@ class KnowledgeRepository @Inject constructor(
 
     suspend fun linkConclusionToTheme(themeId: Long, revisionId: Long) {
         requireNotNull(knowledgeDao.getThemeById(themeId)) { "Theme $themeId does not exist." }
-        knowledgeDao.insertThemeLink(
+        requireNotNull(knowledgeDao.getRevisionById(revisionId)) { "Revision $revisionId does not exist." }
+        check(
+            knowledgeDao.insertThemeLink(
             ThemeLinkEntity(
                 themeId = themeId,
                 conclusionRevisionId = revisionId,
                 confirmed = true,
                 createdAt = System.currentTimeMillis()
             )
-        )
+            ) != -1L
+        ) { "Theme link already exists and requires explicit review." }
     }
 
     suspend fun unlinkConclusionFromTheme(themeId: Long, revisionId: Long) {
@@ -273,6 +277,7 @@ class KnowledgeRepository @Inject constructor(
         val themes = knowledgeDao.getActiveThemes()
         val themeLinks = knowledgeDao.getConfirmedThemeLinksAll()
         val conclusions = knowledgeDao.getAllConclusions()
+        val rawRecords = knowledgeDao.getAllRawRecords().associateBy { it.id }
         val revisions = knowledgeDao.getAllRevisions().associateBy { it.id }
         val evidenceByRevision = knowledgeDao.getAllEvidenceLinks()
             .filter { it.status == "confirmed" }
@@ -298,7 +303,8 @@ class KnowledgeRepository @Inject constructor(
             scopeId: Long,
             revisionIds: List<Long>,
             themeLinkSubset: List<com.echomind.data.local.entity.ThemeLinkEntity>,
-            unfinishedSince: Long? = null
+            unfinishedSince: Long? = null,
+            navigationTarget: HomeNavigationTarget? = null
         ): ThemeCandidate {
             val currentEvidence = revisionIds.flatMap { evidenceByRevision[it].orEmpty() }
             val externalEvidence = currentEvidence.filter { evidence ->
@@ -357,7 +363,8 @@ class KnowledgeRepository @Inject constructor(
                 },
                 sourceRawRecordIds = sourceRawRecordIds,
                 relevantOutcomeIds = outcomeIds.sorted(),
-                unfinishedSince = unfinishedSince
+                unfinishedSince = unfinishedSince,
+                navigationTarget = navigationTarget
             )
         }
 
@@ -378,13 +385,17 @@ class KnowledgeRepository @Inject constructor(
         val unthemedCandidates = conclusions.mapNotNull { conclusion ->
             val revisionId = conclusion.currentRevisionId ?: return@mapNotNull null
             if (revisionId in themedCurrentRevisionIds) return@mapNotNull null
+            val entryId = rawRecords[conclusion.rawRecordId]?.legacyEntryId ?: return@mapNotNull null
             candidate(
                 themeId = 0L,
-                name = "",
+                name = revisions[revisionId]?.text?.trim()?.take(80)
+                    .takeUnless { it.isNullOrBlank() }
+                    ?: "Unthemed reflection",
                 scopeType = com.echomind.domain.model.CoverageScopeType.UNTHEMED,
                 scopeId = conclusion.id,
                 revisionIds = listOf(revisionId),
-                themeLinkSubset = emptyList()
+                themeLinkSubset = emptyList(),
+                navigationTarget = HomeNavigationTarget.Entry(entryId)
             )
         }
         val unfinishedCandidates = knowledgeDao.getAllHypotheses()
@@ -397,7 +408,8 @@ class KnowledgeRepository @Inject constructor(
                     scopeId = -hypothesis.id,
                     revisionIds = emptyList(),
                     themeLinkSubset = emptyList(),
-                    unfinishedSince = hypothesis.createdAt
+                    unfinishedSince = hypothesis.createdAt,
+                    navigationTarget = HomeNavigationTarget.ReflectionProposal(hypothesis.id)
                 ).copy(relevantSourceRevisionKeys = listOf("h:${hypothesis.id}"))
             }
         val dispositions = knowledgeDao.getAllHomeCardDispositions()

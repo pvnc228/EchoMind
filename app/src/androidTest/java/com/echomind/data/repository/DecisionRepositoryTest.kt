@@ -97,7 +97,10 @@ class DecisionRepositoryTest {
         try {
             val decisionRepository = DecisionRepository(database, database.knowledgeDao())
             runBlocking {
-                val id = decisionRepository.createDecision("Which path?")
+                val id = decisionRepository.createDecision(
+                    "Which path?",
+                    sourceRevisionId = currentRevision(database)
+                )
                 decisionRepository.setChoice(id, "Path A")
 
                 var rejected = false
@@ -120,7 +123,10 @@ class DecisionRepositoryTest {
         try {
             val decisionRepository = DecisionRepository(database, database.knowledgeDao())
             runBlocking {
-                val id = decisionRepository.createDecision("Which path?")
+                val id = decisionRepository.createDecision(
+                    "Which path?",
+                    sourceRevisionId = currentRevision(database)
+                )
                 decisionRepository.setChoice(id, "Path A")
                 decisionRepository.replaceChoice(id, "Path B")
                 assertEquals("Path B", decisionRepository.getDecision(id)!!.choice)
@@ -141,12 +147,115 @@ class DecisionRepositoryTest {
         try {
             val decisionRepository = DecisionRepository(database, database.knowledgeDao())
             runBlocking {
-                val decisionId = decisionRepository.createDecision("Which path?")
+                val decisionId = decisionRepository.createDecision(
+                    "Which path?",
+                    sourceRevisionId = currentRevision(database)
+                )
 
                 assertThrows(IllegalStateException::class.java) {
                     runBlocking { decisionRepository.recordOutcome(decisionId, "Outcome too early") }
                 }
                 assertTrue(decisionRepository.getDecision(decisionId)!!.outcomes.isEmpty())
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun concreteOutcomeCanBeRemovedWithoutDeletingTheDecision() {
+        val database = inMemoryDatabase()
+        try {
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+            runBlocking {
+                val decisionId = decisionRepository.createDecision(
+                    "Which path?",
+                    sourceRevisionId = currentRevision(database)
+                )
+                decisionRepository.setChoice(decisionId, "Path A")
+                val outcomeId = decisionRepository.recordOutcome(decisionId, "Observed result")
+
+                decisionRepository.deleteOutcome(decisionId, outcomeId)
+
+                val decision = requireNotNull(decisionRepository.getDecision(decisionId))
+                assertTrue(decision.outcomes.isEmpty())
+                assertFalse(decision.hasOutcome)
+                assertThrows(IllegalStateException::class.java) {
+                    runBlocking { decisionRepository.deleteOutcome(decisionId, outcomeId) }
+                }
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun newDecisionRequiresTheCurrentRevisionAsGrounds() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+            runBlocking {
+                assertThrows(IllegalArgumentException::class.java) {
+                    runBlocking { decisionRepository.createDecision("Missing grounds") }
+                }
+                assertThrows(IllegalArgumentException::class.java) {
+                    runBlocking {
+                        decisionRepository.createDecision("Dangling grounds", sourceRevisionId = 9999L)
+                    }
+                }
+
+                val rawId = reflectionRepository.captureRawText("A revisable conclusion")
+                val proposal = reflectionRepository.createLocalProposal(rawId)
+                val first = reflectionRepository.confirm(proposal.hypothesisId, "First wording")
+                val historicalRevisionId = requireNotNull(first.revisionId)
+                val revised = reflectionRepository.revise(proposal.hypothesisId, "Current wording")
+                val currentRevisionId = requireNotNull(revised.revisionId)
+
+                assertThrows(IllegalArgumentException::class.java) {
+                    runBlocking {
+                        decisionRepository.createDecision(
+                            "Historical grounds",
+                            sourceRevisionId = historicalRevisionId
+                        )
+                    }
+                }
+                val created = decisionRepository.createDecision(
+                    "Current grounds",
+                    sourceRevisionId = currentRevisionId
+                )
+                assertEquals(currentRevisionId, decisionRepository.getDecision(created)?.sourceRevisionId)
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun groundsCanBeReplacedOnlyBeforeChoice() {
+        val database = inMemoryDatabase()
+        try {
+            val reflection = reflectionRepository(database)
+            val decisions = DecisionRepository(database, database.knowledgeDao())
+            runBlocking {
+                val firstRaw = reflection.captureRawText("First grounds")
+                val firstProposal = reflection.createLocalProposal(firstRaw)
+                val firstRevision = requireNotNull(
+                    reflection.confirm(firstProposal.hypothesisId, "First conclusion").revisionId
+                )
+                val secondRaw = reflection.captureRawText("Second grounds")
+                val secondProposal = reflection.createLocalProposal(secondRaw)
+                val secondRevision = requireNotNull(
+                    reflection.confirm(secondProposal.hypothesisId, "Second conclusion").revisionId
+                )
+                val decisionId = decisions.createDecision("Which grounds?", sourceRevisionId = firstRevision)
+
+                decisions.replaceGrounds(decisionId, secondRevision)
+                assertEquals(secondRevision, decisions.getDecision(decisionId)?.sourceRevisionId)
+                decisions.setChoice(decisionId, "Proceed")
+                assertThrows(IllegalStateException::class.java) {
+                    runBlocking { decisions.replaceGrounds(decisionId, firstRevision) }
+                }
             }
         } finally {
             database.close()
@@ -211,6 +320,13 @@ class DecisionRepositoryTest {
         analyzer = LocalReflectionAnalyzer(),
         json = Json { ignoreUnknownKeys = true }
     )
+
+    private suspend fun currentRevision(database: AppDatabase): Long {
+        val reflection = reflectionRepository(database)
+        val rawId = reflection.captureRawText("Decision test grounds")
+        val proposal = reflection.createLocalProposal(rawId)
+        return requireNotNull(reflection.confirm(proposal.hypothesisId, "Decision grounds").revisionId)
+    }
 
     private fun inMemoryDatabase(): AppDatabase =
         Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)

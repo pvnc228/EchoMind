@@ -76,10 +76,43 @@ class DecisionsViewModel @Inject constructor(
         }
     }
 
+    fun replaceChoice(decisionId: Long, choice: String) {
+        viewModelScope.launch {
+            runCatching {
+                repository.replaceChoice(decisionId, choice)
+                load()
+            }.onFailure { e ->
+                _uiState.value = _uiState.value.copy(error = e.message)
+            }
+        }
+    }
+
+    fun replaceGrounds(decisionId: Long, sourceRevisionId: Long) {
+        viewModelScope.launch {
+            runCatching {
+                repository.replaceGrounds(decisionId, sourceRevisionId)
+                load()
+            }.onFailure { e ->
+                _uiState.value = _uiState.value.copy(error = e.message)
+            }
+        }
+    }
+
     fun reportOutcome(decisionId: Long, report: String) {
         viewModelScope.launch {
             runCatching {
                 repository.recordOutcome(decisionId, report)
+                load()
+            }.onFailure { e ->
+                _uiState.value = _uiState.value.copy(error = e.message)
+            }
+        }
+    }
+
+    fun deleteOutcome(decisionId: Long, outcomeId: Long) {
+        viewModelScope.launch {
+            runCatching {
+                repository.deleteOutcome(decisionId, outcomeId)
                 load()
             }.onFailure { e ->
                 _uiState.value = _uiState.value.copy(error = e.message)

@@ -3,6 +3,7 @@ package com.echomind.ui.record
 import android.app.Application
 import android.media.MediaRecorder
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.echomind.data.local.security.AudioEncryptionUtil
 import com.echomind.data.repository.ReflectionRepository
@@ -13,12 +14,15 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class ReflectionStage {
     LOADING, CAPTURE, RECORDING, PROCESSING, REVIEW, CONFIRMED, REJECTED, ERROR
@@ -44,7 +48,8 @@ data class RecordUiState(
 class RecordViewModel @Inject constructor(
     application: Application,
     private val reflectionRepository: ReflectionRepository,
-    private val audioEncryptionUtil: AudioEncryptionUtil
+    private val audioEncryptionUtil: AudioEncryptionUtil,
+    savedStateHandle: SavedStateHandle
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(RecordUiState())
@@ -54,9 +59,23 @@ class RecordViewModel @Inject constructor(
     private var startTime: Long = 0
     private var amplitudeJob: Job? = null
     private var draftSaveJob: Job? = null
+    private val draftWriteMutex = Mutex()
+    private var draftActionInProgress = false
+    private val requestedHypothesisId: Long? = savedStateHandle.get<Long>("hypothesisId")
 
     init {
         viewModelScope.launch {
+            if (requestedHypothesisId != null) {
+                runCatching { reflectionRepository.loadReflection(requestedHypothesisId) }
+                    .onSuccess(::showSession)
+                    .onFailure { error ->
+                        _uiState.value = RecordUiState(
+                            stage = ReflectionStage.ERROR,
+                            error = error.message ?: "Could not restore the reflection proposal."
+                        )
+                    }
+                return@launch
+            }
             val interrupted = cleanupInterruptedRecording()
             runCatching { reflectionRepository.loadCaptureDraft() }
                 .onSuccess { draft ->
@@ -99,7 +118,7 @@ class RecordViewModel @Inject constructor(
     }
 
     fun updateThought(text: String) {
-        if (_uiState.value.stage == ReflectionStage.CAPTURE) {
+        if (_uiState.value.stage == ReflectionStage.CAPTURE && !draftActionInProgress) {
             _uiState.value = _uiState.value.copy(thoughtText = text)
             scheduleDraftPersist()
         }
@@ -115,11 +134,13 @@ class RecordViewModel @Inject constructor(
         val state = _uiState.value
         if (state.stage != ReflectionStage.CAPTURE || state.thoughtText.isBlank()) return
 
+        draftActionInProgress = true
         viewModelScope.launch {
+            waitForPendingDraftWrite()
             _uiState.value = state.copy(stage = ReflectionStage.PROCESSING, error = null)
             var rawRecordId: Long? = null
             runCatching {
-                rawRecordId = reflectionRepository.captureRawText(
+                rawRecordId = reflectionRepository.submitCaptureDraft(
                     originalText = state.thoughtText,
                     audioPath = state.audioPath,
                     durationMs = state.durationMs
@@ -129,10 +150,13 @@ class RecordViewModel @Inject constructor(
                     rawRecordId = rawRecordId
                 )
                 val session = reflectionRepository.createLocalProposal(requireNotNull(rawRecordId))
-                reflectionRepository.clearCaptureDraft()
                 session
-            }.onSuccess(::showSession)
+            }.onSuccess {
+                draftActionInProgress = false
+                showSession(it)
+            }
                 .onFailure { error ->
+                    draftActionInProgress = false
                     _uiState.value = state.copy(
                         stage = ReflectionStage.ERROR,
                         rawRecordId = rawRecordId,
@@ -270,15 +294,51 @@ class RecordViewModel @Inject constructor(
         }
     }
 
-    fun discardDraft() {
+    fun keepDraft(onComplete: () -> Unit = {}) {
         val state = _uiState.value
-        if (state.stage != ReflectionStage.CAPTURE) return
-        state.audioPath?.let { path ->
-            if (path.endsWith(AudioEncryptionUtil.ENCRYPTED_EXTENSION)) File(path).delete()
-        }
+        if (state.stage != ReflectionStage.CAPTURE || draftActionInProgress) return
+        draftActionInProgress = true
         viewModelScope.launch {
-            reflectionRepository.clearCaptureDraft()
-            _uiState.value = RecordUiState(stage = ReflectionStage.CAPTURE)
+            waitForPendingDraftWrite()
+            persistDraft(state).fold(
+                onSuccess = {
+                    draftActionInProgress = false
+                    onComplete()
+                },
+                onFailure = { error ->
+                    draftActionInProgress = false
+                    _uiState.value = state.copy(error = error.message ?: "Could not save the draft.")
+                }
+            )
+        }
+    }
+
+    fun discardDraft(onComplete: () -> Unit = {}) {
+        val state = _uiState.value
+        if (state.stage != ReflectionStage.CAPTURE || draftActionInProgress) return
+        draftActionInProgress = true
+        viewModelScope.launch {
+            waitForPendingDraftWrite()
+            runCatching {
+                draftWriteMutex.withLock { reflectionRepository.clearCaptureDraft() }
+                state.audioPath?.let { path ->
+                    if (path.endsWith(AudioEncryptionUtil.ENCRYPTED_EXTENSION)) {
+                        check(!File(path).exists() || File(path).delete()) {
+                            "Could not remove the draft audio."
+                        }
+                    }
+                }
+            }.fold(
+                onSuccess = {
+                    draftActionInProgress = false
+                    _uiState.value = RecordUiState(stage = ReflectionStage.CAPTURE)
+                    onComplete()
+                },
+                onFailure = { error ->
+                    draftActionInProgress = false
+                    _uiState.value = state.copy(error = error.message ?: "Could not discard the draft.")
+                }
+            )
         }
     }
 
@@ -377,17 +437,22 @@ class RecordViewModel @Inject constructor(
         draftSaveJob = viewModelScope.launch { persistDraft(state) }
     }
 
-    private suspend fun persistDraft(state: RecordUiState) {
-        if (state.thoughtText.isBlank() && state.audioPath == null) return
-        runCatching {
-            reflectionRepository.saveCaptureDraft(
-                text = state.thoughtText,
-                encryptedAudioPath = state.audioPath?.takeIf {
-                    it.endsWith(AudioEncryptionUtil.ENCRYPTED_EXTENSION)
-                },
-                durationMs = state.durationMs
-            )
+    private suspend fun persistDraft(state: RecordUiState): Result<Unit> =
+        draftWriteMutex.withLock {
+            runCatching {
+                reflectionRepository.saveCaptureDraft(
+                    text = state.thoughtText,
+                    encryptedAudioPath = state.audioPath?.takeIf {
+                        it.endsWith(AudioEncryptionUtil.ENCRYPTED_EXTENSION)
+                    },
+                    durationMs = state.durationMs
+                )
+            }
         }
+
+    private suspend fun waitForPendingDraftWrite() {
+        draftSaveJob?.cancelAndJoin()
+        draftSaveJob = null
     }
 
     private fun cleanupInterruptedRecording(): Boolean {

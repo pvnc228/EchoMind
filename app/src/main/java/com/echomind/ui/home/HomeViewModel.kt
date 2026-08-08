@@ -16,6 +16,7 @@ import javax.inject.Inject
 
 data class HomeUiState(
     val card: HomeCard? = null,
+    val dismissedCard: HomeCard? = null,
     val coverage: List<ThemeCoverage> = emptyList(),
     val hasKnowledge: Boolean = false,
     val recent: List<Entry> = emptyList(),
@@ -66,7 +67,9 @@ class HomeViewModel @Inject constructor(
         val card = _uiState.value.card ?: return
         viewModelScope.launch {
             runCatching { knowledgeRepository.dismissCard(card) }
-                .onSuccess { _uiState.value = _uiState.value.copy(card = null) }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(card = null, dismissedCard = card)
+                }
         }
     }
 
@@ -75,6 +78,16 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { knowledgeRepository.postponeCard(card, until) }
                 .onSuccess { _uiState.value = _uiState.value.copy(card = null) }
+        }
+    }
+
+    fun undoDismissedCard() {
+        val card = _uiState.value.dismissedCard ?: return
+        viewModelScope.launch {
+            runCatching { knowledgeRepository.restoreCard(card.cardKey) }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(card = card, dismissedCard = null)
+                }
         }
     }
 

@@ -176,6 +176,112 @@ class ExportManagerTest {
         }
     }
 
+    @Test
+    fun restoreRejectsInvalidGraphInvariantsBeforeWritingAnyRows() {
+        val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var exportFile: File? = null
+        val targets = mutableListOf<AppDatabase>()
+        val invalidArchives = mutableListOf<File>()
+        try {
+            val sourceRepository = ReflectionRepository(
+                database = source,
+                entryDao = source.entryDao(),
+                knowledgeDao = source.knowledgeDao(),
+                analyzer = LocalReflectionAnalyzer(),
+                json = Json { ignoreUnknownKeys = true }
+            )
+            val manifest = runBlocking {
+                val rawId = sourceRepository.captureRawText("Invariant source")
+                val proposal = sourceRepository.createLocalProposal(rawId)
+                val session = sourceRepository.confirm(proposal.hypothesisId, "Invariant conclusion")
+                exportFile = ExportManager(
+                    context,
+                    source,
+                    source.entryDao(),
+                    source.knowledgeDao(),
+                    AudioEncryptionUtil(context)
+                ).exportToZip().getOrThrow()
+                requireNotNull(exportFile).let { file ->
+                    ZipFile(file).use { zip ->
+                        Json.decodeFromString<ExportManifest>(
+                            zip.getInputStream(requireNotNull(zip.getEntry("manifest.json")))
+                                .bufferedReader().use { it.readText() }
+                        )
+                    }
+                }.also { exported ->
+                    assertEquals(session.revisionId, exported.conclusions.single().currentRevisionId)
+                }
+            }
+            val currentRevisionId = requireNotNull(manifest.conclusions.single().currentRevisionId)
+            val invalidManifests = listOf(
+                manifest.copy(
+                    conclusions = manifest.conclusions.map { it.copy(currentRevisionId = 9999L) }
+                ),
+                manifest.copy(
+                    evidenceLinks = manifest.evidenceLinks.map { it.copy(relationship = "unknown") }
+                ),
+                manifest.copy(
+                    decisions = listOf(
+                        ExportDecision(
+                            id = 1L,
+                            question = "Outcome without choice",
+                            suggestion = null,
+                            choice = null,
+                            sourceRevisionId = currentRevisionId,
+                            createdAt = 1L
+                        )
+                    ),
+                    outcomes = listOf(ExportOutcome(1L, 1L, "Impossible", 1L)),
+                    counts = manifest.counts.copy(decisions = 1, outcomes = 1)
+                ),
+                manifest.copy(
+                    captureDraft = ExportCaptureDraft(
+                        id = 2L,
+                        text = "draft",
+                        encryptedAudioFileName = null,
+                        durationMs = 0L,
+                        captureStage = "CAPTURE",
+                        createdAt = 1L,
+                        updatedAt = 1L
+                    ),
+                    counts = manifest.counts.copy(hasCaptureDraft = true)
+                )
+            )
+
+            invalidManifests.forEachIndexed { index, invalidManifest ->
+                val archive = File(context.cacheDir, "echomind-invalid-invariant-$index.zip")
+                invalidArchives += archive
+                rewriteArchive(requireNotNull(exportFile), archive, invalidManifest, emptyMap())
+                val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+                    .allowMainThreadQueries()
+                    .build()
+                targets += target
+                val failure = runBlocking {
+                    ExportManager(
+                        context,
+                        target,
+                        target.entryDao(),
+                        target.knowledgeDao(),
+                        AudioEncryptionUtil(context)
+                    ).restoreFromZip(archive)
+                }
+                assertTrue("case $index should be rejected", failure.isFailure)
+                runBlocking {
+                    assertTrue(target.entryDao().getAllEntriesOnce().isEmpty())
+                    assertTrue(target.knowledgeDao().getAllRawRecords().isEmpty())
+                    assertTrue(target.knowledgeDao().getAllRevisions().isEmpty())
+                }
+            }
+        } finally {
+            targets.forEach { it.close() }
+            source.close()
+            exportFile?.delete()
+            invalidArchives.forEach { it.delete() }
+        }
+    }
+
     private fun rewriteArchive(
         source: java.io.File,
         target: java.io.File,

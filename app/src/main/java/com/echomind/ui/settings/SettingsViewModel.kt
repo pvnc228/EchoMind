@@ -6,6 +6,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.echomind.data.export.ExportManager
+import com.echomind.data.export.MAX_RESTORE_ARCHIVE_BYTES
 import com.echomind.data.repository.KnowledgeRepository
 import com.echomind.data.remote.BaseUrlProvider
 import com.echomind.data.remote.CredentialsProvider
@@ -135,7 +136,21 @@ class SettingsViewModel @Inject constructor(
             runCatching {
                 getApplication<Application>().contentResolver.openInputStream(uri).use { input ->
                     requireNotNull(input) { "Could not open restore archive." }
-                    staged.outputStream().use { output -> input.copyTo(output) }
+                    staged.outputStream().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var total = 0L
+                        var count = input.read(buffer)
+                        while (count >= 0) {
+                            if (count > 0) {
+                                total += count
+                                require(total <= MAX_RESTORE_ARCHIVE_BYTES) {
+                                    "Restore archive is too large."
+                                }
+                                output.write(buffer, 0, count)
+                            }
+                            count = input.read(buffer)
+                        }
+                    }
                 }
                 exportManager.restoreFromZip(staged).getOrThrow()
             }.onSuccess {

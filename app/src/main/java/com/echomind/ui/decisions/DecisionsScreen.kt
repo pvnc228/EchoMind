@@ -113,8 +113,12 @@ fun DecisionsScreen(
                     items(uiState.decisions, key = { it.id }) { decision ->
                         DecisionCard(
                             decision = decision,
+                            sources = uiState.sources,
                             onChoose = { choice -> viewModel.choose(decision.id, choice) },
+                            onReplaceChoice = { choice -> viewModel.replaceChoice(decision.id, choice) },
+                            onReplaceGrounds = { revisionId -> viewModel.replaceGrounds(decision.id, revisionId) },
                             onReportOutcome = { report -> viewModel.reportOutcome(decision.id, report) },
+                            onDeleteOutcome = { outcomeId -> viewModel.deleteOutcome(decision.id, outcomeId) },
                             onDelete = { viewModel.delete(decision.id) }
                         )
                     }
@@ -138,12 +142,20 @@ fun DecisionsScreen(
 @Composable
 private fun DecisionCard(
     decision: Decision,
+    sources: List<DecisionSourceOption>,
     onChoose: (String) -> Unit,
+    onReplaceChoice: (String) -> Unit,
+    onReplaceGrounds: (Long) -> Unit,
     onReportOutcome: (String) -> Unit,
+    onDeleteOutcome: (Long) -> Unit,
     onDelete: () -> Unit
 ) {
     var showChoiceDialog by remember { mutableStateOf(false) }
+    var showGroundsDialog by remember { mutableStateOf(false) }
     var showOutcomeDialog by remember { mutableStateOf(false) }
+    var choiceToReplace by remember { mutableStateOf<String?>(null) }
+    var groundsToReplace by remember { mutableStateOf<Long?>(null) }
+    var outcomeToDelete by remember { mutableStateOf<Long?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
 
@@ -175,6 +187,9 @@ private fun DecisionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            if (!decision.isDecided) {
+                TextButton(onClick = { showGroundsDialog = true }) { Text("Change grounds") }
             }
 
             if (
@@ -209,10 +224,14 @@ private fun DecisionCard(
             if (decision.outcomes.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 decision.outcomes.forEach { outcome ->
-                    Text(
-                        "Outcome: ${outcome.report}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Outcome: ${outcome.report}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { outcomeToDelete = outcome.id }) { Text("Remove") }
+                    }
                 }
             } else {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -227,13 +246,21 @@ private fun DecisionCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!decision.isDecided) {
                     OutlinedTextButtonSmall("Choose...") { showChoiceDialog = true }
+                } else if (!decision.hasOutcome) {
+                    OutlinedTextButtonSmall("Change choice") { showChoiceDialog = true }
                 }
-                if (decision.hasOutcome) {
+                if (decision.isDecided && decision.hasOutcome) {
                     OutlinedTextButtonSmall("Add outcome") { showOutcomeDialog = true }
-                } else {
+                } else if (decision.isDecided) {
                     TextButton(onClick = { showOutcomeDialog = true }) {
                         Text("Report outcome")
                     }
+                } else {
+                    Text(
+                        "Choose before reporting an outcome",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 TextButton(onClick = { confirmDelete = true }) {
                     Text("Delete")
@@ -244,12 +271,72 @@ private fun DecisionCard(
 
     if (showChoiceDialog) {
         SimpleTextDialog(
-            title = "Record your choice",
+            title = if (decision.isDecided) "Change your choice" else "Record your choice",
             placeholder = "What did you decide?",
             onDismiss = { showChoiceDialog = false },
             onConfirm = {
-                onChoose(it)
+                if (decision.isDecided) choiceToReplace = it else onChoose(it)
                 showChoiceDialog = false
+            }
+        )
+    }
+    if (showGroundsDialog) {
+        AlertDialog(
+            onDismissRequest = { showGroundsDialog = false },
+            title = { Text("Replace decision grounds") },
+            text = {
+                Column {
+                    Text("Choose a current conclusion revision:")
+                    sources.forEach { source ->
+                        TextButton(onClick = {
+                            showGroundsDialog = false
+                            groundsToReplace = source.revisionId
+                        }) {
+                            Text("v${source.version}: ${source.text}")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showGroundsDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+    choiceToReplace?.let { replacement ->
+        AlertDialog(
+            onDismissRequest = { choiceToReplace = null },
+            title = { Text("Replace choice?") },
+            text = { Text("Replace the recorded choice with \"$replacement\"?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    choiceToReplace = null
+                    onReplaceChoice(replacement)
+                }) { Text("Replace") }
+            },
+            dismissButton = {
+                TextButton(onClick = { choiceToReplace = null }) { Text("Cancel") }
+            }
+        )
+    }
+    groundsToReplace?.let { revisionId ->
+        val source = sources.firstOrNull { it.revisionId == revisionId }
+        AlertDialog(
+            onDismissRequest = { groundsToReplace = null },
+            title = { Text("Replace decision grounds?") },
+            text = {
+                Text(
+                    source?.let { "Use current revision v${it.version} as the new grounds?" }
+                        ?: "Use this current revision as the new grounds?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    groundsToReplace = null
+                    onReplaceGrounds(revisionId)
+                }) { Text("Replace") }
+            },
+            dismissButton = {
+                TextButton(onClick = { groundsToReplace = null }) { Text("Cancel") }
             }
         )
     }
@@ -261,6 +348,22 @@ private fun DecisionCard(
             onConfirm = {
                 onReportOutcome(it)
                 showOutcomeDialog = false
+            }
+        )
+    }
+    outcomeToDelete?.let { outcomeId ->
+        AlertDialog(
+            onDismissRequest = { outcomeToDelete = null },
+            title = { Text("Remove outcome?") },
+            text = { Text("This removes only the selected outcome report.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    outcomeToDelete = null
+                    onDeleteOutcome(outcomeId)
+                }) { Text("Remove") }
+            },
+            dismissButton = {
+                TextButton(onClick = { outcomeToDelete = null }) { Text("Cancel") }
             }
         )
     }

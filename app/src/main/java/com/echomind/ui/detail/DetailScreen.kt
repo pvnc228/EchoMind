@@ -110,6 +110,17 @@ fun DetailScreen(
                                 "Dependent decisions/outcomes to delete: ${plan.decisions.size}"
                             )
                         }
+                        if (plan.themeLinks.isNotEmpty()) {
+                            Text(
+                                "Theme memberships to remove: ${plan.themeLinks.size} " +
+                                    "(${plan.themeLinks.joinToString { it.themeName }})"
+                            )
+                        }
+                        if (plan.proposals.isNotEmpty()) {
+                            Text(
+                                "Saved reflection proposals to remove: ${plan.proposals.size}"
+                            )
+                        }
                     }
                 }
             },

@@ -18,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -297,6 +298,40 @@ class KnowledgeRepositoryTest {
 
                 assertEquals(-1L, duplicateThemeResult)
                 assertEquals(-1L, duplicateEvidenceResult)
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun addToThemeSurfacesAnExistingPendingLinkInsteadOfSilentlyIgnoringIt() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val knowledgeRepository = knowledgeRepository(database)
+            runBlocking {
+                val rawId = reflectionRepository.captureRawText("Current source")
+                val proposal = reflectionRepository.createLocalProposal(rawId)
+                val revisionId = requireNotNull(
+                    reflectionRepository.confirm(proposal.hypothesisId, "Current conclusion").revisionId
+                )
+                val themeId = knowledgeRepository.createTheme("Work")
+                database.knowledgeDao().insertThemeLink(
+                    ThemeLinkEntity(
+                        themeId = themeId,
+                        conclusionRevisionId = revisionId,
+                        confirmed = false,
+                        createdAt = 1L,
+                        origin = "model_suggested",
+                        reviewRequired = true
+                    )
+                )
+
+                assertThrows(IllegalStateException::class.java) {
+                    runBlocking { knowledgeRepository.linkConclusionToTheme(themeId, revisionId) }
+                }
+                assertEquals(1, database.knowledgeDao().getPendingThemeLinksForRevision(revisionId).size)
             }
         } finally {
             database.close()

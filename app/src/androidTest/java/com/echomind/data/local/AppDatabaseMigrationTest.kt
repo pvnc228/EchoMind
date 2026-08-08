@@ -42,7 +42,8 @@ class AppDatabaseMigrationTest {
                 AppDatabase.MIGRATION_2_3,
                 AppDatabase.MIGRATION_3_4,
                 AppDatabase.MIGRATION_4_5,
-                AppDatabase.MIGRATION_5_6
+                AppDatabase.MIGRATION_5_6,
+                AppDatabase.MIGRATION_6_7
             )
             .allowMainThreadQueries()
             .build()
@@ -145,7 +146,8 @@ class AppDatabaseMigrationTest {
             val repository = EntryRepository(
                 database,
                 database.entryDao(),
-                database.knowledgeDao()
+                database.knowledgeDao(),
+                context
             )
             runBlocking {
                 repository.saveEntry(
@@ -184,7 +186,8 @@ class AppDatabaseMigrationTest {
             .addMigrations(
                 AppDatabase.MIGRATION_3_4,
                 AppDatabase.MIGRATION_4_5,
-                AppDatabase.MIGRATION_5_6
+                AppDatabase.MIGRATION_5_6,
+                AppDatabase.MIGRATION_6_7
             )
             .allowMainThreadQueries()
             .build()
@@ -223,7 +226,11 @@ class AppDatabaseMigrationTest {
         createVersion4DatabaseWithProvenance()
 
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
-            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
+            .addMigrations(
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6,
+                AppDatabase.MIGRATION_6_7
+            )
             .allowMainThreadQueries()
             .build()
 
@@ -299,7 +306,7 @@ class AppDatabaseMigrationTest {
         createVersion5DatabaseWithDuplicateLinks()
 
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
-            .addMigrations(AppDatabase.MIGRATION_5_6)
+            .addMigrations(AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
         try {

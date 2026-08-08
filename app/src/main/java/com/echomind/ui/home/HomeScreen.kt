@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,6 +47,7 @@ import com.echomind.domain.model.Entry
 import com.echomind.domain.model.EvidenceState
 import com.echomind.domain.model.HomeCard
 import com.echomind.domain.model.HomeCardType
+import com.echomind.domain.model.HomeNavigationTarget
 import com.echomind.domain.model.ThemeCoverage
 import com.echomind.ui.theme.HomeSkeleton
 import java.text.SimpleDateFormat
@@ -62,6 +64,7 @@ fun HomeScreen(
     onNavigateToQa: () -> Unit = {},
     onNavigateToThemes: () -> Unit = {},
     onNavigateToTheme: (Long) -> Unit = {},
+    onNavigateToHomeTarget: ((HomeNavigationTarget) -> Unit)? = null,
     onNavigateToDecisions: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -76,8 +79,10 @@ fun HomeScreen(
         onNavigateToQa = onNavigateToQa,
         onNavigateToThemes = onNavigateToThemes,
         onNavigateToTheme = onNavigateToTheme,
+        onNavigateToHomeTarget = onNavigateToHomeTarget,
         onNavigateToDecisions = onNavigateToDecisions,
         onDismissCard = viewModel::dismissCard,
+        onUndoDismiss = viewModel::undoDismissedCard,
         onPostponeCard = {
             viewModel.postponeCard(System.currentTimeMillis() + 24L * 60 * 60 * 1000)
         }
@@ -95,10 +100,19 @@ fun HomeScreenContent(
     onNavigateToQa: () -> Unit = {},
     onNavigateToThemes: () -> Unit = {},
     onNavigateToTheme: (Long) -> Unit = {},
+    onNavigateToHomeTarget: ((HomeNavigationTarget) -> Unit)? = null,
     onNavigateToDecisions: () -> Unit = {},
     onDismissCard: () -> Unit = {},
+    onUndoDismiss: () -> Unit = {},
     onPostponeCard: () -> Unit = {}
 ) {
+    val navigateToHomeTarget: (HomeNavigationTarget) -> Unit = onNavigateToHomeTarget ?: { target ->
+        when (target) {
+            is HomeNavigationTarget.Theme -> onNavigateToTheme(target.themeId)
+            is HomeNavigationTarget.Entry -> onNavigateToDetail(target.entryId)
+            is HomeNavigationTarget.ReflectionProposal -> Unit
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -165,17 +179,27 @@ fun HomeScreenContent(
                 }
                 item { PromptHeader(onNavigateToRecord = onNavigateToRecord) }
 
+                uiState.dismissedCard?.let {
+                    item {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Attention card dismissed", modifier = Modifier.weight(1f))
+                                TextButton(onClick = onUndoDismiss) { Text("Undo") }
+                            }
+                        }
+                    }
+                }
+
                 uiState.card?.let { card ->
                     item {
                         RelevantCard(
                             card = card,
                             onContinue = { onNavigateToRecord() },
                             onInspect = {
-                                if (card.scopeType == com.echomind.domain.model.CoverageScopeType.THEME) {
-                                    onNavigateToTheme(card.scopeId)
-                                } else {
-                                    card.sourceRawRecordIds.firstOrNull()?.let(onNavigateToDetail)
-                                }
+                                card.navigationTarget?.let(navigateToHomeTarget)
                             },
                             onDismiss = onDismissCard,
                             onPostpone = onPostponeCard
@@ -187,7 +211,17 @@ fun HomeScreenContent(
                     item {
                         EvidenceCoverageSection(
                             coverage = uiState.coverage,
-                            onOpenTheme = onNavigateToTheme
+                            onOpenTarget = navigateToHomeTarget
+                        )
+                    }
+                }
+
+                if (uiState.hasKnowledge && uiState.card == null) {
+                    item {
+                        Text(
+                            "Nothing needs attention now",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -301,7 +335,7 @@ private fun RelevantCard(
 @Composable
 private fun EvidenceCoverageSection(
     coverage: List<ThemeCoverage>,
-    onOpenTheme: (Long) -> Unit
+    onOpenTarget: (HomeNavigationTarget) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -313,7 +347,9 @@ private fun EvidenceCoverageSection(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onOpenTheme(theme.themeId) }
+                    .clickable(enabled = theme.navigationTarget != null) {
+                        theme.navigationTarget?.let(onOpenTarget)
+                    }
                     .padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
