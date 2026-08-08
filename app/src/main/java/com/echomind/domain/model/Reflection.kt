@@ -28,6 +28,16 @@ data class ReflectionSession(
     val sourceLinkStatus: String? = null
 )
 
+data class CaptureDraft(
+    val id: Long = 1L,
+    val text: String,
+    val encryptedAudioPath: String? = null,
+    val durationMs: Long = 0L,
+    val captureStage: String = "CAPTURE",
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
 object ReflectionStatus {
     const val PROPOSED = "proposed"
     const val CONFIRMED = "confirmed"

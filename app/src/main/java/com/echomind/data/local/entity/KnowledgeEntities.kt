@@ -123,7 +123,12 @@ data class ConclusionRevisionEntity(
     ],
     indices = [
         Index("conclusion_revision_id"),
-        Index("source_raw_record_id")
+        Index("source_raw_record_id"),
+        Index(
+            name = "index_evidence_links_revision_source_unique",
+            value = ["conclusion_revision_id", "source_raw_record_id"],
+            unique = true
+        )
     ]
 )
 data class EvidenceLinkEntity(
@@ -136,7 +141,15 @@ data class EvidenceLinkEntity(
     @ColumnInfo(name = "relationship")
     val relationship: String,
     @ColumnInfo(name = "status")
-    val status: String
+    val status: String,
+    @ColumnInfo(name = "origin")
+    val origin: String = "user_confirmed",
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long = 0L,
+    @ColumnInfo(name = "created_at_estimated")
+    val createdAtEstimated: Boolean = false,
+    @ColumnInfo(name = "review_metadata")
+    val reviewMetadata: String? = null
 )
 
 @Entity(tableName = "themes")
@@ -169,7 +182,12 @@ data class ThemeEntity(
     ],
     indices = [
         Index("theme_id"),
-        Index("conclusion_revision_id")
+        Index("conclusion_revision_id"),
+        Index(
+            name = "index_theme_links_theme_revision_unique",
+            value = ["theme_id", "conclusion_revision_id"],
+            unique = true
+        )
     ]
 )
 data class ThemeLinkEntity(
@@ -182,11 +200,23 @@ data class ThemeLinkEntity(
     @ColumnInfo(name = "confirmed")
     val confirmed: Boolean,
     @ColumnInfo(name = "created_at")
-    val createdAt: Long
+    val createdAt: Long,
+    @ColumnInfo(name = "origin")
+    val origin: String = "user_confirmed",
+    @ColumnInfo(name = "review_required")
+    val reviewRequired: Boolean = false
 )
 
 @Entity(
     tableName = "decisions",
+    foreignKeys = [
+        ForeignKey(
+            entity = ConclusionRevisionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["source_revision_id"],
+            onDelete = ForeignKey.RESTRICT
+        )
+    ],
     indices = [Index(value = ["source_revision_id"])]
 )
 data class DecisionEntity(
@@ -196,6 +226,12 @@ data class DecisionEntity(
     val question: String,
     @ColumnInfo(name = "suggestion")
     val suggestion: String? = null,
+    @ColumnInfo(name = "suggestion_author")
+    val suggestionAuthor: String? = null,
+    @ColumnInfo(name = "suggestion_source")
+    val suggestionSource: String? = null,
+    @ColumnInfo(name = "suggestion_status")
+    val suggestionStatus: String? = null,
     @ColumnInfo(name = "choice")
     val choice: String? = null,
     @ColumnInfo(name = "source_revision_id")
@@ -223,6 +259,43 @@ data class OutcomeEntity(
     val decisionId: Long,
     @ColumnInfo(name = "report")
     val report: String,
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long
+)
+
+@Entity(tableName = "capture_drafts")
+data class CaptureDraftEntity(
+    @PrimaryKey
+    val id: Long = 1L,
+    @ColumnInfo(name = "text")
+    val text: String,
+    @ColumnInfo(name = "encrypted_audio_path")
+    val encryptedAudioPath: String? = null,
+    @ColumnInfo(name = "duration_ms")
+    val durationMs: Long = 0L,
+    @ColumnInfo(name = "capture_stage")
+    val captureStage: String = "CAPTURE",
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long,
+    @ColumnInfo(name = "updated_at")
+    val updatedAt: Long
+)
+
+@Entity(tableName = "home_card_dispositions")
+data class HomeCardDispositionEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "card_key")
+    val cardKey: String,
+    @ColumnInfo(name = "card_type")
+    val cardType: String,
+    @ColumnInfo(name = "scope_type")
+    val scopeType: String,
+    @ColumnInfo(name = "scope_id")
+    val scopeId: Long,
+    @ColumnInfo(name = "dismissed_at")
+    val dismissedAt: Long? = null,
+    @ColumnInfo(name = "postponed_until")
+    val postponedUntil: Long? = null,
     @ColumnInfo(name = "created_at")
     val createdAt: Long
 )

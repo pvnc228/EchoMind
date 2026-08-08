@@ -45,16 +45,15 @@ class SearchViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     results = emptyList(),
                     knowledgeResults = emptyList(),
-                    isLoading = false
+                    isLoading = false,
+                    error = null
                 )
                 return@launch
             }
             _uiState.value = _uiState.value.copy(isLoading = true)
             getEntriesUseCase.searchEntries(query)
                 .map { entries ->
-                    val knowledge = kotlin.runCatching {
-                        knowledgeRepository.search(query)
-                    }.getOrDefault(emptyList())
+                    val knowledge = knowledgeRepository.search(query)
                     entries to knowledge
                 }
                 .catch { e ->
@@ -69,7 +68,8 @@ class SearchViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         results = entries,
                         knowledgeResults = knowledge,
-                        isLoading = false
+                        isLoading = false,
+                        error = null
                     )
                 }
         }

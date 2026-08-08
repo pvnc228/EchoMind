@@ -44,7 +44,7 @@ class ThemeDetailViewModel @Inject constructor(
                 val conclusions = repository.getThemeConclusions(themeId)
                 val name = repository.getThemeName(themeId)
                 val withOutcome = conclusions
-                    .mapNotNull { it.revisionId }
+                    .map { it.revisionId }
                     .filter { revisionId ->
                         decisionRepository.hasOutcomeForRevision(revisionId)
                     }

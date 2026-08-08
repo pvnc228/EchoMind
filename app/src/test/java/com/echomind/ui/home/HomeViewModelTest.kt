@@ -12,7 +12,6 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -22,6 +21,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -47,50 +47,43 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `init loads entries and relevance`() = runTest(testDispatcher) {
+    fun `init loads recent entries and relevance without legacy timeline collector`() = runTest(testDispatcher) {
         val entries = listOf(
             Entry(1, "Entry 1", null, 1000, 1000L, EntryCategory.GENERAL, emptyList(), "", emptyList(), emptyList(), emptyList()),
             Entry(2, "Entry 2", null, 2000, 2000L, EntryCategory.IDEA, emptyList(), "", emptyList(), emptyList(), emptyList())
         )
         coEvery { getEntriesUseCase.getRecentEntries(any()) } returns entries
-        coEvery { getEntriesUseCase.getAllEntries() } returns flowOf(entries)
         coEvery { knowledgeRepository.getHomeRelevance() } returns com.echomind.domain.model.HomeRelevance(hasKnowledge = false)
 
         viewModel = HomeViewModel(getEntriesUseCase, knowledgeRepository)
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertEquals(2, state.entries.size)
         assertEquals(2, state.recent.size)
         assertFalse(state.isLoading)
+        coVerify(exactly = 0) { getEntriesUseCase.getAllEntries() }
     }
 
     @Test
-    fun `selectCategory filters entries`() = runTest(testDispatcher) {
+    fun `refresh does not expose legacy category selection`() = runTest(testDispatcher) {
         coEvery { getEntriesUseCase.getRecentEntries(any()) } returns emptyList()
-        coEvery { getEntriesUseCase.getAllEntries() } returns flowOf(emptyList())
         coEvery { knowledgeRepository.getHomeRelevance() } returns com.echomind.domain.model.HomeRelevance(hasKnowledge = false)
-        val taskEntries = listOf(
-            Entry(3, "Task", null, 1000, 1000L, EntryCategory.TASK, emptyList(), "", emptyList(), emptyList(), emptyList())
-        )
-        coEvery { getEntriesUseCase.getEntriesByCategory("task") } returns flowOf(taskEntries)
 
         viewModel = HomeViewModel(getEntriesUseCase, knowledgeRepository)
         advanceUntilIdle()
-        viewModel.selectCategory("task")
+        viewModel.load()
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertEquals("task", state.selectedCategory)
-        assertEquals(1, state.entries.size)
+        assertTrue(state.recent.isEmpty())
+        coVerify(exactly = 0) { getEntriesUseCase.getEntriesByCategory(any()) }
     }
 
     @Test
     fun `dismissCard clears card and calls repository`() = runTest(testDispatcher) {
         coEvery { getEntriesUseCase.getRecentEntries(any()) } returns emptyList()
-        coEvery { getEntriesUseCase.getAllEntries() } returns flowOf(emptyList())
         val card = HomeCard(
-            type = HomeCardType.THEME,
+            type = HomeCardType.SUPPORTED_THEME,
             themeId = 7,
             themeName = "A",
             title = "T",
@@ -99,7 +92,7 @@ class HomeViewModelTest {
             capability = com.echomind.domain.model.Capability.CONNECTION
         )
         coEvery { knowledgeRepository.getHomeRelevance() } returns HomeRelevance(card = card, hasKnowledge = true)
-        coEvery { knowledgeRepository.dismissCard(7L) } returns Unit
+        coEvery { knowledgeRepository.dismissCard(card) } returns Unit
 
         viewModel = HomeViewModel(getEntriesUseCase, knowledgeRepository)
         advanceUntilIdle()
@@ -109,6 +102,6 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         assertNull(viewModel.uiState.value.card)
-        coVerify { knowledgeRepository.dismissCard(7L) }
+        coVerify { knowledgeRepository.dismissCard(card) }
     }
 }

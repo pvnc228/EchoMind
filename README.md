@@ -3,8 +3,8 @@
 EchoMind is a private Android thinking environment that turns short reflections into traceable, evolving conclusions. It helps a user inspect assumptions, preserve changes of mind, reconnect related ideas, and eventually receive evidence-backed guidance without handing decisions to an AI.
 
 > The repository is an active product prototype. Its primary capture path now
-> enforces explicit confirmation, while remote Q&A/legacy features and the
-> archive UI do not yet satisfy every guarantee described in `VISION.md`.
+> enforces explicit confirmation and the local provenance graph is inspectable;
+> remote Q&A and automatic transcription remain deferred.
 
 ## Documentation
 
@@ -23,12 +23,15 @@ EchoMind is a private Android thinking environment that turns short reflections 
 - Confirmed conclusion stored as revision 1 with its raw source
 - OpenAI-compatible text analysis, transcription client, and Q&A
 - Entry timeline, search, filters, details, and export
-- Room v3 provenance storage for raw records, hypotheses, conclusions, revisions, and evidence links
+- Room v6 provenance storage for raw records, hypotheses, conclusions, revisions,
+  immutable/pending evidence and theme links, decisions, drafts, and Home
+  dispositions
 - Biometric release gate and screenshot protection
 
 Automatic transcription is not yet connected to the main recording flow.
-The archive and detail screens still present legacy entries rather than the
-complete provenance graph, and discussion of a proposal is not implemented.
+Archive/detail, deletion, decisions, Home coverage, and empty-profile restore
+now expose the implemented provenance boundaries. Merge/selective restore,
+pending-link review UI, and outcome-driven conclusion revision remain deferred.
 `localMode` now blocks repository network calls, but disabling it still exposes
 the prototype's raw-entry requests; minimized context preview and per-request
 consent remain tracked in the roadmap.

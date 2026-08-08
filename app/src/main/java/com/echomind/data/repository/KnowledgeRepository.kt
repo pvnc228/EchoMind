@@ -4,17 +4,22 @@ import androidx.room.withTransaction
 import com.echomind.data.local.AppDatabase
 import com.echomind.data.local.dao.KnowledgeDao
 import com.echomind.data.local.entity.EvidenceLinkEntity
+import com.echomind.data.local.entity.HomeCardDispositionEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.HomeRelevance
 import com.echomind.domain.model.HomeRelevanceBuilder
+import com.echomind.domain.model.HomeCard
+import com.echomind.domain.model.LinkCandidateInput
+import com.echomind.domain.model.LinkCandidateRanker
 import com.echomind.domain.model.KnowledgeSearchResult
 import com.echomind.domain.model.RelatedRecord
 import com.echomind.domain.model.Relationship
 import com.echomind.domain.model.Theme
 import com.echomind.domain.model.ThemeCandidate
 import com.echomind.domain.model.ThemeConclusion
+import com.echomind.domain.model.PendingThemeLink
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -62,7 +67,6 @@ class KnowledgeRepository @Inject constructor(
 
     suspend fun linkConclusionToTheme(themeId: Long, revisionId: Long) {
         requireNotNull(knowledgeDao.getThemeById(themeId)) { "Theme $themeId does not exist." }
-        if (knowledgeDao.getConfirmedThemeLink(themeId, revisionId) != null) return
         knowledgeDao.insertThemeLink(
             ThemeLinkEntity(
                 themeId = themeId,
@@ -105,6 +109,31 @@ class KnowledgeRepository @Inject constructor(
             )
         }
 
+    suspend fun getPendingThemesForRevision(revisionId: Long): List<PendingThemeLink> =
+        knowledgeDao.getPendingThemeLinksForRevision(revisionId).mapNotNull { link ->
+            val theme = knowledgeDao.getThemeById(link.themeId) ?: return@mapNotNull null
+            PendingThemeLink(
+                linkId = link.id,
+                themeId = theme.id,
+                themeName = theme.name,
+                revisionId = revisionId
+            )
+        }
+
+    suspend fun reviewPendingThemeLink(linkId: Long, accept: Boolean) {
+        database.withTransaction {
+            if (accept) {
+                check(knowledgeDao.confirmThemeLink(linkId) == 1) {
+                    "Pending theme link $linkId is no longer reviewable."
+                }
+            } else {
+                check(knowledgeDao.rejectThemeLink(linkId) == 1) {
+                    "Pending theme link $linkId is no longer reviewable."
+                }
+            }
+        }
+    }
+
     suspend fun linkRelatedRecord(
         revisionId: Long,
         sourceRecordId: Long,
@@ -115,13 +144,14 @@ class KnowledgeRepository @Inject constructor(
         }
         requireNotNull(knowledgeDao.getRevisionById(revisionId)) { "Revision $revisionId missing." }
         requireNotNull(knowledgeDao.getRawRecordById(sourceRecordId)) { "Record $sourceRecordId missing." }
-        if (knowledgeDao.getEvidenceLinkForRevisionAndSource(revisionId, sourceRecordId) != null) return
         knowledgeDao.insertEvidenceLink(
             EvidenceLinkEntity(
                 conclusionRevisionId = revisionId,
                 sourceRawRecordId = sourceRecordId,
                 relationship = relationship,
-                status = "confirmed"
+                status = "confirmed",
+                origin = "user_confirmed",
+                createdAt = System.currentTimeMillis()
             )
         )
     }
@@ -135,14 +165,50 @@ class KnowledgeRepository @Inject constructor(
         val ownRawRecordId = knowledgeDao.getConclusionById(revision.conclusionId)
             ?.rawRecordId
         return knowledgeDao.getEvidenceLinksForRevision(revisionId).mapNotNull { link ->
-            if (link.sourceRawRecordId == ownRawRecordId) return@mapNotNull null
+            if (link.status != "confirmed" || link.sourceRawRecordId == ownRawRecordId) {
+                return@mapNotNull null
+            }
             val raw = knowledgeDao.getRawRecordById(link.sourceRawRecordId) ?: return@mapNotNull null
             RelatedRecord(
                 rawRecordId = raw.id,
                 relationship = link.relationship,
                 sourceText = raw.originalText,
-                recordedAt = raw.createdAt
+                recordedAt = raw.createdAt,
+                linkId = link.id,
+                status = link.status
             )
+        }
+    }
+
+    suspend fun getPendingRelatedRecords(revisionId: Long): List<RelatedRecord> {
+        val links = knowledgeDao.getPendingEvidenceLinksForRevision(revisionId)
+        return links.mapNotNull { link ->
+            val raw = knowledgeDao.getRawRecordById(link.sourceRawRecordId) ?: return@mapNotNull null
+            RelatedRecord(
+                rawRecordId = raw.id,
+                relationship = link.relationship,
+                sourceText = raw.originalText,
+                recordedAt = raw.createdAt,
+                linkId = link.id,
+                status = link.status
+            )
+        }
+    }
+
+    suspend fun reviewPendingRelatedRecord(linkId: Long, accept: Boolean) {
+        database.withTransaction {
+            val link = knowledgeDao.getEvidenceLinkById(linkId)
+                ?: error("Pending evidence link $linkId is missing.")
+            check(link.status != "confirmed") { "Evidence link $linkId is already confirmed." }
+            if (accept) {
+                check(knowledgeDao.confirmEvidenceLink(linkId) == 1) {
+                    "Pending evidence link $linkId is no longer reviewable."
+                }
+            } else {
+                check(knowledgeDao.deleteEvidenceLinkById(linkId) == 1) {
+                    "Pending evidence link $linkId is no longer reviewable."
+                }
+            }
         }
     }
 
@@ -156,101 +222,229 @@ class KnowledgeRepository @Inject constructor(
         val linkedSourceIds = knowledgeDao.getEvidenceLinksForRevision(currentRevisionId)
             .map { it.sourceRawRecordId }
             .toSet()
-        val conclusionTokens = tokenize(currentConclusion)
-        val themeTokens = tokenize(currentThemeNames.joinToString(" "))
+        return LinkCandidateRanker.rank(
+            currentText = currentConclusion,
+            themeText = currentThemeNames.joinToString(" "),
+            candidates = knowledgeDao.getAllRawRecords().map { raw ->
+                LinkCandidateInput(
+                    rawRecordId = raw.id,
+                    text = raw.originalText,
+                    recordedAt = raw.createdAt
+                )
+            },
+            currentRawRecordId = currentRaw,
+            linkedRawRecordIds = linkedSourceIds,
+            limit = limit
+        )
+    }
 
-        return knowledgeDao.getAllRawRecords()
-            .filter { it.id != currentRaw && it.id !in linkedSourceIds }
-            .mapNotNull { raw ->
-                val candidateTokens = tokenize(raw.originalText)
-                val sharedWithConclusion = conclusionTokens.intersect(candidateTokens)
-                val sharedWithThemes = themeTokens.intersect(candidateTokens)
-                val score = sharedWithConclusion.size + sharedWithThemes.size
-                if (score <= 0) null else RelatedRecord(
+    suspend fun getManualLinkCandidates(
+        currentRevisionId: Long,
+        query: String = ""
+    ): List<RelatedRecord> {
+        val currentRevision = requireNotNull(knowledgeDao.getRevisionById(currentRevisionId)) {
+            "Revision $currentRevisionId missing."
+        }
+        val currentRaw = knowledgeDao.getConclusionById(currentRevision.conclusionId)?.rawRecordId
+        val linkedSourceIds = knowledgeDao.getEvidenceLinksForRevision(currentRevisionId)
+            .map { it.sourceRawRecordId }
+        val excludedIds = buildList {
+            currentRaw?.let(::add)
+            addAll(linkedSourceIds)
+        }.distinct()
+        val normalizedQuery = query.trim()
+        return knowledgeDao.getRawRecordsExcluding(excludedIds)
+            .asSequence()
+            .filter { normalizedQuery.isBlank() || it.originalText.contains(normalizedQuery, ignoreCase = true) }
+            .map { raw ->
+                RelatedRecord(
                     rawRecordId = raw.id,
                     relationship = "",
                     sourceText = raw.originalText,
-                    recordedAt = raw.createdAt,
-                    suggestedReason = suggestReason(sharedWithConclusion, sharedWithThemes),
-                    score = score
+                    recordedAt = raw.createdAt
                 )
             }
-            .sortedByDescending { it.score }
-            .take(limit)
+            .toList()
     }
 
-    private fun tokenize(text: String): Set<String> {
-        val stop = setOf(
-            "the", "a", "an", "and", "or", "but", "to", "of", "in", "on", "at",
-            "i", "you", "it", "is", "are", "was", "were", "be", "been", "have",
-            "has", "had", "that", "this", "these", "those", "my", "we", "our",
-            "with", "for", "not", "so", "if", "can", "could", "would", "should",
-            "я", "и", "в", "о", "не", "на", "что", "это", "мой", "моя", "мои",
-            "мы", "нам", "для", "с", "по", "как", "но", "или", "если", "то",
-            "быть", "был", "была", "были", "есть"
-        )
-        return text.lowercase()
-            .split(Regex("\\W+"))
-            .filter { it.length > 2 && it !in stop }
-            .toSet()
-    }
-
-    private fun suggestReason(
-        sharedWithConclusion: Set<String>,
-        sharedWithThemes: Set<String>
-    ): String? = when {
-        sharedWithConclusion.isNotEmpty() ->
-            "Shares a term with your conclusion: ${sharedWithConclusion.joinToString(", ")}"
-        sharedWithThemes.isNotEmpty() ->
-            "Mentions a theme: ${sharedWithThemes.joinToString(", ")}"
-        else -> null
-    }
-
-    suspend fun getHomeRelevance(): HomeRelevance {        val now = System.currentTimeMillis()
-        val suppressed = settingsStore.getSuppressedCards()
-            .filterValues { it > now }
-            .keys
-            .toSet()
+    suspend fun getHomeRelevance(): HomeRelevance {
+        val now = System.currentTimeMillis()
+        val legacySuppressionReset = settingsStore.resetLegacySuppressionsIfNeeded()
         val themes = knowledgeDao.getActiveThemes()
-        val candidates = themes.mapNotNull { theme ->
-            if (theme.id in suppressed) return@mapNotNull null
-            val links = knowledgeDao.getConfirmedLinksForTheme(theme.id)
-            if (links.isEmpty()) return@mapNotNull null
-            var contradictionCount = 0
-            var evidenceCount = 0
-            links.forEach { link ->
-                val revision = knowledgeDao.getRevisionById(link.conclusionRevisionId) ?: return@forEach
-                val conclusion = knowledgeDao.getConclusionById(revision.conclusionId)
-                val ownRaw = conclusion?.rawRecordId
-                knowledgeDao.getEvidenceLinksForRevision(revision.id).forEach { ev ->
-                    if (ev.sourceRawRecordId == ownRaw) return@forEach
-                    evidenceCount++
-                    if (ev.relationship == Relationship.CONTRADICTS) contradictionCount++
+        val themeLinks = knowledgeDao.getConfirmedThemeLinksAll()
+        val conclusions = knowledgeDao.getAllConclusions()
+        val revisions = knowledgeDao.getAllRevisions().associateBy { it.id }
+        val evidenceByRevision = knowledgeDao.getAllEvidenceLinks()
+            .filter { it.status == "confirmed" }
+            .groupBy { it.conclusionRevisionId }
+        val decisions = knowledgeDao.getAllDecisions()
+        val outcomesByDecision = knowledgeDao.getAllOutcomes().groupBy { it.decisionId }
+        val decisionsByRevision = decisions
+            .filter { it.sourceRevisionId != null }
+            .groupBy { it.sourceRevisionId }
+        val currentRevisionByConclusion = conclusions.mapNotNull { conclusion ->
+            conclusion.currentRevisionId?.let { conclusion.id to it }
+        }.toMap()
+        val currentRevisionIds = currentRevisionByConclusion.values.toSet()
+        val themedCurrentRevisionIds = themeLinks
+            .map { it.conclusionRevisionId }
+            .filter { it in currentRevisionIds }
+            .toSet()
+
+        fun candidate(
+            themeId: Long,
+            name: String,
+            scopeType: com.echomind.domain.model.CoverageScopeType,
+            scopeId: Long,
+            revisionIds: List<Long>,
+            themeLinkSubset: List<com.echomind.data.local.entity.ThemeLinkEntity>,
+            unfinishedSince: Long? = null
+        ): ThemeCandidate {
+            val currentEvidence = revisionIds.flatMap { evidenceByRevision[it].orEmpty() }
+            val externalEvidence = currentEvidence.filter { evidence ->
+                val ownRaw = revisions[evidence.conclusionRevisionId]?.let { revision ->
+                    conclusions.firstOrNull { it.id == revision.conclusionId }?.rawRecordId
+                }
+                evidence.sourceRawRecordId != ownRaw
+            }
+            val contradictions = externalEvidence.count { it.relationship == Relationship.CONTRADICTS }
+            val supports = externalEvidence.size
+            val sourceRawRecordIds = (
+                revisionIds.mapNotNull { revisionId ->
+                    revisions[revisionId]?.let { revision ->
+                        conclusions.firstOrNull { it.id == revision.conclusionId }?.rawRecordId
+                    }
+                } + externalEvidence.map { it.sourceRawRecordId }
+            ).distinct().sorted()
+            val outcomeIds = revisionIds.flatMap { revisionId ->
+                decisionsByRevision[revisionId].orEmpty().flatMap { decision ->
+                    if (!decision.choice.isNullOrBlank()) outcomesByDecision[decision.id].orEmpty().map { it.id }
+                    else emptyList()
                 }
             }
-            ThemeCandidate(
-                themeId = theme.id,
-                name = theme.name,
-                conclusionCount = links.size,
-                evidenceCount = evidenceCount,
-                contradictionCount = contradictionCount
+            val revisionTimes = revisionIds.mapNotNull { revisions[it]?.createdAt }
+            val graphTimes = revisionTimes +
+                currentEvidence.map { it.createdAt } +
+                themeLinkSubset.map { it.createdAt } +
+                revisionIds.flatMap { revisionId ->
+                    decisionsByRevision[revisionId].orEmpty().flatMap { decision ->
+                        outcomesByDecision[decision.id].orEmpty().map { it.createdAt }
+                    }
+                }
+            val state = when {
+                revisionIds.isEmpty() && scopeType == com.echomind.domain.model.CoverageScopeType.THEME ->
+                    com.echomind.domain.model.EvidenceState.EMPTY_THEME
+                contradictions > 0 -> com.echomind.domain.model.EvidenceState.CONTRADICTED
+                supports > 0 -> com.echomind.domain.model.EvidenceState.SUPPORTED
+                else -> com.echomind.domain.model.EvidenceState.NO_EXTERNAL_EVIDENCE
+            }
+            return ThemeCandidate(
+                themeId = themeId,
+                name = name,
+                conclusionCount = revisionIds.size,
+                evidenceCount = supports,
+                contradictionCount = contradictions,
+                scopeType = scopeType,
+                scopeId = scopeId,
+                currentRevisionIds = revisionIds.sorted(),
+                evidenceState = state,
+                hasOutcome = outcomeIds.isNotEmpty(),
+                lastGraphChangeAt = graphTimes.maxOrNull() ?: now,
+                relevantLinkIds = (currentEvidence.map { it.id } + themeLinkSubset.map { it.id }).distinct(),
+                relevantSourceRevisionKeys = externalEvidence.map { evidence ->
+                    val version = revisions[evidence.conclusionRevisionId]?.version ?: 0
+                    "${evidence.sourceRawRecordId}:${evidence.relationship}:$version"
+                },
+                sourceRawRecordIds = sourceRawRecordIds,
+                relevantOutcomeIds = outcomeIds.sorted(),
+                unfinishedSince = unfinishedSince
             )
         }
-        return HomeRelevanceBuilder.build(candidates)
+
+        val themeCandidates = themes.map { theme ->
+            val links = themeLinks.filter { it.themeId == theme.id }
+            val revisionIds = links.map { it.conclusionRevisionId }
+                .filter { it in currentRevisionIds }
+                .distinct()
+            candidate(
+                themeId = theme.id,
+                name = theme.name,
+                scopeType = com.echomind.domain.model.CoverageScopeType.THEME,
+                scopeId = theme.id,
+                revisionIds = revisionIds,
+                themeLinkSubset = links.filter { it.conclusionRevisionId in revisionIds }
+            )
+        }
+        val unthemedCandidates = conclusions.mapNotNull { conclusion ->
+            val revisionId = conclusion.currentRevisionId ?: return@mapNotNull null
+            if (revisionId in themedCurrentRevisionIds) return@mapNotNull null
+            candidate(
+                themeId = 0L,
+                name = "",
+                scopeType = com.echomind.domain.model.CoverageScopeType.UNTHEMED,
+                scopeId = conclusion.id,
+                revisionIds = listOf(revisionId),
+                themeLinkSubset = emptyList()
+            )
+        }
+        val unfinishedCandidates = knowledgeDao.getAllHypotheses()
+            .filter { it.status.equals("proposed", ignoreCase = true) }
+            .map { hypothesis ->
+                candidate(
+                    themeId = 0L,
+                    name = "",
+                    scopeType = com.echomind.domain.model.CoverageScopeType.UNTHEMED,
+                    scopeId = -hypothesis.id,
+                    revisionIds = emptyList(),
+                    themeLinkSubset = emptyList(),
+                    unfinishedSince = hypothesis.createdAt
+                ).copy(relevantSourceRevisionKeys = listOf("h:${hypothesis.id}"))
+            }
+        val dispositions = knowledgeDao.getAllHomeCardDispositions()
+        val suppressedKeys = dispositions.filter { disposition ->
+            disposition.dismissedAt != null || disposition.postponedUntil?.let { it > now } == true
+        }.map { it.cardKey }.toSet()
+        return HomeRelevanceBuilder.build(
+            themeCandidates + unthemedCandidates + unfinishedCandidates,
+            now = now,
+            suppressedCardKeys = suppressedKeys
+        ).copy(legacySuppressionReset = legacySuppressionReset)
     }
 
-    suspend fun dismissCard(themeId: Long) {
-        settingsStore.suppressCard(themeId, Long.MAX_VALUE)
+    suspend fun dismissCard(card: HomeCard) {
+        knowledgeDao.upsertHomeCardDisposition(card.toDisposition(dismissedAt = System.currentTimeMillis()))
     }
 
-    suspend fun postponeCard(themeId: Long, until: Long) {
-        settingsStore.suppressCard(themeId, until)
+    suspend fun postponeCard(card: HomeCard, until: Long) {
+        knowledgeDao.upsertHomeCardDisposition(card.toDisposition(postponedUntil = until))
     }
 
-    suspend fun search(query: String): List<KnowledgeSearchResult> {        val trimmed = query.trim()
+    suspend fun restoreCard(cardKey: String) {
+        knowledgeDao.deleteHomeCardDisposition(cardKey)
+    }
+
+    suspend fun getCardDispositions(): List<HomeCardDispositionEntity> =
+        knowledgeDao.getAllHomeCardDispositions()
+
+    private fun HomeCard.toDisposition(
+        dismissedAt: Long? = null,
+        postponedUntil: Long? = null
+    ) = HomeCardDispositionEntity(
+        cardKey = cardKey,
+        cardType = type.name,
+        scopeType = scopeType.name,
+        scopeId = scopeId,
+        dismissedAt = dismissedAt,
+        postponedUntil = postponedUntil,
+        createdAt = System.currentTimeMillis()
+    )
+
+    suspend fun search(query: String): List<KnowledgeSearchResult> {
+        val trimmed = query.trim()
         if (trimmed.isBlank()) return emptyList()
+        val escaped = escapeLikeQuery(trimmed)
 
-        val rawResults = knowledgeDao.searchRawRecords(trimmed).map { raw ->
+        val rawResults = knowledgeDao.searchRawRecords(escaped).map { raw ->
             KnowledgeSearchResult.RawRecord(
                 rawRecordId = raw.id,
                 entryId = raw.legacyEntryId,
@@ -258,19 +452,20 @@ class KnowledgeRepository @Inject constructor(
                 createdAt = raw.createdAt
             )
         }
-        val conclusionResults = knowledgeDao.searchRevisions(trimmed).mapNotNull { revision ->
+        val conclusionResults = knowledgeDao.searchRevisions(escaped).mapNotNull { revision ->
             val conclusion = knowledgeDao.getConclusionById(revision.conclusionId) ?: return@mapNotNull null
-            if (conclusion.currentRevisionId != revision.id) return@mapNotNull null
             val raw = knowledgeDao.getRawRecordById(conclusion.rawRecordId)
             KnowledgeSearchResult.Conclusion(
                 conclusionId = conclusion.id,
+                revisionId = revision.id,
                 entryId = raw?.legacyEntryId,
                 text = revision.text,
                 revisionVersion = revision.version,
-                createdAt = revision.createdAt
+                createdAt = revision.createdAt,
+                isCurrent = conclusion.currentRevisionId == revision.id
             )
         }
-        val themeResults = knowledgeDao.searchThemes(trimmed).map { theme ->
+        val themeResults = knowledgeDao.searchThemes(escaped).map { theme ->
             KnowledgeSearchResult.Theme(
                 themeId = theme.id,
                 text = theme.name,
@@ -279,4 +474,9 @@ class KnowledgeRepository @Inject constructor(
         }
         return rawResults + conclusionResults + themeResults
     }
+
+    private fun escapeLikeQuery(value: String): String = value
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
 }

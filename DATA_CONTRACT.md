@@ -1,15 +1,14 @@
 # EchoMind Data and Privacy Contract
 
-**Status:** M0 implementation contract
+**Status:** active implementation contract
 
-**Last updated:** 2026-08-07
+**Last updated:** 2026-08-08
 
 This document turns the promises in [VISION.md](VISION.md) into storage and
-network rules. Room schema version 3 implemented the minimum provenance model
-alongside the legacy `entries` table used by the archive UI; schema version 4
-adds user-owned themes and confirmed theme links (M2 first slice). M1-B verifies
-the model across capture, detail display, export, deletion, restart, and the
-network boundary.
+network rules. Room schema version 6 includes the provenance graph, immutable
+and pending link metadata, decision guards, durable capture drafts, and
+fingerprint-keyed Home-card dispositions. Export manifest version 5 restores
+only into an empty profile; merge and selective import remain deferred.
 
 ## Data classes
 
@@ -36,9 +35,12 @@ network boundary.
 | Room `ai_hypotheses` | draft JSON, counterargument, status, source and creation metadata | Derived proposal + operational | User | Yes |
 | Room `conclusions` | raw source, current revision pointer, creation time | Confirmed + operational | User | Yes |
 | Room `conclusion_revisions` | versioned text, author, creation time | Confirmed + operational | User | Yes |
-| Room `evidence_links` | revision/source IDs, relationship, confirmation status | Derived or confirmed according to status | User | Yes |
+| Room `evidence_links` | revision/source IDs, relationship, status, origin, review metadata, graph timestamp | Derived or confirmed according to status | User | Yes |
 | Room `themes` | user-owned name, creation, archived time | Confirmed + operational | User | Yes |
-| Room `theme_links` | theme/revision IDs, confirmed flag, creation time | Confirmed + operational | User | Yes |
+| Room `theme_links` | theme/revision IDs, confirmed flag, origin, review-required flag, creation time | Confirmed or pending + operational | User | Yes |
+| Room `decisions` | question, choice, source revision, derived state, suggestion provenance | User-owned decision; system suggestion requires author/source/status | User | Yes |
+| Room `capture_drafts` | text, encrypted completed-audio path, duration, capture stage, timestamps | Raw operational draft; never confirmed automatically | User | Yes |
+| Room `home_card_dispositions` | fingerprint, card/scope identity, dismiss/postpone timestamps | Operational user choice | User | Yes |
 | Encrypted audio file | recorded audio | Raw | User | Yes, decrypted only in the warned plaintext export |
 | DataStore `settings` | `local_mode` | Operational privacy choice | User | No |
 | DataStore `settings` | `api_endpoint` | Identifying configuration | User | No |
@@ -54,8 +56,10 @@ must not be logged.
 
 Schema version 3 implemented the first five objects; schema version 4 added
 themes and theme links (M2); schema version 5 added decisions and outcomes
-(M4). AI linking remains a later milestone. Later milestones add the remaining
-objects without changing the confirmation boundary.
+(M4); schema version 6 adds graph-review metadata, durable drafts, and Home
+dispositions. `MIGRATION_5_6` preserves rows and deterministically deduplicates
+conflicting link pairs; it does not use destructive fallback. Historical links
+are never moved to a new revision; inherited links are pending until reviewed.
 
 | Object | Minimum fields | Rule |
 |---|---|---|
@@ -65,8 +69,8 @@ objects without changing the confirmation boundary.
 | `ConclusionRevision` | `id`, conclusion ID, text, creation time, author | Append-only; user edits create a revision |
 | `EvidenceLink` | `id`, conclusion revision ID, source object ID, supports/contradicts, confirmation status | AI links remain proposals until confirmed |
 | `Theme` | `id`, user-owned name, creation time, archived time | A durable theme is created or renamed by the user |
-| `ThemeLink` | `id`, theme ID, conclusion revision ID, confirmation status | a link is written only when the user confirms it; AI clustering is not implemented (M2) |
-| `Decision` | `id`, question, user choice, creation time, optional source revision IDs | Stores the user's choice separately from any suggestion |
+| `ThemeLink` | `id`, theme ID, conclusion revision ID, confirmation status, origin, review-required flag | A copied membership remains pending until the user confirms it |
+| `Decision` | `id`, question, choice, source revision, suggestion provenance, creation time | Derived state is `CREATED -> CHOSEN -> OUTCOME_REPORTED`; grounded system suggestions require metadata |
 | `Outcome` | `id`, decision ID, user report, creation time | Optional and user-authored; it never rewrites a conclusion automatically |
 
 Themes, decisions, and outcomes refer to confirmed revisions rather than
@@ -90,7 +94,7 @@ ThemeLink.PROPOSED
   -> REJECTED  -> no durable membership
 
 Decision.CREATED
-  -> OUTCOME_REPORTED -> Outcome
+  -> CHOSEN -> OUTCOME_REPORTED -> Outcome
   -> REVIEWED -> optional proposed conclusion revision
 ```
 
@@ -134,11 +138,11 @@ Confirmed wording and its source/revision relationship survive database reopen.
 - Deleting a conclusion (with its revisions) cascades the removal of its
   confirmed theme links and evidence links; the theme itself stays.
 - Export uses stable IDs and includes raw records, hypotheses with statuses,
-  conclusions, revisions, evidence links, themes, confirmed theme links,
-  decisions, outcomes, and encrypted-audio filenames.
-  Manifest version 4 keeps legacy generated fields under
-  `analysisStatus=legacy_unconfirmed`. Secrets, endpoint configuration, and
-  encryption keys are excluded.
+  conclusions, revisions, evidence links, themes, pending/confirmed theme
+  links, decisions, outcomes, active capture draft, Home dispositions, and
+  encrypted-audio filenames. Manifest version 5 includes content hashes and
+  explicit audio metadata. Secrets, endpoint configuration, and encryption
+  keys are excluded.
 
 ## Remote-request pipeline
 

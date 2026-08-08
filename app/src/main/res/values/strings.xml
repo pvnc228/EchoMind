@@ -11,4 +11,10 @@
     <string name="processing">Processing…</string>
     <string name="save">Save</string>
     <string name="delete">Delete</string>
+    <string name="onboarding_text_first_title">Text-first reflection</string>
+    <string name="onboarding_text_first_description">Write a short thought in your own words. Voice is optional when it is more convenient.</string>
+    <string name="onboarding_insights_title">Clarify your thinking</string>
+    <string name="onboarding_insights_description">EchoMind helps structure a reflection and surfaces a question or counterpoint for you to review.</string>
+    <string name="onboarding_private_title">Private by default</string>
+    <string name="onboarding_private_description">Your reflections stay on this device unless you explicitly approve a future request to send minimized context.</string>
 </resources>

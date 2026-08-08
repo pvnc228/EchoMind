@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material3.Button
@@ -27,32 +27,34 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.echomind.R
 
 private data class OnboardingPage(
     val icon: @Composable () -> Unit,
-    val title: String,
-    val description: String
+    val titleRes: Int,
+    val descriptionRes: Int
 )
 
 private val pages = listOf(
     OnboardingPage(
-        icon = { Icon(Icons.Default.AudioFile, contentDescription = null, modifier = Modifier.size(64.dp)) },
-        title = "Voice Diary",
-        description = "Record your thoughts, ideas, and feelings using your voice. Every entry is automatically transcribed."
+        icon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(64.dp)) },
+        titleRes = R.string.onboarding_text_first_title,
+        descriptionRes = R.string.onboarding_text_first_description
     ),
     OnboardingPage(
         icon = { Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(64.dp)) },
-        title = "AI-Powered Insights",
-        description = "Your entries are analyzed by AI to extract tasks, ideas, emotions, and patterns. Ask questions about your past entries."
+        titleRes = R.string.onboarding_insights_title,
+        descriptionRes = R.string.onboarding_insights_description
     ),
     OnboardingPage(
         icon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(64.dp)) },
-        title = "Private & Secure",
-        description = "All data stays on your device. Audio files and your database are encrypted. Biometric authentication keeps your diary safe."
+        titleRes = R.string.onboarding_private_title,
+        descriptionRes = R.string.onboarding_private_description
     )
 )
 
@@ -77,16 +79,17 @@ fun OnboardingScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                pages[pageIndex].icon()
+                val page = pages[pageIndex]
+                page.icon()
                 Spacer(modifier = Modifier.height(24.dp))
                 Text(
-                    text = pages[pageIndex].title,
+                    text = stringResource(page.titleRes),
                     style = MaterialTheme.typography.headlineMedium,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = pages[pageIndex].description,
+                    text = stringResource(page.descriptionRes),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

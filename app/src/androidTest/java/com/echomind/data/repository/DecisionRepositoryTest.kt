@@ -11,6 +11,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -46,12 +47,18 @@ class DecisionRepositoryTest {
                 val decisionId = decisionRepository.createDecision(
                     question = "Should I change roles now?",
                     suggestion = "Change roles",
-                    sourceRevisionId = revisionId
+                    sourceRevisionId = revisionId,
+                    suggestionAuthor = "echomind",
+                    suggestionSource = revisionId.toString(),
+                    suggestionStatus = "proposal"
                 )
 
                 val created = decisionRepository.getDecision(decisionId)!!
                 assertEquals("Should I change roles now?", created.question)
                 assertEquals("Change roles", created.suggestion)
+                assertEquals("echomind", created.suggestionAuthor)
+                assertEquals(revisionId.toString(), created.suggestionSource)
+                assertEquals("proposal", created.suggestionStatus)
                 assertEquals(revisionId, created.sourceRevisionId)
                 assertEquals(
                     "I should change roles for my long-term growth.",
@@ -108,6 +115,65 @@ class DecisionRepositoryTest {
     }
 
     @Test
+    fun choiceCanBeReplacedBeforeOutcomeButNotAfterOutcome() {
+        val database = inMemoryDatabase()
+        try {
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+            runBlocking {
+                val id = decisionRepository.createDecision("Which path?")
+                decisionRepository.setChoice(id, "Path A")
+                decisionRepository.replaceChoice(id, "Path B")
+                assertEquals("Path B", decisionRepository.getDecision(id)!!.choice)
+                decisionRepository.recordOutcome(id, "Observed result")
+                assertThrows(IllegalStateException::class.java) {
+                    runBlocking { decisionRepository.replaceChoice(id, "Path C") }
+                }
+                assertEquals("Path B", decisionRepository.getDecision(id)!!.choice)
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun outcomeCannotBeRecordedBeforeChoice() {
+        val database = inMemoryDatabase()
+        try {
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+            runBlocking {
+                val decisionId = decisionRepository.createDecision("Which path?")
+
+                assertThrows(IllegalStateException::class.java) {
+                    runBlocking { decisionRepository.recordOutcome(decisionId, "Outcome too early") }
+                }
+                assertTrue(decisionRepository.getDecision(decisionId)!!.outcomes.isEmpty())
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun databaseRejectsDecisionWithMissingSourceRevision() {
+        val database = inMemoryDatabase()
+        try {
+            assertThrows(android.database.sqlite.SQLiteConstraintException::class.java) {
+                runBlocking {
+                    database.knowledgeDao().insertDecision(
+                        com.echomind.data.local.entity.DecisionEntity(
+                            question = "Missing source",
+                            sourceRevisionId = 9999L,
+                            createdAt = 1L
+                        )
+                    )
+                }
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun deletingDecisionKeepsReferencedConclusionIntact() {
         val database = inMemoryDatabase()
         try {
@@ -123,6 +189,7 @@ class DecisionRepositoryTest {
                     question = "Q",
                     sourceRevisionId = revisionId
                 )
+                decisionRepository.setChoice(decisionId, "Proceed")
                 decisionRepository.recordOutcome(decisionId, "It went fine")
 
                 decisionRepository.deleteDecision(decisionId)

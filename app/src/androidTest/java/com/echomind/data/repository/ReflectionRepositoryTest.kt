@@ -8,12 +8,15 @@ import com.echomind.data.local.AppDatabase
 import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.Relationship
 import com.echomind.domain.model.ReflectionStatus
+import com.echomind.domain.model.EntryDeletionChoice
+import com.echomind.data.repository.DeletionDependenciesRequireExplicitChoiceException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -150,7 +153,7 @@ class ReflectionRepositoryTest {
     }
 
     @Test
-    fun reviseCreatesNewRevisionKeepsHistoryAndRebasesLinks() {
+    fun reviseCreatesNewRevisionKeepsHistoricalLinksAndDoesNotRebaseThem() {
         val database = inMemoryDatabase()
         try {
             val repository = repository(database)
@@ -185,14 +188,34 @@ class ReflectionRepositoryTest {
 
                 val newRevisionId = requireNotNull(revised.revisionId)
                 assertEquals(newRevisionId, conclusion.currentRevisionId)
+                assertTrue(
+                    database.knowledgeDao().getConfirmedThemeLink(themeId, revisionId) != null
+                )
+                assertTrue(
+                    database.knowledgeDao().getConfirmedThemeLink(themeId, newRevisionId) == null
+                )
                 assertEquals(
-                    1,
-                    database.knowledgeDao().getConfirmedThemeLink(themeId, newRevisionId)?.let { 1 }
+                    2,
+                    database.knowledgeDao().getEvidenceLinksForRevision(revisionId).size
                 )
                 assertEquals(
                     2,
                     database.knowledgeDao().getEvidenceLinksForRevision(newRevisionId).size
                 )
+                assertEquals(1, knowledgeRepository.getRelatedRecords(revisionId).size)
+                assertTrue(knowledgeRepository.getRelatedRecords(newRevisionId).isEmpty())
+                assertEquals(1, knowledgeRepository.getPendingRelatedRecords(newRevisionId).size)
+                assertEquals(1, knowledgeRepository.getPendingThemesForRevision(newRevisionId).size)
+
+                val pendingEvidence = knowledgeRepository.getPendingRelatedRecords(newRevisionId).single()
+                knowledgeRepository.reviewPendingRelatedRecord(pendingEvidence.linkId, accept = true)
+                val pendingTheme = knowledgeRepository.getPendingThemesForRevision(newRevisionId).single()
+                knowledgeRepository.reviewPendingThemeLink(pendingTheme.linkId, accept = false)
+
+                assertEquals(1, knowledgeRepository.getRelatedRecords(newRevisionId).size)
+                assertTrue(knowledgeRepository.getPendingThemesForRevision(newRevisionId).isEmpty())
+                assertTrue(knowledgeRepository.getConclusionsForRevision(newRevisionId).isEmpty())
+                assertEquals(1, knowledgeRepository.getConclusionsForRevision(revisionId).size)
             }
         } finally {
             database.close()
@@ -250,6 +273,91 @@ class ReflectionRepositoryTest {
         } finally {
             database.close()
             audioFile.delete()
+        }
+    }
+
+    @Test
+    fun captureDraftRoundTripsAndSubmitRemovesItAtomically() {
+        val database = inMemoryDatabase()
+        try {
+            val repository = repository(database)
+            runBlocking {
+                repository.saveCaptureDraft(
+                    text = "Draft text",
+                    encryptedAudioPath = "/app/audio/draft.enc",
+                    durationMs = 1200L
+                )
+                val restored = requireNotNull(repository.loadCaptureDraft())
+                assertEquals("Draft text", restored.text)
+                assertEquals("/app/audio/draft.enc", restored.encryptedAudioPath)
+                assertEquals(1200L, restored.durationMs)
+
+                assertThrows(IllegalArgumentException::class.java) {
+                    runBlocking { repository.submitCaptureDraft("") }
+                }
+                assertNotNull(repository.loadCaptureDraft())
+
+                val rawId = repository.submitCaptureDraft(
+                    originalText = restored.text,
+                    audioPath = restored.encryptedAudioPath,
+                    durationMs = restored.durationMs
+                )
+                assertTrue(rawId > 0L)
+                assertTrue(repository.loadCaptureDraft() == null)
+                assertEquals(1, database.knowledgeDao().getAllRawRecords().size)
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun externalEvidenceDeletionRequiresPreviewAndExplicitUnlink() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = repository(database)
+            val knowledgeRepository = KnowledgeRepository(database, database.knowledgeDao(), SettingsStore(context))
+            val entryRepository = EntryRepository(database, database.entryDao(), database.knowledgeDao())
+            runBlocking {
+                val sourceRawId = reflectionRepository.captureRawText("External source")
+                val conclusionRawId = reflectionRepository.captureRawText("Conclusion source")
+                val proposal = reflectionRepository.createLocalProposal(conclusionRawId)
+                reflectionRepository.confirm(proposal.hypothesisId, "A conclusion")
+                val revisionId = requireNotNull(
+                    database.knowledgeDao().getConclusionForRawRecord(conclusionRawId)?.currentRevisionId
+                )
+                knowledgeRepository.linkRelatedRecord(
+                    revisionId = revisionId,
+                    sourceRecordId = sourceRawId,
+                    relationship = Relationship.SUPPORTS
+                )
+                val entryId = requireNotNull(
+                    database.knowledgeDao().getRawRecordById(sourceRawId)?.legacyEntryId
+                )
+                val plan = requireNotNull(entryRepository.getDeletionPlan(entryId))
+                assertEquals(1, plan.incomingEvidence.size)
+                assertTrue(plan.ownConclusionId == null)
+
+                assertThrows(DeletionDependenciesRequireExplicitChoiceException::class.java) {
+                    runBlocking { entryRepository.deleteEntry(entryId) }
+                }
+                assertEquals(1, database.knowledgeDao().getIncomingEvidenceLinks(sourceRawId).size)
+
+                entryRepository.deleteEntry(
+                    entryId,
+                    EntryDeletionChoice(
+                        unlinkIncomingEvidenceLinkIds = plan.incomingEvidence.map { it.linkId }.toSet()
+                    )
+                )
+                assertTrue(database.knowledgeDao().getRawRecordById(sourceRawId) == null)
+                assertEquals(1, database.knowledgeDao().getAllConclusions().size)
+                assertTrue(
+                    database.knowledgeDao().getEvidenceLinksForRevision(revisionId)
+                        .none { it.sourceRawRecordId == sourceRawId }
+                )
+            }
+        } finally {
+            database.close()
         }
     }
 

@@ -3,6 +3,7 @@ package com.echomind.ui.record
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,6 +76,7 @@ fun RecordScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var showDraftExitDialog by rememberSaveable { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -93,12 +96,55 @@ fun RecordScreen(
         }
     }
 
+    val requestExit = {
+        if (uiState.stage == ReflectionStage.RECORDING) viewModel.stopRecording()
+        if (uiState.stage == ReflectionStage.CAPTURE || uiState.stage == ReflectionStage.RECORDING) {
+            showDraftExitDialog = true
+        } else {
+            onNavigateBack()
+        }
+    }
+
+    BackHandler(
+        enabled = uiState.stage == ReflectionStage.CAPTURE || uiState.stage == ReflectionStage.RECORDING,
+        onBack = requestExit
+    )
+
+    if (showDraftExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showDraftExitDialog = false },
+            title = { Text("Keep this draft?") },
+            text = {
+                Text(
+                    "Text and completed encrypted audio are saved locally. " +
+                        "An unfinished recording is reported as interrupted after process death."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDraftExitDialog = false
+                    onNavigateBack()
+                }) { Text("Keep draft") }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { showDraftExitDialog = false }) { Text("Cancel") }
+                    TextButton(onClick = {
+                        showDraftExitDialog = false
+                        viewModel.discardDraft()
+                        onNavigateBack()
+                    }) { Text("Discard") }
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("New reflection") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = requestExit) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }

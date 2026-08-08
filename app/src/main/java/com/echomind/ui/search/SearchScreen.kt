@@ -63,6 +63,9 @@ fun SearchScreen(
             if (uiState.isLoading) {
                 item { Text("Searching...") }
             }
+            uiState.error?.let { error ->
+                item { Text("Search failed: $error") }
+            }
             items(uiState.knowledgeResults) { result ->
                 when (result) {
                     is KnowledgeSearchResult.Theme -> {

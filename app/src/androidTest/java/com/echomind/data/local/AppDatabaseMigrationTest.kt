@@ -38,7 +38,12 @@ class AppDatabaseMigrationTest {
         createVersion2Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
-            .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
+            .addMigrations(
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6
+            )
             .allowMainThreadQueries()
             .build()
 
@@ -176,7 +181,11 @@ class AppDatabaseMigrationTest {
         val database = createVersion3DatabaseWithProvenance()
 
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
-            .addMigrations(AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
+            .addMigrations(
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6
+            )
             .allowMainThreadQueries()
             .build()
 
@@ -214,7 +223,7 @@ class AppDatabaseMigrationTest {
         createVersion4DatabaseWithProvenance()
 
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
-            .addMigrations(AppDatabase.MIGRATION_4_5)
+            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
 
@@ -251,6 +260,153 @@ class AppDatabaseMigrationTest {
         } finally {
             migrated.close()
         }
+    }
+
+    @Test
+    fun schema6AddsImmutableLinkMetadataDraftDispositionAndDecisionForeignKey() {
+        val database = inMemoryDatabase()
+        try {
+            val sqlite = database.openHelper.writableDatabase
+
+            assertTableExists(sqlite, "capture_drafts")
+            assertTableExists(sqlite, "home_card_dispositions")
+            assertColumnExists(sqlite, "evidence_links", "origin")
+            assertColumnExists(sqlite, "evidence_links", "created_at")
+            assertColumnExists(sqlite, "evidence_links", "created_at_estimated")
+            assertColumnExists(sqlite, "evidence_links", "review_metadata")
+            assertColumnExists(sqlite, "theme_links", "origin")
+            assertColumnExists(sqlite, "theme_links", "review_required")
+            assertIndexExists(sqlite, "evidence_links", "index_evidence_links_revision_source_unique")
+            assertIndexExists(sqlite, "theme_links", "index_theme_links_theme_revision_unique")
+
+            var decisionReferencesRevision = false
+            sqlite.query("PRAGMA foreign_key_list(`decisions`)").use { cursor ->
+                val tableColumn = cursor.getColumnIndexOrThrow("table")
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(tableColumn) == "conclusion_revisions") {
+                        decisionReferencesRevision = true
+                    }
+                }
+            }
+            assertTrue(decisionReferencesRevision)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun migration5To6DeterministicallyNormalizesDuplicateLinks() {
+        createVersion5DatabaseWithDuplicateLinks()
+
+        val migrated = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
+            .addMigrations(AppDatabase.MIGRATION_5_6)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val dao = migrated.knowledgeDao()
+            val evidence = runBlocking { dao.getAllEvidenceLinks() }
+            val themes = runBlocking { dao.getConfirmedThemeLinksAll() }
+
+            assertEquals(2, evidence.size)
+            val conflict = evidence.single { it.sourceRawRecordId == 9L }
+            assertEquals(31L, conflict.id)
+            assertEquals("needs_review", conflict.status)
+            assertEquals("legacy_rebase_unknown", conflict.origin)
+            assertTrue(conflict.reviewMetadata!!.contains("30|supports|confirmed"))
+            assertTrue(conflict.reviewMetadata!!.contains("31|contradicts|confirmed"))
+
+            val statusConflict = evidence.single { it.sourceRawRecordId == 6L }
+            assertEquals(32L, statusConflict.id)
+            assertEquals("confirmed", statusConflict.status)
+            assertEquals("user_confirmed", statusConflict.origin)
+            assertEquals(1, themes.size)
+            assertEquals(40L, themes.single().id)
+        } finally {
+            migrated.close()
+        }
+    }
+
+    private fun assertTableExists(db: SupportSQLiteDatabase, table: String) {
+        db.query(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            arrayOf(table)
+        ).use { cursor -> assertTrue(cursor.moveToFirst()) }
+    }
+
+    private fun assertColumnExists(db: SupportSQLiteDatabase, table: String, column: String) {
+        var found = false
+        db.query("PRAGMA table_info(`$table`)").use { cursor ->
+            val nameColumn = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameColumn) == column) found = true
+            }
+        }
+        assertTrue("Missing $table.$column", found)
+    }
+
+    private fun assertIndexExists(db: SupportSQLiteDatabase, table: String, index: String) {
+        var found = false
+        db.query("PRAGMA index_list(`$table`)").use { cursor ->
+            val nameColumn = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameColumn) == index) found = true
+            }
+        }
+        assertTrue("Missing index $index on $table", found)
+    }
+
+    private fun createVersion5DatabaseWithDuplicateLinks() {
+        createVersion4DatabaseWithProvenance()
+        val callback = object : SupportSQLiteOpenHelper.Callback(5) {
+            override fun onCreate(db: SupportSQLiteDatabase) = Unit
+
+            override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
+                AppDatabase.MIGRATION_4_5.migrate(db)
+            }
+        }
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(TEST_DATABASE)
+            .callback(callback)
+            .build()
+        val helper = FrameworkSQLiteOpenHelperFactory().create(configuration)
+        val db = helper.writableDatabase
+        db.execSQL(
+            "INSERT INTO raw_records " +
+                "(id, legacy_entry_id, original_text, audio_path, duration_ms, created_at) " +
+                "VALUES (9, NULL, 'External source', NULL, 0, 20)"
+        )
+        db.execSQL("INSERT INTO themes (id, name, created_at, archived_at) VALUES (20, 'Theme', 20, NULL)")
+        db.execSQL(
+            "INSERT INTO evidence_links " +
+                "(id, conclusion_revision_id, source_raw_record_id, relationship, status) " +
+                "VALUES (30, 8, 9, 'supports', 'confirmed')"
+        )
+        db.execSQL(
+            "INSERT INTO evidence_links " +
+                "(id, conclusion_revision_id, source_raw_record_id, relationship, status) " +
+                "VALUES (31, 8, 9, 'contradicts', 'confirmed')"
+        )
+        db.execSQL(
+            "INSERT INTO evidence_links " +
+                "(id, conclusion_revision_id, source_raw_record_id, relationship, status) " +
+                "VALUES (32, 8, 6, 'supports', 'confirmed')"
+        )
+        db.execSQL(
+            "INSERT INTO evidence_links " +
+                "(id, conclusion_revision_id, source_raw_record_id, relationship, status) " +
+                "VALUES (33, 8, 6, 'supports', 'proposed')"
+        )
+        db.execSQL(
+            "INSERT INTO theme_links " +
+                "(id, theme_id, conclusion_revision_id, confirmed, created_at) " +
+                "VALUES (40, 20, 8, 1, 20)"
+        )
+        db.execSQL(
+            "INSERT INTO theme_links " +
+                "(id, theme_id, conclusion_revision_id, confirmed, created_at) " +
+                "VALUES (41, 20, 8, 1, 21)"
+        )
+        helper.close()
     }
 
     private fun createVersion4DatabaseWithProvenance() {

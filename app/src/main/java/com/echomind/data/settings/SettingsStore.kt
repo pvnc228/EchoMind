@@ -66,6 +66,22 @@ class SettingsStore @Inject constructor(
         }
     }
 
+    /**
+     * Old suppression records were keyed only by theme ID and cannot be safely mapped to the
+     * new graph fingerprint. Clear them once and let the caller show a non-blocking notice.
+     */
+    suspend fun resetLegacySuppressionsIfNeeded(): Boolean {
+        var reset = false
+        dataStore.edit { preferences ->
+            if (preferences[KEY_LEGACY_SUPPRESSION_RESET] != true) {
+                reset = preferences.contains(KEY_SUPPRESSED_CARDS)
+                preferences.remove(KEY_SUPPRESSED_CARDS)
+                preferences[KEY_LEGACY_SUPPRESSION_RESET] = true
+            }
+        }
+        return reset
+    }
+
     suspend fun isLocalMode(): Boolean = localModeOverride ?: load().localMode
 
     suspend fun setApiEndpoint(endpoint: String) {
@@ -84,5 +100,6 @@ class SettingsStore @Inject constructor(
         val KEY_API_ENDPOINT = stringPreferencesKey("api_endpoint")
         val KEY_LOCAL_MODE = booleanPreferencesKey("local_mode")
         val KEY_SUPPRESSED_CARDS = stringPreferencesKey("suppressed_cards")
+        val KEY_LEGACY_SUPPRESSION_RESET = booleanPreferencesKey("legacy_suppression_reset_v6")
     }
 }

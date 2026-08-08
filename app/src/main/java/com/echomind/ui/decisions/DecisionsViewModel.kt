@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.echomind.data.repository.DecisionRepository
 import com.echomind.domain.model.Decision
+import com.echomind.domain.model.DecisionSourceOption
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,6 +14,7 @@ import javax.inject.Inject
 
 data class DecisionsUiState(
     val decisions: List<Decision> = emptyList(),
+    val sources: List<DecisionSourceOption> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null
 )
@@ -32,9 +34,15 @@ class DecisionsViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            runCatching { repository.getDecisions() }
-                .onSuccess { decisions ->
-                    _uiState.value = DecisionsUiState(decisions = decisions, isLoading = false)
+            runCatching {
+                repository.getDecisions() to repository.getDecisionSources()
+            }
+                .onSuccess { (decisions, sources) ->
+                    _uiState.value = DecisionsUiState(
+                        decisions = decisions,
+                        sources = sources,
+                        isLoading = false
+                    )
                 }
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)

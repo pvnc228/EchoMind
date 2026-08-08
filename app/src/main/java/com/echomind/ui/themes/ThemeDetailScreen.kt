@@ -87,7 +87,7 @@ fun ThemeDetailScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(uiState.conclusions, key = { "${it.themeId}-${it.revisionVersion}" }) { c ->
+                    items(uiState.conclusions, key = { it.revisionId }) { c ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -100,8 +100,7 @@ fun ThemeDetailScreen(
                                     color = MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                val hasOutcome = c.revisionId != null &&
-                                    c.revisionId in uiState.conclusionsWithOutcome
+                                val hasOutcome = c.revisionId in uiState.conclusionsWithOutcome
                                 Text(
                                     if (hasOutcome) "· has outcome evidence" else "· no outcome evidence",
                                     style = MaterialTheme.typography.labelSmall,

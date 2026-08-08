@@ -17,13 +17,16 @@ sealed class KnowledgeSearchResult {
 
     data class Conclusion(
         val conclusionId: Long,
+        val revisionId: Long,
         override val entryId: Long?,
         val text: String,
         val revisionVersion: Int,
-        val createdAt: Long
+        val createdAt: Long,
+        val isCurrent: Boolean
     ) : KnowledgeSearchResult() {
         override val snippet: String get() = text
-        override val label: String get() = "Conclusion · revision $revisionVersion"
+        override val label: String get() =
+            "Conclusion · revision $revisionVersion" + if (isCurrent) "" else " · historical"
     }
 
     data class Theme(

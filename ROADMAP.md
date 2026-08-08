@@ -154,12 +154,13 @@ supports/contradicts relationships between confirmed conclusions (reusing
 `evidence_links`), plus export manifest v3 for all new objects.
 16/16 instrumented tests pass on Pixel 8 API 35.
 
-**Status (2026-08-08, M2 complete):** dated revision history and graph-wide
-search are implemented and verified, and candidate relationship detection is
-covered by a local term-overlap heuristic that surfaces suggestions in the
-detail screen for the user to review before linking. Remote-assisted candidate
-detection remains deferred until the minimized remote-context approval
-pipeline exists. 18/18 instrumented tests pass on Pixel 8 API 35.
+**Status (2026-08-08, repair slice):** dated revision history, graph-wide
+search, immutable/pending revision links, explicit dependency-preview deletion,
+and local candidate detection are implemented. Inherited links remain pending
+until a user reviews them. Manifest v5 empty-profile restore is implemented.
+Remote-assisted candidates, merge/selective restore, and the corrupt/dangling
+import negative suite remain deferred. The full M2 completion gate is therefore
+not marked complete.
 
 ## M3 — Relevant resurfacing and visible capability
 
@@ -167,18 +168,12 @@ pipeline exists. 18/18 instrumented tests pass on Pixel 8 API 35.
 
 **Outcome:** the home screen returns one meaningful line of thought and honestly shows what EchoMind currently knows.
 
-**Status (2026-08-08, M3 complete):** the home screen is no longer
-timeline-first. It now leads with a prompt to capture or continue a thought,
-then shows one evidence-backed relevant card with an explicit "why this is
-shown" reason and its capability label, per-theme evidence coverage, and
-recent entries. Card selection is deterministic from the graph: a theme with
-contradicting evidence is shown first, then a confirmed conclusion with no
-supporting records, then the theme with the most evidence. The card can be
-inspected, continued, dismissed, or postponed (24h); dismissal and
-postponement persist in DataStore. No remote calls and no global personality
-percentages, streaks, or levels. Capabilities (reflection, connection, change
-tracking, guidance) are labelled on each card. 33/33 unit and 18/18
-instrumented tests pass on Pixel 8 API 35.
+**Status (2026-08-08, repair slice):** the home screen uses typed coverage
+states, exact time thresholds, deterministic tie-breaks, and fingerprint-keyed
+Room dispositions. It includes empty/unthemed coverage and exposes source and
+revision IDs. Legacy theme-wide suppression is reset once. Accessibility matrix
+validation and a full restart/manage-dismissed UI oracle remain pending, so M3
+is not marked complete.
 
 ### Scope
 
@@ -206,16 +201,13 @@ instrumented tests pass on Pixel 8 API 35.
 
 **Outcome:** EchoMind learns from reported consequences, not only from the user's self-description.
 
-**Status (2026-08-08, M4 first slice):** decisions and outcomes are now
-first-class, inspectable objects. A user can turn a question into a decision
-record with an optional EchoMind suggestion and its grounds (the linked
-conclusion), record their own choice separately, and report an outcome with
-minimal friction. Theme detail shows which conclusions have outcome evidence
-and which lack it. The full chain `question → grounds → suggestion → choice →
-outcome` is persisted and inspectable in the Decisions screen and exported in
-manifest v4. Deletion of a decision/outcome never touches the referenced
-records or conclusions. 33/33 unit and 22/22 instrumented tests pass on Pixel
-8 API 35.
+**Status (2026-08-08, first repair slice):** decisions and outcomes are
+first-class, inspectable objects. A decision must be grounded in a current
+revision; user choice and reported outcomes are guarded by the derived
+`CREATED → CHOSEN → OUTCOME_REPORTED` state machine. System suggestions require
+explicit author/source/status metadata and are not created by the ordinary user
+flow. Export carries the metadata. The outcome-to-reviewed-revision leg and
+full restart/export UI oracle remain deferred.
 
 ### Scope
 
@@ -228,7 +220,7 @@ records or conclusions. 33/33 unit and 22/22 instrumented tests pass on Pixel
 
 ### Completion criteria
 
-- [x] The complete chain `question → grounds → suggestion → choice → outcome → revision` is inspectable (the `→ revision` leg stays a deferred sub-goal).
+- [ ] The complete chain `question → grounds → suggestion → choice → outcome → revision` is inspectable; outcome-to-reviewed-revision remains deferred.
 - [x] Ignoring follow-up never blocks basic reflection or retrieval.
 - [x] Reminders are opt-in, dismissible, and do not use guilt or streak mechanics.
 - [x] Advice quality is never inferred from entry count alone.
@@ -318,13 +310,12 @@ per-request approval flow exists.
 Do not begin personalization, prediction, 3D visualization, or broad UI polish
 before this product proof is complete.
 
-The next product milestone is **M2 — Traceable personal knowledge model**
-(construct links to evidence/contradictions, themes, revisions, archive, and
-search over the provenance graph). It is now complete: user-owned themes,
-confirmed theme links, user-managed supports/contradicts relationships, dated
-revision history, graph-wide search, and a local candidate-relationship
-heuristic (2026-08-08). Remote-assisted candidate detection remains deferred
-until the minimized remote-context approval pipeline exists.
+The next product milestone remains the repair completion gate for **M2/M3/M4**:
+fresh migration/import/deletion evidence, accessibility validation, and the
+remaining negative tests must be captured before those milestones are marked
+complete. The implemented slice already includes user-owned themes,
+immutable/pending links, dated revisions, graph-wide search, typed Home
+coverage, guarded decisions, and empty-profile restore (2026-08-08).
 
 ## UX/UI audit and approved implementation checkpoint
 

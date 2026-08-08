@@ -53,21 +53,46 @@ class RecordViewModel @Inject constructor(
     private var mediaRecorder: MediaRecorder? = null
     private var startTime: Long = 0
     private var amplitudeJob: Job? = null
+    private var draftSaveJob: Job? = null
 
     init {
         viewModelScope.launch {
-            runCatching { reflectionRepository.loadLatestProposedReflection() }
-                .onSuccess { session ->
-                    if (session == null) {
-                        _uiState.value = RecordUiState(stage = ReflectionStage.CAPTURE)
+            val interrupted = cleanupInterruptedRecording()
+            runCatching { reflectionRepository.loadCaptureDraft() }
+                .onSuccess { draft ->
+                    if (draft != null) {
+                        _uiState.value = RecordUiState(
+                            stage = ReflectionStage.CAPTURE,
+                            thoughtText = draft.text,
+                            durationMs = draft.durationMs,
+                            audioPath = draft.encryptedAudioPath,
+                            error = if (interrupted) {
+                                "Recording was interrupted. Your text draft was restored."
+                            } else {
+                                null
+                            }
+                        )
                     } else {
-                        showSession(session)
+                        runCatching { reflectionRepository.loadLatestProposedReflection() }
+                            .onSuccess { session ->
+                                if (session == null) {
+                                    _uiState.value = RecordUiState(stage = ReflectionStage.CAPTURE)
+                                } else {
+                                    showSession(session)
+                                }
+                            }
+                            .onFailure { error ->
+                                _uiState.value = RecordUiState(
+                                    stage = ReflectionStage.ERROR,
+                                    error = error.message ?: "Could not restore the pending reflection."
+                                )
+                            }
                     }
                 }
                 .onFailure { error ->
                     _uiState.value = RecordUiState(
                         stage = ReflectionStage.ERROR,
-                        error = error.message ?: "Could not restore the pending reflection."
+                        error = error.message ?: "Could not restore the capture draft."
                     )
                 }
         }
@@ -76,6 +101,7 @@ class RecordViewModel @Inject constructor(
     fun updateThought(text: String) {
         if (_uiState.value.stage == ReflectionStage.CAPTURE) {
             _uiState.value = _uiState.value.copy(thoughtText = text)
+            scheduleDraftPersist()
         }
     }
 
@@ -102,7 +128,9 @@ class RecordViewModel @Inject constructor(
                     stage = ReflectionStage.PROCESSING,
                     rawRecordId = rawRecordId
                 )
-                reflectionRepository.createLocalProposal(requireNotNull(rawRecordId))
+                val session = reflectionRepository.createLocalProposal(requireNotNull(rawRecordId))
+                reflectionRepository.clearCaptureDraft()
+                session
             }.onSuccess(::showSession)
                 .onFailure { error ->
                     _uiState.value = state.copy(
@@ -182,7 +210,8 @@ class RecordViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(permissionDenied = false)
 
         val context = getApplication<Application>()
-        val audioDir = File(context.filesDir, "audio")
+        persistDraftNow()
+        val audioDir = File(context.noBackupFilesDir, "capture_tmp")
         audioDir.mkdirs()
         val audioFile = File(audioDir, "entry_${System.currentTimeMillis()}.m4a")
 
@@ -235,7 +264,22 @@ class RecordViewModel @Inject constructor(
     fun startNewReflection() {
         val state = _uiState.value
         if (state.stage != ReflectionStage.CONFIRMED && state.stage != ReflectionStage.REJECTED) return
-        _uiState.value = RecordUiState(stage = ReflectionStage.CAPTURE)
+        viewModelScope.launch {
+            reflectionRepository.clearCaptureDraft()
+            _uiState.value = RecordUiState(stage = ReflectionStage.CAPTURE)
+        }
+    }
+
+    fun discardDraft() {
+        val state = _uiState.value
+        if (state.stage != ReflectionStage.CAPTURE) return
+        state.audioPath?.let { path ->
+            if (path.endsWith(AudioEncryptionUtil.ENCRYPTED_EXTENSION)) File(path).delete()
+        }
+        viewModelScope.launch {
+            reflectionRepository.clearCaptureDraft()
+            _uiState.value = RecordUiState(stage = ReflectionStage.CAPTURE)
+        }
     }
 
     fun stopRecording() {
@@ -286,6 +330,7 @@ class RecordViewModel @Inject constructor(
             audioPath = encryptedPath,
             amplitudes = emptyList()
         )
+        persistDraftNow()
     }
 
     private fun showSession(session: ReflectionSession) {
@@ -308,17 +353,54 @@ class RecordViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        draftSaveJob?.cancel()
         amplitudeJob?.cancel()
         mediaRecorder?.release()
         mediaRecorder = null
-        val state = _uiState.value
-        if (state.rawRecordId == null) {
-            state.audioPath?.let { File(it).delete() }
-        }
         super.onCleared()
+    }
+
+    private fun scheduleDraftPersist() {
+        val state = _uiState.value
+        if (state.stage != ReflectionStage.CAPTURE) return
+
+        draftSaveJob?.cancel()
+        draftSaveJob = viewModelScope.launch {
+            delay(DRAFT_DEBOUNCE_MS)
+            persistDraft(state)
+        }
+    }
+
+    private fun persistDraftNow() {
+        val state = _uiState.value
+        draftSaveJob?.cancel()
+        draftSaveJob = viewModelScope.launch { persistDraft(state) }
+    }
+
+    private suspend fun persistDraft(state: RecordUiState) {
+        if (state.thoughtText.isBlank() && state.audioPath == null) return
+        runCatching {
+            reflectionRepository.saveCaptureDraft(
+                text = state.thoughtText,
+                encryptedAudioPath = state.audioPath?.takeIf {
+                    it.endsWith(AudioEncryptionUtil.ENCRYPTED_EXTENSION)
+                },
+                durationMs = state.durationMs
+            )
+        }
+    }
+
+    private fun cleanupInterruptedRecording(): Boolean {
+        val directory = File(getApplication<Application>().noBackupFilesDir, "capture_tmp")
+        val staleFiles = directory.listFiles()
+            ?.filter { it.isFile && it.extension == "m4a" }
+            .orEmpty()
+        staleFiles.forEach { it.delete() }
+        return staleFiles.isNotEmpty()
     }
 
     private companion object {
         const val MAX_AMPLITUDE_SAMPLES = 120
+        const val DRAFT_DEBOUNCE_MS = 500L
     }
 }

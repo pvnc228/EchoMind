@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -73,6 +75,7 @@ fun DetailScreen(
 
     if (showDeleteDialog) {
         val hasConfirmedConclusion = uiState.reflection?.confirmedConclusion != null
+        val deletionPlan = uiState.deletionPlan
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = {
@@ -85,15 +88,30 @@ fun DetailScreen(
                 )
             },
             text = {
-                Text(
-                    if (hasConfirmedConclusion) {
-                        "This source supports a confirmed conclusion. Deleting both also " +
-                            "removes revision history, the saved proposal, and any attached audio."
-                    } else {
-                        "This removes the raw record, saved proposal, archive entry, and any " +
-                            "attached audio."
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (hasConfirmedConclusion) {
+                            "This source supports a confirmed conclusion. Deleting both also " +
+                                "removes revision history, the saved proposal, and any attached audio."
+                        } else {
+                            "This removes the raw record, saved proposal, archive entry, and any " +
+                                "attached audio."
+                        }
+                    )
+                    deletionPlan?.let { plan ->
+                        if (plan.incomingEvidence.isNotEmpty()) {
+                            Text(
+                                "Incoming evidence links to unlink: ${plan.incomingEvidence.size} " +
+                                    "(${plan.incomingEvidence.joinToString { it.relationship }})"
+                            )
+                        }
+                        if (plan.decisions.isNotEmpty()) {
+                            Text(
+                                "Dependent decisions/outcomes to delete: ${plan.decisions.size}"
+                            )
+                        }
                     }
-                )
+                }
             },
             confirmButton = {
                 TextButton(
@@ -200,7 +218,9 @@ fun DetailScreen(
                             ConnectionsSection(
                                 themes = uiState.themes,
                                 availableThemes = uiState.availableThemes,
+                                pendingThemes = uiState.pendingThemes,
                                 relatedRecords = uiState.relatedRecords,
+                                pendingRelatedRecords = uiState.pendingRelatedRecords,
                                 otherEntries = uiState.otherEntries,
                                 revisionId = reflection.revisionId,
                                 onLinkToTheme = { themeId, revisionId ->
@@ -214,6 +234,12 @@ fun DetailScreen(
                                 },
                                 onUnlinkRelated = { revisionId, sourceId ->
                                     viewModel.unlinkRelatedRecord(revisionId, sourceId)
+                                },
+                                onReviewPendingTheme = { linkId, accept ->
+                                    viewModel.reviewPendingThemeLink(linkId, accept)
+                                },
+                                onReviewPendingRelated = { linkId, accept ->
+                                    viewModel.reviewPendingRelatedRecord(linkId, accept)
                                 }
                             )
                         }
@@ -296,16 +322,22 @@ fun DetailScreen(
 fun ConnectionsSection(
     themes: List<Theme>,
     availableThemes: List<Theme>,
+    pendingThemes: List<com.echomind.domain.model.PendingThemeLink>,
     relatedRecords: List<RelatedRecord>,
+    pendingRelatedRecords: List<RelatedRecord>,
     otherEntries: List<RelatedRecord>,
     revisionId: Long,
     onLinkToTheme: (Long, Long) -> Unit,
     onUnlinkFromTheme: (Long, Long) -> Unit,
     onLinkRelated: (RelatedRecord, String, Long) -> Unit,
-    onUnlinkRelated: (Long, Long) -> Unit
+    onUnlinkRelated: (Long, Long) -> Unit,
+    onReviewPendingTheme: (Long, Boolean) -> Unit,
+    onReviewPendingRelated: (Long, Boolean) -> Unit
 ) {
     var showThemePicker by remember { mutableStateOf(false) }
     var relateTarget by remember { mutableStateOf<RelatedRecord?>(null) }
+    var showManualPicker by remember { mutableStateOf(false) }
+    var manualQuery by remember { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionHeader("Connections")
@@ -338,6 +370,35 @@ fun ConnectionsSection(
             Text("Add to theme...")
         }
 
+        if (pendingThemes.isNotEmpty()) {
+            Text(
+                "Pending theme links",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "These memberships were inherited or imported. Review each one.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            pendingThemes.forEach { pending ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(pending.themeName, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { onReviewPendingTheme(pending.linkId, false) }) {
+                            Text("Reject")
+                        }
+                        TextButton(onClick = { onReviewPendingTheme(pending.linkId, true) }) {
+                            Text("Confirm")
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
@@ -360,14 +421,48 @@ fun ConnectionsSection(
                 )
             }
         }
-        if (otherEntries.isNotEmpty()) {
-            TextButton(onClick = { relateTarget = otherEntries.first() }) {
-                Text("Link a record...")
+
+        if (pendingRelatedRecords.isNotEmpty()) {
+            Text(
+                "Pending evidence links",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "Inherited or imported links do not affect coverage until confirmed.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            pendingRelatedRecords.forEach { record ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            record.relationship.replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(record.sourceText, style = MaterialTheme.typography.bodyMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { onReviewPendingRelated(record.linkId, false) }) {
+                                Text("Reject")
+                            }
+                            TextButton(onClick = { onReviewPendingRelated(record.linkId, true) }) {
+                                Text("Confirm")
+                            }
+                        }
+                    }
+                }
             }
         }
+        TextButton(
+            onClick = { showManualPicker = true },
+            enabled = otherEntries.isNotEmpty()
+        ) {
+            Text("Browse or search records...")
+        }
 
-        val suggestions = otherEntries.filter { it.suggestedReason != null }
-        if (suggestions.isNotEmpty()) {
+        if (otherEntries.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 "Suggested connections",
@@ -379,7 +474,7 @@ fun ConnectionsSection(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            suggestions.forEach { candidate ->
+            otherEntries.filter { it.suggestedReason != null }.forEach { candidate ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
@@ -407,6 +502,54 @@ fun ConnectionsSection(
             themes = availableThemes.filter { it.id !in linkedIds },
             onDismiss = { showThemePicker = false },
             onSelected = { onLinkToTheme(it, revisionId) }
+        )
+    }
+
+    if (showManualPicker) {
+        val filteredCandidates = otherEntries.filter {
+            manualQuery.isBlank() || it.sourceText.contains(manualQuery, ignoreCase = true)
+        }
+        AlertDialog(
+            onDismissRequest = {
+                showManualPicker = false
+                manualQuery = ""
+            },
+            title = { Text("Choose a record to review") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = manualQuery,
+                        onValueChange = { manualQuery = it },
+                        label = { Text("Filter records") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(filteredCandidates, key = { it.rawRecordId }) { candidate ->
+                            TextButton(
+                                onClick = {
+                                    showManualPicker = false
+                                    manualQuery = ""
+                                    relateTarget = candidate
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    candidate.sourceText,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showManualPicker = false
+                        manualQuery = ""
+                    }
+                ) { Text("Cancel") }
+            }
         )
     }
 

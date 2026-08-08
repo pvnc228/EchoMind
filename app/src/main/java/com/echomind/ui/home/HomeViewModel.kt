@@ -11,19 +11,17 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class HomeUiState(
-    val entries: List<Entry> = emptyList(),
     val card: HomeCard? = null,
     val coverage: List<ThemeCoverage> = emptyList(),
     val hasKnowledge: Boolean = false,
     val recent: List<Entry> = emptyList(),
+    val legacySuppressionReset: Boolean = false,
     val isLoading: Boolean = true,
-    val error: String? = null,
-    val selectedCategory: String? = null
+    val error: String? = null
 )
 
 @HiltViewModel
@@ -39,7 +37,7 @@ class HomeViewModel @Inject constructor(
         load()
     }
 
-    fun load(category: String? = null) {
+    fun load() {
         viewModelScope.launch {
             val recent = runCatching { getEntriesUseCase.getRecentEntries(5) }.getOrDefault(emptyList())
             runCatching { knowledgeRepository.getHomeRelevance() }
@@ -49,9 +47,9 @@ class HomeViewModel @Inject constructor(
                         coverage = relevance.coverage,
                         hasKnowledge = relevance.hasKnowledge,
                         recent = recent,
+                        legacySuppressionReset = relevance.legacySuppressionReset,
                         isLoading = false,
-                        error = null,
-                        selectedCategory = category
+                        error = null
                     )
                 }
                 .onFailure { e ->
@@ -61,28 +59,13 @@ class HomeViewModel @Inject constructor(
                         error = e.message
                     )
                 }
-            if (category != null) {
-                getEntriesUseCase.getEntriesByCategory(category)
-                    .catch { e ->
-                        _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
-                    }.collect { entries ->
-                        _uiState.value = _uiState.value.copy(entries = entries)
-                    }
-            } else {
-                getEntriesUseCase.getAllEntries()
-                    .catch { e ->
-                        _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
-                    }.collect { entries ->
-                        _uiState.value = _uiState.value.copy(entries = entries)
-                    }
-            }
         }
     }
 
     fun dismissCard() {
         val card = _uiState.value.card ?: return
         viewModelScope.launch {
-            runCatching { knowledgeRepository.dismissCard(card.themeId) }
+            runCatching { knowledgeRepository.dismissCard(card) }
                 .onSuccess { _uiState.value = _uiState.value.copy(card = null) }
         }
     }
@@ -90,12 +73,9 @@ class HomeViewModel @Inject constructor(
     fun postponeCard(until: Long) {
         val card = _uiState.value.card ?: return
         viewModelScope.launch {
-            runCatching { knowledgeRepository.postponeCard(card.themeId, until) }
+            runCatching { knowledgeRepository.postponeCard(card, until) }
                 .onSuccess { _uiState.value = _uiState.value.copy(card = null) }
         }
     }
 
-    fun selectCategory(category: String?) {
-        load(category)
-    }
 }

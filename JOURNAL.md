@@ -723,6 +723,34 @@ from the plan.
   primitives; measured blur/compositing is deliberately deferred.
 - Signed: `агент opencode`.
 
+## 2026-08-08 — opencode repair packages 1–3
+
+Выполнена implementation-сессия по `OPENCODE_REPAIR_DECISIONS_2026-08-08.md`.
+Добавлены traceability table и production/test changes для Room schema v6 и
+`MIGRATION_5_6`: immutable historical links, pending inherited-link review,
+deterministic duplicate handling, RESTRICT dependency preview deletion,
+derived decision states with repository guards, durable capture drafts and
+encrypted completed audio recovery, typed Home coverage/fingerprint
+dispositions, and manifest v5 empty-profile restore. Restore preflight rejects
+corrupt hash and unsafe archive cases before writing; merge/selective import is
+still deferred.
+
+Свежие артефакты repair-сессии:
+
+- `:app:testDebugUnitTest --rerun-tasks` — **36/36**, failures/errors 0;
+- `:app:connectedDebugAndroidTest` — **35/35** на `Pixel_8_2` API 35;
+- `:app:lintDebug` — passed;
+- `:app:assembleDebug` и `:app:assembleDebugAndroidTest` — passed;
+- `git diff --check` — без whitespace errors (Git показывает только обычные
+  предупреждения о LF/CRLF для рабочего дерева).
+
+Оставлены явно незакрытыми: query-count benchmark, свежая accessibility
+матрица 200%/compact/landscape/TalkBack/IME, API 26–30 fallback run, полный
+restart/export UI oracle для decisions и Home dispositions, а также отдельные
+negative cases для dangling FK/duplicate ID/unsupported manifest/missing audio.
+Outcome-driven revision и merge/selective restore остаются следующими
+продуктовыми срезами. Подписал: `агент opencode`.
+
 ---
 
 ## 2026-08-07 — UX checkpoint device validation closed

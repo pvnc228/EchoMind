@@ -50,7 +50,17 @@ class ExportManifestTest {
                 ThemeLinkEntity(13, 12, 10, true, 25)
             ),
             decisions = listOf(
-                DecisionEntity(14, "Should I change roles?", "Change roles", null, 10, 26)
+                DecisionEntity(
+                    id = 14,
+                    question = "Should I change roles?",
+                    suggestion = "Change roles",
+                    choice = null,
+                    sourceRevisionId = 10,
+                    createdAt = 26,
+                    suggestionAuthor = "echomind",
+                    suggestionSource = "10",
+                    suggestionStatus = "proposal"
+                )
             ),
             outcomes = listOf(
                 OutcomeEntity(15, 14, "It worked out", 27)
@@ -59,7 +69,7 @@ class ExportManifestTest {
 
         val manifest = buildManifest(snapshot, exportedAt = 99)
 
-        assertEquals(4, manifest.version)
+        assertEquals(5, manifest.version)
         assertEquals(99L, manifest.exportedAt)
         assertEquals("legacy_unconfirmed", manifest.entries.single().analysisStatus)
         assertEquals("entry_7.m4a.wav", manifest.rawRecords.single().audioFileName)

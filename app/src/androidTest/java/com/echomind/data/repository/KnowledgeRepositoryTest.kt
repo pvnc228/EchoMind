@@ -5,8 +5,14 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
+import com.echomind.data.local.entity.EvidenceLinkEntity
+import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.KnowledgeSearchResult
+import com.echomind.domain.model.CoverageScopeType
+import com.echomind.domain.model.HomeCard
+import com.echomind.domain.model.HomeCardType
+import com.echomind.domain.model.Capability
 import com.echomind.domain.model.Relationship
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -150,8 +156,8 @@ class KnowledgeRepositoryTest {
                 )
                 val themeId = knowledgeRepository.createTheme("Career planning")
                 knowledgeRepository.linkConclusionToTheme(
-                    requireNotNull(session.revisionId),
-                    themeId
+                    themeId = themeId,
+                    revisionId = requireNotNull(session.revisionId)
                 )
 
                 val results = knowledgeRepository.search("career")
@@ -164,6 +170,178 @@ class KnowledgeRepositoryTest {
                     1,
                     onlyTheme.count { it is KnowledgeSearchResult.Theme }
                 )
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun searchTreatsLikeWildcardsAsLiteralAndIncludesHistoricalRevisions() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val knowledgeRepository = knowledgeRepository(database)
+            runBlocking {
+                val percentId = reflectionRepository.captureRawText("100% focus")
+                val percentLookalikeId = reflectionRepository.captureRawText("1000 focus")
+                val underscoreId = reflectionRepository.captureRawText("a_b marker")
+                val underscoreLookalikeId = reflectionRepository.captureRawText("axb marker")
+
+                val historicalRawId = reflectionRepository.captureRawText("History source")
+                val proposal = reflectionRepository.createLocalProposal(historicalRawId)
+                reflectionRepository.confirm(proposal.hypothesisId, "Old wording")
+                reflectionRepository.revise(proposal.hypothesisId, "New wording")
+
+                val percentResults = knowledgeRepository.search("100%")
+                    .filterIsInstance<KnowledgeSearchResult.RawRecord>()
+                    .map { it.rawRecordId }
+                val underscoreResults = knowledgeRepository.search("a_b")
+                    .filterIsInstance<KnowledgeSearchResult.RawRecord>()
+                    .map { it.rawRecordId }
+                val oldRevisionResults = knowledgeRepository.search("Old wording")
+                    .filterIsInstance<KnowledgeSearchResult.Conclusion>()
+                val newRevisionResults = knowledgeRepository.search("New wording")
+                    .filterIsInstance<KnowledgeSearchResult.Conclusion>()
+
+                assertEquals(listOf(percentId), percentResults)
+                assertTrue(percentLookalikeId !in percentResults)
+                assertEquals(listOf(underscoreId), underscoreResults)
+                assertTrue(underscoreLookalikeId !in underscoreResults)
+                assertEquals(1, oldRevisionResults.size)
+                assertEquals(1, oldRevisionResults.single().revisionVersion)
+                assertTrue(!oldRevisionResults.single().isCurrent)
+                assertEquals(1, newRevisionResults.size)
+                assertEquals(2, newRevisionResults.single().revisionVersion)
+                assertTrue(newRevisionResults.single().isCurrent)
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun manualLinkCandidatesIncludeNoOverlapAndRecordsBeyondSuggestionLimit() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val knowledgeRepository = knowledgeRepository(database)
+            runBlocking {
+                val currentRawId = reflectionRepository.captureRawText("Current reflection")
+                val proposal = reflectionRepository.createLocalProposal(currentRawId)
+                val session = reflectionRepository.confirm(proposal.hypothesisId, "Current conclusion")
+                val currentRevisionId = requireNotNull(session.revisionId)
+                repeat(6) { index ->
+                    reflectionRepository.captureRawText("Unrelated archive record $index")
+                }
+
+                assertTrue(knowledgeRepository.getLinkCandidates(currentRevisionId).isEmpty())
+                val manual = knowledgeRepository.getManualLinkCandidates(currentRevisionId)
+
+                assertEquals(6, manual.size)
+                assertTrue(manual.none { it.rawRecordId == currentRawId })
+                assertTrue(manual.all { it.suggestedReason == null })
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun semanticLinksRejectDuplicatePairsAtDatabaseBoundary() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val knowledgeRepository = knowledgeRepository(database)
+            runBlocking {
+                val rawId = reflectionRepository.captureRawText("Current source")
+                val proposal = reflectionRepository.createLocalProposal(rawId)
+                val session = reflectionRepository.confirm(proposal.hypothesisId, "Current conclusion")
+                val revisionId = requireNotNull(session.revisionId)
+                val externalRawId = reflectionRepository.captureRawText("External source")
+                val themeId = knowledgeRepository.createTheme("Work")
+
+                database.knowledgeDao().insertThemeLink(
+                    ThemeLinkEntity(
+                        themeId = themeId,
+                        conclusionRevisionId = revisionId,
+                        confirmed = true,
+                        createdAt = 1L
+                    )
+                )
+                val duplicateThemeResult = database.knowledgeDao().insertThemeLink(
+                    ThemeLinkEntity(
+                        themeId = themeId,
+                        conclusionRevisionId = revisionId,
+                        confirmed = true,
+                        createdAt = 2L
+                    )
+                )
+
+                database.knowledgeDao().insertEvidenceLink(
+                    EvidenceLinkEntity(
+                        conclusionRevisionId = revisionId,
+                        sourceRawRecordId = externalRawId,
+                        relationship = "supports",
+                        status = "confirmed"
+                    )
+                )
+                val duplicateEvidenceResult = database.knowledgeDao().insertEvidenceLink(
+                    EvidenceLinkEntity(
+                        conclusionRevisionId = revisionId,
+                        sourceRawRecordId = externalRawId,
+                        relationship = "contradicts",
+                        status = "confirmed"
+                    )
+                )
+
+                assertEquals(-1L, duplicateThemeResult)
+                assertEquals(-1L, duplicateEvidenceResult)
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun homeCoverageKeepsTypedStatesAndDispositionUsesExactFingerprint() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val knowledgeRepository = knowledgeRepository(database)
+            runBlocking {
+                val rawId = reflectionRepository.captureRawText("A current source")
+                val proposal = reflectionRepository.createLocalProposal(rawId)
+                val session = reflectionRepository.confirm(proposal.hypothesisId, "A current conclusion")
+                val revisionId = requireNotNull(session.revisionId)
+                val themeId = knowledgeRepository.createTheme("Work")
+                knowledgeRepository.linkConclusionToTheme(themeId, revisionId)
+
+                val relevance = knowledgeRepository.getHomeRelevance()
+                assertTrue(relevance.hasKnowledge)
+                val coverage = relevance.coverage.single { it.scopeType == CoverageScopeType.THEME }
+                assertEquals("Work", coverage.name)
+                assertEquals(1, coverage.currentRevisionIds.size)
+                assertEquals(com.echomind.domain.model.EvidenceState.NO_EXTERNAL_EVIDENCE, coverage.evidenceState)
+                assertTrue(relevance.card == null)
+
+                val card = HomeCard(
+                    type = HomeCardType.THIN_EVIDENCE,
+                    themeId = themeId,
+                    themeName = "Work",
+                    title = "Thin",
+                    detail = "D",
+                    reason = "R",
+                    capability = Capability.REFLECTION,
+                    cardKey = "fingerprint-v1",
+                    scopeType = CoverageScopeType.THEME,
+                    scopeId = themeId,
+                    currentRevisionIds = listOf(revisionId)
+                )
+                knowledgeRepository.dismissCard(card)
+                assertEquals("fingerprint-v1", knowledgeRepository.getCardDispositions().single().cardKey)
+                knowledgeRepository.restoreCard("fingerprint-v1")
+                assertTrue(knowledgeRepository.getCardDispositions().isEmpty())
             }
         } finally {
             database.close()

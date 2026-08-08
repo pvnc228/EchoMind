@@ -34,6 +34,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +53,9 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     var showExportWarning by remember { mutableStateOf(false) }
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let(viewModel::restoreData) }
 
     LaunchedEffect(uiState.exportState) {
         when (val state = uiState.exportState) {
@@ -69,6 +74,20 @@ fun SettingsScreen(
                 viewModel.clearExportState()
             }
             else -> {}
+        }
+    }
+
+    LaunchedEffect(uiState.restoreState) {
+        when (val state = uiState.restoreState) {
+            RestoreState.Success -> {
+                snackbarHostState.showSnackbar("Restore completed. Restart the app to refresh all screens.")
+                viewModel.clearRestoreState()
+            }
+            is RestoreState.Error -> {
+                snackbarHostState.showSnackbar(state.message)
+                viewModel.clearRestoreState()
+            }
+            else -> Unit
         }
     }
 
@@ -195,6 +214,33 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                 }
                 Text("Export all entries")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = { restoreLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                enabled = uiState.restoreState !is RestoreState.InProgress,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Restore backup into empty profile")
+            }
+            if (uiState.dismissedCards.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("Dismissed Home cards", style = MaterialTheme.typography.titleMedium)
+                uiState.dismissedCards.forEach { card ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "${card.cardType} · ${card.scopeType} ${card.scopeId}",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        TextButton(onClick = { viewModel.restoreCard(card.cardKey) }) {
+                            Text("Restore")
+                        }
+                    }
+                }
             }
         }
     }

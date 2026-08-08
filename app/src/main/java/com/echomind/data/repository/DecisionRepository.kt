@@ -7,6 +7,7 @@ import com.echomind.data.local.entity.DecisionEntity
 import com.echomind.data.local.entity.OutcomeEntity
 import com.echomind.domain.model.Decision
 import com.echomind.domain.model.DecisionOutcome
+import com.echomind.domain.model.DecisionSourceOption
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,9 +19,23 @@ class DecisionRepository @Inject constructor(
     suspend fun createDecision(
         question: String,
         suggestion: String? = null,
-        sourceRevisionId: Long? = null
+        sourceRevisionId: Long? = null,
+        suggestionAuthor: String? = null,
+        suggestionSource: String? = null,
+        suggestionStatus: String? = null
     ): Long {
         require(question.isNotBlank()) { "A decision needs a question." }
+        if (!suggestion.isNullOrBlank()) {
+            require(suggestionAuthor == "echomind") {
+                "A system suggestion must identify EchoMind as its author."
+            }
+            require(!suggestionSource.isNullOrBlank()) {
+                "A system suggestion needs source grounds."
+            }
+            require(suggestionStatus in setOf("proposal", "confirmed", "rejected")) {
+                "A system suggestion needs a valid status."
+            }
+        }
         if (sourceRevisionId != null) {
             requireNotNull(knowledgeDao.getRevisionById(sourceRevisionId)) {
                 "Source revision $sourceRevisionId does not exist."
@@ -30,6 +45,9 @@ class DecisionRepository @Inject constructor(
             DecisionEntity(
                 question = question.trim(),
                 suggestion = suggestion?.trim()?.takeIf { it.isNotBlank() },
+                suggestionAuthor = suggestionAuthor,
+                suggestionSource = suggestionSource,
+                suggestionStatus = suggestionStatus,
                 choice = null,
                 sourceRevisionId = sourceRevisionId,
                 createdAt = System.currentTimeMillis()
@@ -39,22 +57,41 @@ class DecisionRepository @Inject constructor(
 
     suspend fun setChoice(decisionId: Long, choice: String) {
         require(choice.isNotBlank()) { "A choice cannot be blank." }
-        requireNotNull(knowledgeDao.getDecisionById(decisionId)) { "Decision $decisionId missing." }
-        check(
-            knowledgeDao.setDecisionChoice(decisionId, choice.trim()) == 1
-        ) { "Decision $decisionId already has a recorded choice." }
+        database.withTransaction {
+            requireNotNull(knowledgeDao.getDecisionById(decisionId)) { "Decision $decisionId missing." }
+            check(
+                knowledgeDao.setDecisionChoice(decisionId, choice.trim()) == 1
+            ) { "Decision $decisionId already has a recorded choice." }
+        }
+    }
+
+    suspend fun replaceChoice(decisionId: Long, choice: String) {
+        require(choice.isNotBlank()) { "A choice cannot be blank." }
+        database.withTransaction {
+            requireNotNull(knowledgeDao.getDecisionById(decisionId)) { "Decision $decisionId missing." }
+            check(knowledgeDao.replaceDecisionChoice(decisionId, choice.trim()) == 1) {
+                "A choice cannot be replaced after an outcome has been reported."
+            }
+        }
     }
 
     suspend fun recordOutcome(decisionId: Long, report: String): Long {
         require(report.isNotBlank()) { "An outcome report cannot be blank." }
-        requireNotNull(knowledgeDao.getDecisionById(decisionId)) { "Decision $decisionId missing." }
-        return knowledgeDao.insertOutcome(
-            OutcomeEntity(
-                decisionId = decisionId,
-                report = report.trim(),
-                createdAt = System.currentTimeMillis()
+        return database.withTransaction {
+            val decision = requireNotNull(knowledgeDao.getDecisionById(decisionId)) {
+                "Decision $decisionId missing."
+            }
+            check(!decision.choice.isNullOrBlank()) {
+                "Record a choice before reporting an outcome."
+            }
+            knowledgeDao.insertOutcome(
+                OutcomeEntity(
+                    decisionId = decisionId,
+                    report = report.trim(),
+                    createdAt = System.currentTimeMillis()
+                )
             )
-        )
+        }
     }
 
     suspend fun deleteDecision(decisionId: Long) {
@@ -68,6 +105,14 @@ class DecisionRepository @Inject constructor(
 
     suspend fun getDecisions(): List<Decision> =
         knowledgeDao.getAllDecisions().map { toDomain(it) }
+
+    suspend fun getDecisionSources(): List<DecisionSourceOption> {
+        val revisions = knowledgeDao.getAllRevisions().associateBy { it.id }
+        return knowledgeDao.getAllConclusions()
+            .mapNotNull { it.currentRevisionId?.let(revisions::get) }
+            .sortedWith(compareByDescending<com.echomind.data.local.entity.ConclusionRevisionEntity> { it.createdAt }.thenBy { it.id })
+            .map { DecisionSourceOption(it.id, it.version, it.text) }
+    }
 
     suspend fun getDecision(decisionId: Long): Decision? =
         knowledgeDao.getDecisionById(decisionId)?.let { toDomain(it) }
@@ -89,6 +134,9 @@ class DecisionRepository @Inject constructor(
             id = entity.id,
             question = entity.question,
             suggestion = entity.suggestion,
+            suggestionAuthor = entity.suggestionAuthor,
+            suggestionSource = entity.suggestionSource,
+            suggestionStatus = entity.suggestionStatus,
             choice = entity.choice,
             sourceRevisionId = entity.sourceRevisionId,
             sourceConclusionText = sourceText,

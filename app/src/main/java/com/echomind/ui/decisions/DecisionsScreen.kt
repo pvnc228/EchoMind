@@ -27,6 +27,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.echomind.domain.model.Decision
+import com.echomind.domain.model.DecisionSourceOption
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -122,9 +125,10 @@ fun DecisionsScreen(
 
     if (showNewDialog) {
         NewDecisionDialog(
+            sources = uiState.sources,
             onDismiss = { showNewDialog = false },
-            onConfirm = { question, suggestion ->
-                viewModel.add(question, suggestion, null)
+            onConfirm = { question, sourceRevisionId ->
+                viewModel.add(question, null, sourceRevisionId)
                 showNewDialog = false
             }
         )
@@ -158,6 +162,11 @@ private fun DecisionCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Text(
+                "State: ${decision.state.name}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.secondary
+            )
 
             decision.sourceConclusionText?.let { grounds ->
                 Spacer(modifier = Modifier.height(8.dp))
@@ -168,10 +177,14 @@ private fun DecisionCard(
                 )
             }
 
-            decision.suggestion?.let { suggestion ->
+            if (
+                decision.suggestion != null &&
+                decision.suggestionAuthor == "echomind" &&
+                !decision.suggestionSource.isNullOrBlank()
+            ) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "EchoMind suggested: $suggestion",
+                    "EchoMind proposal (source ${decision.suggestionSource}): ${decision.suggestion}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.tertiary
                 )
@@ -315,11 +328,13 @@ private fun SimpleTextDialog(
 
 @Composable
 private fun NewDecisionDialog(
+    sources: List<DecisionSourceOption>,
     onDismiss: () -> Unit,
-    onConfirm: (String, String?) -> Unit
+    onConfirm: (String, Long) -> Unit
 ) {
     var question by remember { mutableStateOf("") }
-    var suggestion by remember { mutableStateOf("") }
+    var selectedSource by remember { mutableStateOf<DecisionSourceOption?>(null) }
+    var sourceMenuExpanded by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("New decision") },
@@ -332,22 +347,33 @@ private fun NewDecisionDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = suggestion,
-                    onValueChange = { suggestion = it },
-                    label = { Text("EchoMind suggestion (optional)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column {
+                    Text("Ground this decision in a current conclusion")
+                    TextButton(onClick = { sourceMenuExpanded = true }) {
+                        Text(selectedSource?.let { "Revision ${it.revisionId}: ${it.text}" } ?: "Choose grounds")
+                    }
+                    DropdownMenu(
+                        expanded = sourceMenuExpanded,
+                        onDismissRequest = { sourceMenuExpanded = false }
+                    ) {
+                        sources.forEach { source ->
+                            DropdownMenuItem(
+                                text = { Text("v${source.version}: ${source.text}") },
+                                onClick = {
+                                    selectedSource = source
+                                    sourceMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
-                enabled = question.isNotBlank(),
+                enabled = question.isNotBlank() && selectedSource != null,
                 onClick = {
-                    onConfirm(
-                        question.trim(),
-                        suggestion.trim().takeIf { it.isNotBlank() }
-                    )
+                    onConfirm(question.trim(), requireNotNull(selectedSource).revisionId)
                 }
             ) { Text("Create") }
         },

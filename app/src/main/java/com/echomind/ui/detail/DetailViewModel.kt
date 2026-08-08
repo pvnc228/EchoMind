@@ -9,10 +9,13 @@ import com.echomind.data.repository.EntryRepository
 import com.echomind.data.repository.KnowledgeRepository
 import com.echomind.data.repository.ReflectionRepository
 import com.echomind.domain.model.Entry
+import com.echomind.domain.model.EntryDeletionChoice
+import com.echomind.domain.model.EntryDeletionPlan
 import com.echomind.domain.model.RelatedRecord
 import com.echomind.domain.model.ReflectionSession
 import com.echomind.domain.model.Revision
 import com.echomind.domain.model.Theme
+import com.echomind.domain.model.PendingThemeLink
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.Player
@@ -28,13 +31,16 @@ data class DetailUiState(
     val reflection: ReflectionSession? = null,
     val themes: List<Theme> = emptyList(),
     val availableThemes: List<Theme> = emptyList(),
+    val pendingThemes: List<PendingThemeLink> = emptyList(),
     val relatedRecords: List<RelatedRecord> = emptyList(),
+    val pendingRelatedRecords: List<RelatedRecord> = emptyList(),
     val otherEntries: List<RelatedRecord> = emptyList(),
     val revisions: List<Revision> = emptyList(),
     val isRevising: Boolean = false,
     val isLoading: Boolean = true,
     val isPlaying: Boolean = false,
     val isDeleting: Boolean = false,
+    val deletionPlan: EntryDeletionPlan? = null,
     val deleted: Boolean = false,
     val error: String? = null,
     val tempAudioPath: String? = null
@@ -59,6 +65,7 @@ class DetailViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 val entry = entryRepository.getEntryById(id)
+                val deletionPlan = entryRepository.getDeletionPlan(id)
                 val reflection = reflectionRepository.loadReflectionForEntry(id)
                 loadLinked(reflection)
                 val revisions = if (reflection != null) {
@@ -70,6 +77,7 @@ class DetailViewModel @Inject constructor(
                     entry = entry,
                     reflection = reflection,
                     revisions = revisions,
+                    deletionPlan = deletionPlan,
                     isLoading = false
                 )
             } catch (e: Exception) {
@@ -84,19 +92,33 @@ class DetailViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(
                 themes = emptyList(),
                 availableThemes = emptyList(),
+                pendingThemes = emptyList(),
                 relatedRecords = emptyList(),
+                pendingRelatedRecords = emptyList(),
                 otherEntries = emptyList()
             )
             return
         }
         val themes = knowledgeRepository.getConclusionsForRevision(revisionId)
         val availableThemes = knowledgeRepository.getThemes()
+        val pendingThemes = knowledgeRepository.getPendingThemesForRevision(revisionId)
         val relatedRecords = knowledgeRepository.getRelatedRecords(revisionId)
-        val otherEntries = knowledgeRepository.getLinkCandidates(revisionId)
+        val pendingRelatedRecords = knowledgeRepository.getPendingRelatedRecords(revisionId)
+        val suggestions = knowledgeRepository.getLinkCandidates(revisionId)
+            .associateBy { it.rawRecordId }
+        val otherEntries = knowledgeRepository.getManualLinkCandidates(revisionId)
+            .map { candidate ->
+                candidate.copy(
+                    suggestedReason = suggestions[candidate.rawRecordId]?.suggestedReason,
+                    score = suggestions[candidate.rawRecordId]?.score ?: 0
+                )
+            }
         _uiState.value = _uiState.value.copy(
             themes = themes,
             availableThemes = availableThemes,
+            pendingThemes = pendingThemes,
             relatedRecords = relatedRecords,
+            pendingRelatedRecords = pendingRelatedRecords,
             otherEntries = otherEntries
         )
     }
@@ -138,6 +160,28 @@ class DetailViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching {
                 knowledgeRepository.unlinkRelatedRecord(revisionId, sourceRecordId)
+                loadLinked(_uiState.value.reflection)
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(error = error.message)
+            }
+        }
+    }
+
+    fun reviewPendingThemeLink(linkId: Long, accept: Boolean) {
+        viewModelScope.launch {
+            runCatching {
+                knowledgeRepository.reviewPendingThemeLink(linkId, accept)
+                loadLinked(_uiState.value.reflection)
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(error = error.message)
+            }
+        }
+    }
+
+    fun reviewPendingRelatedRecord(linkId: Long, accept: Boolean) {
+        viewModelScope.launch {
+            runCatching {
+                knowledgeRepository.reviewPendingRelatedRecord(linkId, accept)
                 loadLinked(_uiState.value.reflection)
             }.onFailure { error ->
                 _uiState.value = _uiState.value.copy(error = error.message)
@@ -211,13 +255,28 @@ class DetailViewModel @Inject constructor(
     }
 
     fun deleteEntry(includeConfirmedConclusion: Boolean) {
+        val plan = _uiState.value.deletionPlan
+        deleteEntry(
+            EntryDeletionChoice(
+                deleteOwnConclusion = includeConfirmedConclusion,
+                unlinkIncomingEvidenceLinkIds = plan?.incomingEvidence.orEmpty().map { it.linkId }.toSet(),
+                deleteDecisionIds = if (includeConfirmedConclusion) {
+                    plan?.decisions.orEmpty().map { it.decisionId }.toSet()
+                } else {
+                    emptySet()
+                }
+            )
+        )
+    }
+
+    fun deleteEntry(choice: EntryDeletionChoice) {
         if (_uiState.value.isDeleting) return
 
         viewModelScope.launch {
             val entry = _uiState.value.entry ?: return@launch
             _uiState.value = _uiState.value.copy(isDeleting = true, error = null)
             runCatching {
-                entryRepository.deleteEntry(entry.id, includeConfirmedConclusion)
+                entryRepository.deleteEntry(entry.id, choice)
             }.onSuccess {
                 stopPlayback()
                 _uiState.value = _uiState.value.copy(isDeleting = false, deleted = true)

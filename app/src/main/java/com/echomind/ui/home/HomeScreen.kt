@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.echomind.domain.model.Entry
+import com.echomind.domain.model.EvidenceState
 import com.echomind.domain.model.HomeCard
 import com.echomind.domain.model.HomeCardType
 import com.echomind.domain.model.ThemeCoverage
@@ -77,7 +78,9 @@ fun HomeScreen(
         onNavigateToTheme = onNavigateToTheme,
         onNavigateToDecisions = onNavigateToDecisions,
         onDismissCard = viewModel::dismissCard,
-        onPostponeCard = { viewModel.postponeCard(System.currentTimeMillis() + 24L * 60 * 60 * 1000) }
+        onPostponeCard = {
+            viewModel.postponeCard(System.currentTimeMillis() + 24L * 60 * 60 * 1000)
+        }
     )
 }
 
@@ -151,15 +154,29 @@ fun HomeScreenContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (uiState.legacySuppressionReset) {
+                    item {
+                        Text(
+                            "Dismissed-card preferences were reset after the relevance update.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 item { PromptHeader(onNavigateToRecord = onNavigateToRecord) }
 
                 uiState.card?.let { card ->
                     item {
                         RelevantCard(
                             card = card,
-                            onOpen = { onNavigateToTheme(card.themeId) },
                             onContinue = { onNavigateToRecord() },
-                            onInspect = { onNavigateToTheme(card.themeId) },
+                            onInspect = {
+                                if (card.scopeType == com.echomind.domain.model.CoverageScopeType.THEME) {
+                                    onNavigateToTheme(card.scopeId)
+                                } else {
+                                    card.sourceRawRecordIds.firstOrNull()?.let(onNavigateToDetail)
+                                }
+                            },
                             onDismiss = onDismissCard,
                             onPostpone = onPostponeCard
                         )
@@ -222,7 +239,6 @@ private fun PromptHeader(onNavigateToRecord: () -> Unit) {
 @Composable
 private fun RelevantCard(
     card: HomeCard,
-    onOpen: () -> Unit,
     onContinue: () -> Unit,
     onInspect: () -> Unit,
     onDismiss: () -> Unit,
@@ -230,8 +246,9 @@ private fun RelevantCard(
 ) {
     val accent = when (card.type) {
         HomeCardType.CONTRADICTION -> MaterialTheme.colorScheme.error
-        HomeCardType.THIN_THEME -> MaterialTheme.colorScheme.tertiary
-        HomeCardType.THEME -> MaterialTheme.colorScheme.primary
+        HomeCardType.UNFINISHED -> MaterialTheme.colorScheme.secondary
+        HomeCardType.THIN_EVIDENCE -> MaterialTheme.colorScheme.tertiary
+        HomeCardType.SUPPORTED_THEME -> MaterialTheme.colorScheme.primary
     }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -262,6 +279,14 @@ private fun RelevantCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (card.currentRevisionIds.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Revision IDs: ${card.currentRevisionIds.joinToString()}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onInspect) { Text("Inspect") }
@@ -293,9 +318,15 @@ private fun EvidenceCoverageSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(theme.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                if (theme.conclusionCount == 0 || theme.evidenceCount == 0) {
+                if (theme.evidenceState == EvidenceState.EMPTY_THEME) {
                     Text(
-                        "insufficient evidence",
+                        "No confirmed conclusions",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                } else if (theme.evidenceState == EvidenceState.NO_EXTERNAL_EVIDENCE) {
+                    Text(
+                        "No external evidence",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error
                     )
