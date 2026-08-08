@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.echomind.data.export.ExportManager
 import com.echomind.data.export.MAX_RESTORE_ARCHIVE_BYTES
 import com.echomind.data.repository.KnowledgeRepository
+import com.echomind.data.repository.EntryRepository
 import com.echomind.data.remote.BaseUrlProvider
 import com.echomind.data.remote.CredentialsProvider
 import com.echomind.data.settings.SettingsStore
@@ -16,7 +17,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.launch
+import com.echomind.di.IoDispatcher
 import javax.inject.Inject
 import java.io.File
 
@@ -27,7 +30,8 @@ data class SettingsUiState(
     val exportState: ExportState = ExportState.Idle,
     val restoreState: RestoreState = RestoreState.Idle,
     val showEndpointWarning: Boolean = false,
-    val dismissedCards: List<HomeCardDispositionEntity> = emptyList()
+    val dismissedCards: List<HomeCardDispositionEntity> = emptyList(),
+    val pendingAudioCleanupCount: Int = 0
 )
 
 sealed interface ExportState {
@@ -51,7 +55,9 @@ class SettingsViewModel @Inject constructor(
     private val exportManager: ExportManager,
     private val credentialsProvider: CredentialsProvider,
     private val settingsStore: SettingsStore,
-    private val knowledgeRepository: KnowledgeRepository
+    private val knowledgeRepository: KnowledgeRepository,
+    private val entryRepository: EntryRepository,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -62,11 +68,15 @@ class SettingsViewModel @Inject constructor(
             val settings = settingsStore.load()
             baseUrlProvider.updateUrl(settings.apiEndpoint)
             val dispositions = runCatching { knowledgeRepository.getCardDispositions() }.getOrDefault(emptyList())
+            val pendingAudioCleanupCount = runCatching {
+                entryRepository.getPendingAudioCleanupCount()
+            }.getOrDefault(0)
             _uiState.value = SettingsUiState(
                 apiEndpoint = settings.apiEndpoint,
                 apiKey = credentialsProvider.apiKey,
                 localMode = settings.localMode,
-                dismissedCards = dispositions.filter { it.dismissedAt != null }
+                dismissedCards = dispositions.filter { it.dismissedAt != null },
+                pendingAudioCleanupCount = pendingAudioCleanupCount
             )
         }
     }
@@ -81,7 +91,7 @@ class SettingsViewModel @Inject constructor(
             showEndpointWarning = isNonLocal
         )
         baseUrlProvider.updateUrl(endpoint)
-        viewModelScope.launch {
+        viewModelScope.launch(ioDispatcher) {
             settingsStore.setApiEndpoint(endpoint)
         }
     }
@@ -130,7 +140,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun restoreData(uri: Uri) {
-        viewModelScope.launch {
+        viewModelScope.launch(ioDispatcher) {
             _uiState.value = _uiState.value.copy(restoreState = RestoreState.InProgress)
             val staged = File(getApplication<Application>().cacheDir, "restore_${System.currentTimeMillis()}.zip")
             runCatching {

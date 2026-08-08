@@ -8,6 +8,7 @@ import com.echomind.data.local.dao.KnowledgeDao
 import com.echomind.data.local.entity.EntryEntity
 import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.entity.AudioCleanupEntity
+import com.echomind.data.cleanup.AudioCleanupScheduler
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.EntryCategory
 import com.echomind.domain.model.DecisionDeletionDependency
@@ -32,6 +33,7 @@ class EntryRepository @Inject constructor(
 ) {
     companion object {
         const val MAX_AUDIO_CLEANUP_BATCH = 32
+        const val MAX_AUDIO_CLEANUP_ATTEMPTS = 8
     }
 
     fun getAllEntries(): Flow<List<Entry>> =
@@ -162,6 +164,7 @@ class EntryRepository @Inject constructor(
         deletedPlan.audioPath?.let { path ->
             if (!deleteAudioFile(path)) {
                 rememberAudioCleanupFailure(path, deletedPlan.entryId)
+                AudioCleanupScheduler.enqueue(context)
                 throw AudioDeletionFailedException(path)
             }
             knowledgeDao.deleteAudioCleanup(path)
@@ -176,6 +179,8 @@ class EntryRepository @Inject constructor(
         }
         return knowledgeDao.getPendingAudioCleanup(limit)
     }
+
+    suspend fun getPendingAudioCleanupCount(): Int = knowledgeDao.getAudioCleanupCount()
 
     suspend fun retryPendingAudioCleanup(limit: Int = MAX_AUDIO_CLEANUP_BATCH): Int {
         val pending = getPendingAudioCleanup(limit)

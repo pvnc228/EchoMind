@@ -213,9 +213,11 @@ empty-attention state; проверить restart/Restore из Settings.
 - Home actions используют typed IDs и не содержат no-op/theme-0 routes.
 - Полный свежий gate зелёный; незапущенные device/accessibility checks не
   помечены выполненными.
-## Repair status - 2026-08-08
+## First repair package status - 2026-08-08 (superseded)
 
-The follow-up implementation closed all six P1 findings and all five P2 findings.
+The first repair package implemented the changes below; a later review found
+additional restore, lifecycle, and documentation gaps. This section is not an
+acceptance verdict.
 
 - P2-01: deletion previews include theme links and reflection proposals; audio deletion is restricted to canonical app-owned roots, and failures are persisted in the bounded retry-batch `audio_cleanup_queue` (Room migration 6->7).
 - P2-02: outcome reporting is gated on a choice; concrete outcomes can be removed; replacing grounds or a choice requires explicit confirmation in the UI.
@@ -227,5 +229,22 @@ Fresh validation after the repair:
 
 - `:app:testDebugUnitTest`: 39 tests passed, failures/errors 0.
 - `:app:connectedDebugAndroidTest`: 43/43 on Pixel 8 API 35.
+- `:app:lintDebug`: successful.
+- `git diff --check`: clean.
+
+## Follow-up review resolution - 2026-08-08
+
+The follow-up findings are addressed in the working tree:
+
+- P1: restore accepts historical decision grounds and explicitly migrated legacy graph states without applying creation-time invariants to persisted data.
+- P2: manifest audio payloads must match the exact set of graph references; unreferenced payloads are rejected before restore.
+- P2: failed audio cleanup is persisted in Room v7, consumed by startup WorkManager with exponential backoff and bounded attempts, and exposed as partial-cleanup status in Settings.
+- P2: restore URI staging and the ZIP/hash/encryption workload run on the injected IO dispatcher.
+- Documentation now describes Room schema v7 and the non-exported cleanup queue.
+
+Final validation:
+
+- `:app:testDebugUnitTest`: 39 tests passed, failures/errors 0.
+- `:app:connectedDebugAndroidTest`: 46/46 on Pixel 8 API 35.
 - `:app:lintDebug`: successful.
 - `git diff --check`: clean.

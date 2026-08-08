@@ -23,9 +23,9 @@ EchoMind is a private Android thinking environment that turns short reflections 
 - Confirmed conclusion stored as revision 1 with its raw source
 - OpenAI-compatible text analysis, transcription client, and Q&A
 - Entry timeline, search, filters, details, and export
-- Room v6 provenance storage for raw records, hypotheses, conclusions, revisions,
+- Room v7 provenance storage for raw records, hypotheses, conclusions, revisions,
   immutable/pending evidence and theme links, decisions, drafts, and Home
-  dispositions
+  dispositions, plus persisted audio-cleanup retries
 - Biometric release gate and screenshot protection
 
 Automatic transcription is not yet connected to the main recording flow.

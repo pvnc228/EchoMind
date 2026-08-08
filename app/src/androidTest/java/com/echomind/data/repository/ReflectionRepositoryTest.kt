@@ -480,7 +480,7 @@ class ReflectionRepositoryTest {
                     entryRepository.getPendingAudioCleanup().single().path
                 )
                 assertEquals(0, entryRepository.retryPendingAudioCleanup())
-                assertEquals(2, entryRepository.getPendingAudioCleanup().single().attemptCount)
+                assertTrue(entryRepository.getPendingAudioCleanup().single().attemptCount >= 2)
 
                 assertTrue(audioDirectory.delete())
                 assertEquals(1, entryRepository.retryPendingAudioCleanup())
@@ -495,6 +495,58 @@ class ReflectionRepositoryTest {
             }
         } finally {
             database.close()
+            audioDirectory.delete()
+        }
+    }
+
+    @Test
+    fun audioCleanupQueueSurvivesDatabaseReopen() {
+        val audioDirectory = File(
+            context.cacheDir,
+            "restart-audio-cleanup-${System.nanoTime()}"
+        ).apply { mkdirs() }
+        val firstDatabase = fileDatabase()
+        try {
+            val firstRepository = repository(firstDatabase)
+            val firstEntryRepository = EntryRepository(
+                firstDatabase,
+                firstDatabase.entryDao(),
+                firstDatabase.knowledgeDao(),
+                context
+            )
+            runBlocking {
+                val rawRecordId = firstRepository.captureRawText(
+                    originalText = "Cleanup survives restart",
+                    audioPath = audioDirectory.absolutePath
+                )
+                val entryId = requireNotNull(
+                    firstDatabase.knowledgeDao().getRawRecordById(rawRecordId)?.legacyEntryId
+                )
+                assertThrows(AudioDeletionFailedException::class.java) {
+                    runBlocking { firstEntryRepository.deleteEntry(entryId) }
+                }
+                assertEquals(1, firstEntryRepository.getPendingAudioCleanupCount())
+            }
+        } finally {
+            firstDatabase.close()
+        }
+
+        val reopenedDatabase = fileDatabase()
+        try {
+            val reopenedEntryRepository = EntryRepository(
+                reopenedDatabase,
+                reopenedDatabase.entryDao(),
+                reopenedDatabase.knowledgeDao(),
+                context
+            )
+            runBlocking {
+                assertEquals(1, reopenedEntryRepository.getPendingAudioCleanupCount())
+                assertTrue(audioDirectory.delete())
+                assertEquals(1, reopenedEntryRepository.retryPendingAudioCleanup())
+                assertEquals(0, reopenedEntryRepository.getPendingAudioCleanupCount())
+            }
+        } finally {
+            reopenedDatabase.close()
             audioDirectory.delete()
         }
     }

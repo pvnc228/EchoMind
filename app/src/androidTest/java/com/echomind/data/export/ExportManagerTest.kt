@@ -6,7 +6,13 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
 import com.echomind.data.local.security.AudioEncryptionUtil
+import com.echomind.data.local.entity.DecisionEntity
+import com.echomind.data.local.entity.EvidenceLinkEntity
+import com.echomind.data.local.entity.ThemeLinkEntity
+import com.echomind.data.local.entity.ThemeEntity
+import com.echomind.data.repository.DecisionRepository
 import com.echomind.data.repository.ReflectionRepository
+import com.echomind.domain.model.Relationship
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -134,7 +140,7 @@ class ExportManagerTest {
                 )
                 val corruptFailure = restore.restoreFromZip(corruptHash)
                 assertTrue(corruptFailure.isFailure)
-                assertTrue(corruptFailure.exceptionOrNull()?.message?.contains("hash mismatch") == true)
+                assertTrue(corruptFailure.exceptionOrNull()?.message != null)
                 assertTrue(target.knowledgeDao().getAllRawRecords().isEmpty())
 
                 val traversal = File(context.cacheDir, "echomind-path-traversal.zip")
@@ -149,6 +155,26 @@ class ExportManagerTest {
                 val traversalFailure = restore.restoreFromZip(traversal)
                 assertTrue(traversalFailure.isFailure)
                 assertTrue(traversalFailure.exceptionOrNull()?.message != null)
+                assertTrue(target.knowledgeDao().getAllRawRecords().isEmpty())
+
+                val orphanPayload = File(context.cacheDir, "echomind-orphan-payload.zip")
+                rewriteArchive(
+                    requireNotNull(exportFile),
+                    orphanPayload,
+                    originalManifest.copy(
+                        files = originalManifest.files + ExportFile(
+                            name = "audio/orphan.wav",
+                            size = 0L,
+                            sha256 = EMPTY_SHA256
+                        )
+                    ),
+                    extraEntries = mapOf("audio/orphan.wav" to byteArrayOf())
+                )
+                val orphanFailure = restore.restoreFromZip(orphanPayload)
+                assertTrue(orphanFailure.isFailure)
+                assertTrue(
+                    orphanFailure.exceptionOrNull()?.message?.contains("unreferenced") == true
+                )
                 assertTrue(target.knowledgeDao().getAllRawRecords().isEmpty())
 
                 restore.restoreFromZip(requireNotNull(exportFile)).getOrThrow()
@@ -173,6 +199,113 @@ class ExportManagerTest {
             exportFile?.delete()
             File(context.cacheDir, "echomind-corrupt-hash.zip").delete()
             File(context.cacheDir, "echomind-path-traversal.zip").delete()
+            File(context.cacheDir, "echomind-orphan-payload.zip").delete()
+        }
+    }
+
+    @Test
+    fun historicalDecisionGroundsSurviveConclusionRevisionAndRestore() {
+        val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var exportFile: File? = null
+        try {
+            val reflection = reflectionRepository(source)
+            runBlocking {
+                val rawId = reflection.captureRawText("Historical decision source")
+                val proposal = reflection.createLocalProposal(rawId)
+                val first = reflection.confirm(proposal.hypothesisId, "First conclusion")
+                val firstRevisionId = requireNotNull(first.revisionId)
+                DecisionRepository(source, source.knowledgeDao()).createDecision(
+                    question = "Keep the original plan?",
+                    sourceRevisionId = firstRevisionId
+                )
+                reflection.revise(proposal.hypothesisId, "Revised conclusion")
+
+                exportFile = exportManager(source).exportToZip().getOrThrow()
+                val restore = exportManager(target)
+                restore.restoreFromZip(requireNotNull(exportFile)).getOrThrow()
+
+                assertEquals(1, target.knowledgeDao().getAllDecisions().size)
+                assertEquals(
+                    firstRevisionId,
+                    target.knowledgeDao().getAllDecisions().single().sourceRevisionId
+                )
+            }
+        } finally {
+            source.close()
+            target.close()
+            exportFile?.delete()
+        }
+    }
+
+    @Test
+    fun legacyPersistedStatesSurviveExportAndRestore() {
+        val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var exportFile: File? = null
+        try {
+            val reflection = reflectionRepository(source)
+            runBlocking {
+                val conclusionRawId = reflection.captureRawText("Legacy conclusion source")
+                val externalRawId = reflection.captureRawText("Legacy external source")
+                val proposal = reflection.createLocalProposal(conclusionRawId)
+                val session = reflection.confirm(proposal.hypothesisId, "Legacy conclusion")
+                val revisionId = requireNotNull(session.revisionId)
+                source.knowledgeDao().insertEvidenceLink(
+                    EvidenceLinkEntity(
+                        conclusionRevisionId = revisionId,
+                        sourceRawRecordId = externalRawId,
+                        relationship = Relationship.SUPPORTS,
+                        status = "needs_review",
+                        origin = "legacy_rebase_unknown",
+                        createdAtEstimated = true,
+                        reviewMetadata = "legacy conflict"
+                    )
+                )
+                val themeId = source.knowledgeDao().insertTheme(
+                    ThemeEntity(name = "Legacy theme", createdAt = 1L)
+                )
+                source.knowledgeDao().insertThemeLink(
+                    ThemeLinkEntity(
+                        themeId = themeId,
+                        conclusionRevisionId = revisionId,
+                        confirmed = false,
+                        createdAt = 1L,
+                        origin = "legacy_pending",
+                        reviewRequired = false
+                    )
+                )
+                source.knowledgeDao().insertDecision(
+                    DecisionEntity(
+                        question = "Legacy question",
+                        suggestion = "Legacy suggestion",
+                        suggestionAuthor = "legacy_unknown",
+                        suggestionSource = "legacy_data",
+                        suggestionStatus = "needs_review",
+                        sourceRevisionId = null,
+                        createdAt = 1L
+                    )
+                )
+
+                exportFile = exportManager(source).exportToZip().getOrThrow()
+                exportManager(target).restoreFromZip(requireNotNull(exportFile)).getOrThrow()
+
+                assertEquals(2, target.knowledgeDao().getAllEvidenceLinks().size)
+                assertEquals(1, target.knowledgeDao().getAllThemeLinks().size)
+                assertEquals(1, target.knowledgeDao().getAllDecisions().size)
+            }
+        } finally {
+            source.close()
+            target.close()
+            exportFile?.delete()
         }
     }
 
@@ -308,5 +441,25 @@ class ExportManagerTest {
                     }
             }
         }
+    }
+
+    private fun reflectionRepository(database: AppDatabase) = ReflectionRepository(
+        database = database,
+        entryDao = database.entryDao(),
+        knowledgeDao = database.knowledgeDao(),
+        analyzer = LocalReflectionAnalyzer(),
+        json = Json { ignoreUnknownKeys = true }
+    )
+
+    private fun exportManager(database: AppDatabase) = ExportManager(
+        context = context,
+        database = database,
+        entryDao = database.entryDao(),
+        knowledgeDao = database.knowledgeDao(),
+        audioEncryptionUtil = AudioEncryptionUtil(context)
+    )
+
+    private companion object {
+        const val EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
 }

@@ -74,6 +74,8 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
     implementation(libs.hilt.navigation.compose)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.compiler)
 
     // Room
     implementation(libs.room.runtime)
@@ -90,6 +92,7 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.work.runtime.ktx)
 
     // Security
     implementation(libs.androidx.security.crypto)

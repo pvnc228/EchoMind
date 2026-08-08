@@ -157,7 +157,10 @@ class ExportManager @Inject constructor(
                     val source = requireNotNull(zip.getEntry(fileMetadata.name))
                     val plaintext = File(sessionDir, "${stagedAudio.size}.wav")
                     zip.getInputStream(source).use { input -> plaintext.outputStream().use { input.copyTo(it) } }
-                    val encrypted = File(audioDir, "restore_${fileMetadata.sha256}.enc")
+                    val encrypted = File(
+                        audioDir,
+                        "restore_${stagedAudio.size}_${fileMetadata.sha256}.enc"
+                    )
                     audioEncryptionUtil.encryptFile(plaintext, encrypted)
                     stagedAudio[fileMetadata.name] = encrypted.absolutePath
                 }
@@ -373,7 +376,6 @@ class ExportManager @Inject constructor(
         val revisions = manifest.revisions.map { it.id }.toSet()
         val themes = manifest.themes.map { it.id }.toSet()
         val decisions = manifest.decisions.map { it.id }.toSet()
-        val conclusionById = manifest.conclusions.associateBy { it.id }
         val revisionById = manifest.revisions.associateBy { it.id }
         require(manifest.rawRecords.all { it.legacyEntryId == null || it.legacyEntryId in entries })
         require(manifest.hypotheses.all { it.rawRecordId in raws })
@@ -410,26 +412,36 @@ class ExportManager @Inject constructor(
         require(manifest.evidenceLinks.all {
             it.relationship in setOf(Relationship.SUPPORTS, Relationship.CONTRADICTS) &&
                 it.status in setOf(ReflectionStatus.CONFIRMED, "needs_review") &&
-                it.origin in setOf("intrinsic_source", "user_confirmed", "proposed_inherited", "legacy_pending")
+                it.origin in setOf(
+                    "intrinsic_source",
+                    "user_confirmed",
+                    "proposed_inherited",
+                    "legacy_pending",
+                    "legacy_rebase_unknown"
+                )
         }) { "Evidence link has an invalid relationship or provenance state." }
         require(manifest.themeLinks.all { it.themeId in themes && it.conclusionRevisionId in revisions })
         require(manifest.themeLinks.all {
             it.origin in setOf("user_confirmed", "proposed_inherited", "legacy_pending") &&
-                it.reviewRequired == !it.confirmed
+                (it.origin == "legacy_pending" || it.reviewRequired == !it.confirmed)
         }) { "Theme link has an invalid review state." }
         require(manifest.decisions.all { decision ->
             val sourceRevisionId = decision.sourceRevisionId
-            sourceRevisionId != null &&
+            sourceRevisionId == null || (
                 sourceRevisionId in revisions &&
-                conclusionById[revisionById[sourceRevisionId]?.conclusionId]?.currentRevisionId == sourceRevisionId
-        }) { "Every decision must be grounded in a current revision." }
+                    revisionById[sourceRevisionId]?.conclusionId?.let { it in conclusions } == true
+                )
+        }) { "Every decision must reference an existing conclusion revision." }
         require(manifest.decisions.all { decision ->
             decision.question.isNotBlank() &&
                 (decision.choice == null || decision.choice.isNotBlank()) &&
-                (decision.suggestion == null || (
-                    decision.suggestionAuthor == "echomind" &&
+            (decision.suggestion == null || (
+                    (decision.suggestionAuthor == "echomind" &&
                         !decision.suggestionSource.isNullOrBlank() &&
-                        decision.suggestionStatus in setOf("proposal", "confirmed", "rejected")
+                        decision.suggestionStatus in setOf("proposal", "confirmed", "rejected")) ||
+                        (decision.suggestionAuthor == "legacy_unknown" &&
+                            decision.suggestionSource == "legacy_data" &&
+                            decision.suggestionStatus == "needs_review")
                     ))
         }) { "Decision has invalid state or suggestion metadata." }
         require(manifest.outcomes.all { it.decisionId in decisions })
@@ -448,9 +460,15 @@ class ExportManager @Inject constructor(
                 it.scopeId != 0L
         }) { "Home-card disposition has an invalid scope or type." }
         val files = manifest.files.map { it.name }.toSet()
-        require(manifest.entries.all { it.audioFileName == null || it.audioFileName in files })
-        require(manifest.rawRecords.all { it.audioFileName == null || it.audioFileName in files })
-        require(manifest.captureDraft?.encryptedAudioFileName == null || manifest.captureDraft.encryptedAudioFileName in files)
+        val referencedAudioFiles = buildSet {
+            manifest.entries.mapNotNullTo(this) { it.audioFileName }
+            manifest.rawRecords.mapNotNullTo(this) { it.audioFileName }
+            manifest.captureDraft?.encryptedAudioFileName?.let(::add)
+        }
+        require(referencedAudioFiles == files) {
+            "Archive audio files must be referenced exactly once by the manifest graph; " +
+                "unreferenced payloads are not allowed."
+        }
     }
 
     private fun isSafeArchivePath(path: String): Boolean =

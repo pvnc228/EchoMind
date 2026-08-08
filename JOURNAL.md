@@ -1111,3 +1111,29 @@ testable hardware available.
 - The suggestion is a hand-entered text field, not yet powered by the remote
   context pipeline; it remains visually separated from the user's choice.
 - Signed: `агент opencode`.
+
+---
+
+## 2026-08-08 - Review follow-up: restore, cleanup lifecycle, and IO boundary
+
+### Done
+
+- Restore validation now separates creation-time decision grounding rules from
+  persisted graph validity: historical revisions and explicitly migrated legacy
+  provenance states remain restorable without automatic confirmation.
+- Restore rejects any manifest audio payload that is not referenced by an entry,
+  raw record, or capture draft; staged encrypted files use unique names rather
+  than a hash-only final path.
+- Failed audio deletion is persisted in Room schema v7, scheduled through
+  WorkManager on startup and after failure, retried with exponential backoff
+  and bounded attempts, and shown as partial-cleanup status in Settings.
+- Restore URI staging and the complete restore workload run on the injected IO
+  dispatcher, keeping ZIP validation, hashing, and encryption off Main.
+
+### Evidence
+
+- Added connected regression coverage for historical grounds after revision,
+  migrated legacy states, unreferenced payloads, and cleanup persistence after
+  database reopen.
+- Documentation synchronized to Room schema v7 and the operational cleanup
+  queue.

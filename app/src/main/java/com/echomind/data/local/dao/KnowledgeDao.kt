@@ -335,6 +335,9 @@ interface KnowledgeDao {
     @Query("SELECT * FROM audio_cleanup_queue WHERE path = :path")
     suspend fun getAudioCleanup(path: String): AudioCleanupEntity?
 
+    @Query("SELECT COUNT(*) FROM audio_cleanup_queue")
+    suspend fun getAudioCleanupCount(): Int
+
     @Query(
         "SELECT * FROM audio_cleanup_queue " +
             "ORDER BY failed_at, path LIMIT :limit"

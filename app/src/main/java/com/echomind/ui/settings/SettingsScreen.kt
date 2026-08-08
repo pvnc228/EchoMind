@@ -223,6 +223,15 @@ fun SettingsScreen(
             ) {
                 Text("Restore backup into empty profile")
             }
+            if (uiState.pendingAudioCleanupCount > 0) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "Some attached audio files still need cleanup " +
+                        "(${uiState.pendingAudioCleanupCount}). EchoMind will retry in the background.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
             if (uiState.dismissedCards.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(24.dp))
                 Text("Dismissed Home cards", style = MaterialTheme.typography.titleMedium)

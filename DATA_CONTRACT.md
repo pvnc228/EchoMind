@@ -5,10 +5,12 @@
 **Last updated:** 2026-08-08
 
 This document turns the promises in [VISION.md](VISION.md) into storage and
-network rules. Room schema version 6 includes the provenance graph, immutable
+network rules. Room schema version 7 includes the provenance graph, immutable
 and pending link metadata, decision guards, durable capture drafts, and
-fingerprint-keyed Home-card dispositions. Export manifest version 5 restores
-only into an empty profile; merge and selective import remain deferred.
+fingerprint-keyed Home-card dispositions. It also persists failed audio cleanup
+attempts for WorkManager retry; this queue is operational and is not exported.
+Export manifest version 5 restores only into an empty profile; merge and
+selective import remain deferred.
 
 ## Data classes
 
@@ -41,6 +43,7 @@ only into an empty profile; merge and selective import remain deferred.
 | Room `decisions` | question, choice, source revision, derived state, suggestion provenance | User-owned decision; system suggestion requires author/source/status | User | Yes |
 | Room `capture_drafts` | text, encrypted completed-audio path, duration, capture stage, timestamps | Raw operational draft; never confirmed automatically | User | Yes |
 | Room `home_card_dispositions` | fingerprint, card/scope identity, dismiss/postpone timestamps | Operational user choice | User | Yes |
+| Room `audio_cleanup_queue` | app-owned audio path, entry ID, failure time, attempt count | Operational partial-cleanup state | User | No |
 | Encrypted audio file | recorded audio | Raw | User | Yes, decrypted only in the warned plaintext export |
 | DataStore `settings` | `local_mode` | Operational privacy choice | User | No |
 | DataStore `settings` | `api_endpoint` | Identifying configuration | User | No |
@@ -57,7 +60,8 @@ must not be logged.
 Schema version 3 implemented the first five objects; schema version 4 added
 themes and theme links (M2); schema version 5 added decisions and outcomes
 (M4); schema version 6 adds graph-review metadata, durable drafts, and Home
-dispositions. `MIGRATION_5_6` preserves rows and deterministically deduplicates
+dispositions; schema version 7 adds the bounded audio-cleanup retry state.
+`MIGRATION_5_6` preserves rows and deterministically deduplicates
 conflicting link pairs; it does not use destructive fallback. Historical links
 are never moved to a new revision; inherited links are pending until reviewed.
 
