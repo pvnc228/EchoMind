@@ -361,6 +361,29 @@ interface KnowledgeDao {
     )
     suspend fun getRawRecordsForLinkCandidates(currentRawRecordId: Long?): List<LinkCandidateRawRow>
 
+    @Query(
+        "SELECT raw_records.id AS raw_record_id, " +
+            "raw_records.original_text AS original_text, " +
+            "raw_records.created_at AS recorded_at " +
+            "FROM raw_records " +
+            "WHERE (:currentRawRecordId IS NULL OR raw_records.id != :currentRawRecordId) " +
+            "AND NOT EXISTS (" +
+            "SELECT 1 FROM evidence_links " +
+            "WHERE evidence_links.conclusion_revision_id = :revisionId " +
+            "AND evidence_links.source_raw_record_id = raw_records.id" +
+            ") " +
+            "AND (:query = '' OR raw_records.original_text LIKE '%' || :query || '%' ESCAPE '\\') " +
+            "ORDER BY raw_records.created_at DESC, raw_records.id DESC " +
+            "LIMIT :limit OFFSET :offset"
+    )
+    suspend fun getManualLinkCandidateRows(
+        revisionId: Long,
+        currentRawRecordId: Long?,
+        query: String,
+        limit: Int,
+        offset: Int
+    ): List<LinkCandidateRawRow>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertDecision(decision: DecisionEntity): Long
 

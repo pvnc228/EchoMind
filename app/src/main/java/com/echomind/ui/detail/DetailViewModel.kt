@@ -35,6 +35,9 @@ data class DetailUiState(
     val relatedRecords: List<RelatedRecord> = emptyList(),
     val pendingRelatedRecords: List<RelatedRecord> = emptyList(),
     val otherEntries: List<RelatedRecord> = emptyList(),
+    val manualCandidates: List<RelatedRecord> = emptyList(),
+    val manualCandidatesHasMore: Boolean = false,
+    val manualQuery: String = "",
     val revisions: List<Revision> = emptyList(),
     val isRevising: Boolean = false,
     val isLoading: Boolean = true,
@@ -59,6 +62,7 @@ class DetailViewModel @Inject constructor(
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()
 
     private var player: ExoPlayer? = null
+    private var manualRequestGeneration = 0L
 
     fun loadEntry(id: Long) {
         viewModelScope.launch {
@@ -87,6 +91,7 @@ class DetailViewModel @Inject constructor(
     }
 
     private suspend fun loadLinked(reflection: ReflectionSession?) {
+        manualRequestGeneration += 1
         val revisionId = reflection?.revisionId
         if (revisionId == null) {
             _uiState.value = _uiState.value.copy(
@@ -95,7 +100,10 @@ class DetailViewModel @Inject constructor(
                 pendingThemes = emptyList(),
                 relatedRecords = emptyList(),
                 pendingRelatedRecords = emptyList(),
-                otherEntries = emptyList()
+                otherEntries = emptyList(),
+                manualCandidates = emptyList(),
+                manualCandidatesHasMore = false,
+                manualQuery = ""
             )
             return
         }
@@ -106,21 +114,60 @@ class DetailViewModel @Inject constructor(
         val pendingRelatedRecords = knowledgeRepository.getPendingRelatedRecords(revisionId)
         val suggestions = knowledgeRepository.getLinkCandidates(revisionId)
             .associateBy { it.rawRecordId }
-        val otherEntries = knowledgeRepository.getManualLinkCandidates(revisionId)
-            .map { candidate ->
-                candidate.copy(
-                    suggestedReason = suggestions[candidate.rawRecordId]?.suggestedReason,
-                    score = suggestions[candidate.rawRecordId]?.score ?: 0
-                )
-            }
+        val manualPage = knowledgeRepository.getManualLinkCandidates(
+            currentRevisionId = revisionId,
+            limit = KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE + 1
+        )
+        val manualCandidates = manualPage.take(KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE)
         _uiState.value = _uiState.value.copy(
             themes = themes,
             availableThemes = availableThemes,
             pendingThemes = pendingThemes,
             relatedRecords = relatedRecords,
             pendingRelatedRecords = pendingRelatedRecords,
-            otherEntries = otherEntries
+            otherEntries = suggestions.values.toList(),
+            manualCandidates = manualCandidates,
+            manualCandidatesHasMore = manualPage.size > KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE,
+            manualQuery = ""
         )
+    }
+
+    fun searchManualCandidates(query: String) {
+        loadManualCandidates(query = query, append = false)
+    }
+
+    fun loadMoreManualCandidates() {
+        loadManualCandidates(query = _uiState.value.manualQuery, append = true)
+    }
+
+    private fun loadManualCandidates(query: String, append: Boolean) {
+        val revisionId = _uiState.value.reflection?.revisionId ?: return
+        val requestGeneration = ++manualRequestGeneration
+        viewModelScope.launch {
+            runCatching {
+                val offset = if (append) _uiState.value.manualCandidates.size else 0
+                val page = knowledgeRepository.getManualLinkCandidates(
+                    currentRevisionId = revisionId,
+                    query = query,
+                    limit = KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE + 1,
+                    offset = offset
+                )
+                val visiblePage = page.take(KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE)
+                if (requestGeneration != manualRequestGeneration) return@launch
+                val candidates = if (append) {
+                    _uiState.value.manualCandidates + visiblePage
+                } else {
+                    visiblePage
+                }
+                _uiState.value = _uiState.value.copy(
+                    manualCandidates = candidates,
+                    manualCandidatesHasMore = page.size > KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE,
+                    manualQuery = query
+                )
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(error = error.message)
+            }
+        }
     }
 
     fun linkToTheme(themeId: Long, revisionId: Long) {

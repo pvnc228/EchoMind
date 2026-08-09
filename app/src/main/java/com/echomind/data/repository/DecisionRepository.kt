@@ -134,12 +134,12 @@ class DecisionRepository @Inject constructor(
         }
     }
 
-    suspend fun getDecisions(): List<Decision> {
+    suspend fun getDecisions(): List<Decision> = database.withTransaction {
         val entities = knowledgeDao.getAllDecisions()
-        if (entities.isEmpty()) return emptyList()
+        if (entities.isEmpty()) return@withTransaction emptyList()
         val revisions = knowledgeDao.getRevisionsForDecisions().associateBy { it.id }
         val outcomesByDecision = knowledgeDao.getOutcomesForAllDecisions().groupBy { it.decisionId }
-        return entities.map { entity ->
+        entities.map { entity ->
             toDomain(
                 entity = entity,
                 sourceText = entity.sourceRevisionId?.let { revisions[it]?.text },

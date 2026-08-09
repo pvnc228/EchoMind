@@ -233,6 +233,8 @@ fun DetailScreen(
                                 relatedRecords = uiState.relatedRecords,
                                 pendingRelatedRecords = uiState.pendingRelatedRecords,
                                 otherEntries = uiState.otherEntries,
+                                manualCandidates = uiState.manualCandidates,
+                                manualCandidatesHasMore = uiState.manualCandidatesHasMore,
                                 revisionId = reflection.revisionId,
                                 onLinkToTheme = { themeId, revisionId ->
                                     viewModel.linkToTheme(themeId, revisionId)
@@ -251,7 +253,9 @@ fun DetailScreen(
                                 },
                                 onReviewPendingRelated = { linkId, accept ->
                                     viewModel.reviewPendingRelatedRecord(linkId, accept)
-                                }
+                                },
+                                onSearchManual = viewModel::searchManualCandidates,
+                                onLoadMoreManual = viewModel::loadMoreManualCandidates
                             )
                         }
                     }
@@ -337,13 +341,17 @@ fun ConnectionsSection(
     relatedRecords: List<RelatedRecord>,
     pendingRelatedRecords: List<RelatedRecord>,
     otherEntries: List<RelatedRecord>,
+    manualCandidates: List<RelatedRecord>,
+    manualCandidatesHasMore: Boolean,
     revisionId: Long,
     onLinkToTheme: (Long, Long) -> Unit,
     onUnlinkFromTheme: (Long, Long) -> Unit,
     onLinkRelated: (RelatedRecord, String, Long) -> Unit,
     onUnlinkRelated: (Long, Long) -> Unit,
     onReviewPendingTheme: (Long, Boolean) -> Unit,
-    onReviewPendingRelated: (Long, Boolean) -> Unit
+    onReviewPendingRelated: (Long, Boolean) -> Unit,
+    onSearchManual: (String) -> Unit,
+    onLoadMoreManual: () -> Unit
 ) {
     var showThemePicker by remember { mutableStateOf(false) }
     var relateTarget by remember { mutableStateOf<RelatedRecord?>(null) }
@@ -467,8 +475,12 @@ fun ConnectionsSection(
             }
         }
         TextButton(
-            onClick = { showManualPicker = true },
-            enabled = otherEntries.isNotEmpty()
+            onClick = {
+                showManualPicker = true
+                manualQuery = ""
+                onSearchManual("")
+            },
+            enabled = otherEntries.isNotEmpty() || manualCandidates.isNotEmpty()
         ) {
             Text("Browse or search records...")
         }
@@ -517,29 +529,31 @@ fun ConnectionsSection(
     }
 
     if (showManualPicker) {
-        val filteredCandidates = otherEntries.filter {
-            manualQuery.isBlank() || it.sourceText.contains(manualQuery, ignoreCase = true)
-        }
         AlertDialog(
             onDismissRequest = {
                 showManualPicker = false
                 manualQuery = ""
+                onSearchManual("")
             },
             title = { Text("Choose a record to review") },
             text = {
                 Column {
                     OutlinedTextField(
                         value = manualQuery,
-                        onValueChange = { manualQuery = it },
+                        onValueChange = {
+                            manualQuery = it
+                            onSearchManual(it)
+                        },
                         label = { Text("Filter records") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        items(filteredCandidates, key = { it.rawRecordId }) { candidate ->
+                        items(manualCandidates, key = { it.rawRecordId }) { candidate ->
                             TextButton(
                                 onClick = {
                                     showManualPicker = false
                                     manualQuery = ""
+                                    onSearchManual("")
                                     relateTarget = candidate
                                 },
                                 modifier = Modifier.fillMaxWidth()
@@ -551,6 +565,11 @@ fun ConnectionsSection(
                             }
                         }
                     }
+                    if (manualCandidatesHasMore) {
+                        TextButton(onClick = onLoadMoreManual) {
+                            Text("Load more records")
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -558,6 +577,7 @@ fun ConnectionsSection(
                     onClick = {
                         showManualPicker = false
                         manualQuery = ""
+                        onSearchManual("")
                     }
                 ) { Text("Cancel") }
             }

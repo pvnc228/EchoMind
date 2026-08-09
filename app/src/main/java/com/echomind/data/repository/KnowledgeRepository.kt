@@ -30,6 +30,11 @@ class KnowledgeRepository @Inject constructor(
     private val knowledgeDao: KnowledgeDao,
     private val settingsStore: SettingsStore
 ) {
+    companion object {
+        const val DEFAULT_MANUAL_LINK_PAGE_SIZE = 100
+        const val MAX_MANUAL_LINK_PAGE_SIZE = DEFAULT_MANUAL_LINK_PAGE_SIZE + 1
+    }
+
     suspend fun getThemes(): List<Theme> =
         knowledgeDao.getActiveThemes().map { theme ->
             Theme(
@@ -243,31 +248,33 @@ class KnowledgeRepository @Inject constructor(
 
     suspend fun getManualLinkCandidates(
         currentRevisionId: Long,
-        query: String = ""
+        query: String = "",
+        limit: Int = DEFAULT_MANUAL_LINK_PAGE_SIZE,
+        offset: Int = 0
     ): List<RelatedRecord> {
+        require(limit in 1..MAX_MANUAL_LINK_PAGE_SIZE) {
+            "Manual link candidate page must be between 1 and $MAX_MANUAL_LINK_PAGE_SIZE."
+        }
+        require(offset >= 0) { "Manual link candidate offset cannot be negative." }
         val currentRevision = requireNotNull(knowledgeDao.getRevisionById(currentRevisionId)) {
             "Revision $currentRevisionId missing."
         }
         val currentRaw = knowledgeDao.getConclusionById(currentRevision.conclusionId)?.rawRecordId
-        val linkedSourceIds = knowledgeDao.getEvidenceLinksForRevision(currentRevisionId)
-            .map { it.sourceRawRecordId }
-        val excludedIds = buildList {
-            currentRaw?.let(::add)
-            addAll(linkedSourceIds)
-        }.distinct()
-        val normalizedQuery = query.trim()
-        return knowledgeDao.getRawRecordsExcluding(excludedIds)
-            .asSequence()
-            .filter { normalizedQuery.isBlank() || it.originalText.contains(normalizedQuery, ignoreCase = true) }
-            .map { raw ->
-                RelatedRecord(
-                    rawRecordId = raw.id,
-                    relationship = "",
-                    sourceText = raw.originalText,
-                    recordedAt = raw.createdAt
-                )
-            }
-            .toList()
+        val escapedQuery = escapeLikeQuery(query.trim())
+        return knowledgeDao.getManualLinkCandidateRows(
+            revisionId = currentRevisionId,
+            currentRawRecordId = currentRaw,
+            query = escapedQuery,
+            limit = limit,
+            offset = offset
+        ).map { raw ->
+            RelatedRecord(
+                rawRecordId = raw.rawRecordId,
+                relationship = "",
+                sourceText = raw.originalText,
+                recordedAt = raw.recordedAt
+            )
+        }
     }
 
     suspend fun getHomeRelevance(): HomeRelevance {

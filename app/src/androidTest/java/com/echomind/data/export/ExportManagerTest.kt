@@ -2,6 +2,8 @@ package com.echomind.data.export
 
 import android.content.Context
 import androidx.room.Room
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
@@ -200,6 +202,54 @@ class ExportManagerTest {
             File(context.cacheDir, "echomind-corrupt-hash.zip").delete()
             File(context.cacheDir, "echomind-path-traversal.zip").delete()
             File(context.cacheDir, "echomind-orphan-payload.zip").delete()
+        }
+    }
+
+    @Test
+    fun migratedLegacyProfileRoundTripsThroughCanonicalManifest() {
+        val databaseName = "export-migration-${System.nanoTime()}.db"
+        context.deleteDatabase(databaseName)
+        createLegacyVersion2Database(databaseName)
+        val migrated = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
+            .addMigrations(
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6,
+                AppDatabase.MIGRATION_6_7
+            )
+            .allowMainThreadQueries()
+            .build()
+        val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var migratedExport: File? = null
+        var canonicalSource: File? = null
+        var restoredExport: File? = null
+        try {
+            runBlocking {
+                migratedExport = exportManager(migrated).exportToZip().getOrThrow()
+                canonicalSource = File(context.cacheDir, "migrated-canonical-${System.nanoTime()}.zip")
+                requireNotNull(migratedExport).copyTo(requireNotNull(canonicalSource), overwrite = true)
+                val firstManifest = readManifest(requireNotNull(canonicalSource))
+
+                exportManager(target).restoreFromZip(requireNotNull(canonicalSource)).getOrThrow()
+                restoredExport = exportManager(target).exportToZip().getOrThrow()
+                val secondManifest = readManifest(requireNotNull(restoredExport))
+
+                assertEquals(
+                    "Migration -> export -> empty restore -> export must preserve the canonical manifest",
+                    firstManifest.copy(exportedAt = 0L),
+                    secondManifest.copy(exportedAt = 0L)
+                )
+            }
+        } finally {
+            migrated.close()
+            target.close()
+            migratedExport?.delete()
+            canonicalSource?.delete()
+            restoredExport?.delete()
+            context.deleteDatabase(databaseName)
         }
     }
 
@@ -519,6 +569,47 @@ class ExportManagerTest {
                     }
             }
         }
+    }
+
+    private fun readManifest(archive: File): ExportManifest =
+        ZipFile(archive).use { zip ->
+            val entry = requireNotNull(zip.getEntry("manifest.json"))
+            Json.decodeFromString(
+                zip.getInputStream(entry).bufferedReader().use { it.readText() }
+            )
+        }
+
+    private fun createLegacyVersion2Database(name: String) {
+        val callback = object : SupportSQLiteOpenHelper.Callback(2) {
+            override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `entries` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`transcript` TEXT NOT NULL, `audio_path` TEXT, " +
+                        "`duration_ms` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, " +
+                        "`category` TEXT NOT NULL, `tags` TEXT NOT NULL, " +
+                        "`summary` TEXT NOT NULL, `tasks` TEXT NOT NULL, " +
+                        "`ideas` TEXT NOT NULL, `emotions` TEXT NOT NULL)"
+                )
+                db.execSQL(
+                    "INSERT INTO entries (id, transcript, audio_path, duration_ms, created_at, " +
+                        "category, tags, summary, tasks, ideas, emotions) VALUES " +
+                        "(42, 'Original thought', NULL, 1000, 2000, 'idea', '[]', " +
+                        "'Generated summary', '[]', '[]', '[]')"
+                )
+            }
+
+            override fun onUpgrade(
+                db: androidx.sqlite.db.SupportSQLiteDatabase,
+                oldVersion: Int,
+                newVersion: Int
+            ) = Unit
+        }
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(name)
+            .callback(callback)
+            .build()
+        FrameworkSQLiteOpenHelperFactory().create(configuration).close()
     }
 
     private fun reflectionRepository(database: AppDatabase) = ReflectionRepository(

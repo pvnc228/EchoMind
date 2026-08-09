@@ -1,10 +1,12 @@
 package com.echomind.data.repository
 
 import android.content.Context
+import android.app.Application
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
+import com.echomind.data.local.security.AudioEncryptionUtil
 import com.echomind.data.local.entity.ConclusionEntity
 import com.echomind.data.local.entity.ConclusionRevisionEntity
 import com.echomind.data.local.entity.EvidenceLinkEntity
@@ -12,6 +14,7 @@ import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.settings.SettingsStore
+import com.echomind.ui.detail.DetailViewModel
 import com.echomind.domain.model.KnowledgeSearchResult
 import com.echomind.domain.model.CoverageScopeType
 import com.echomind.domain.model.HomeCard
@@ -19,6 +22,8 @@ import com.echomind.domain.model.HomeCardType
 import com.echomind.domain.model.Capability
 import com.echomind.domain.model.Relationship
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -364,6 +369,167 @@ class KnowledgeRepositoryTest {
     }
 
     @Test
+    fun detailManualCandidateLoadUsesBoundedProjectionWithManyLinkedRecords() {
+        val queries = Collections.synchronizedList(mutableListOf<String>())
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .setQueryCallback(
+                { sql, _ -> queries += sql },
+                Executor { command -> command.run() }
+            )
+            .build()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val knowledgeRepository = knowledgeRepository(database)
+            runBlocking {
+                val currentRawId = reflectionRepository.captureRawText("Current reflection")
+                val proposal = reflectionRepository.createLocalProposal(currentRawId)
+                val session = reflectionRepository.confirm(proposal.hypothesisId, "Current conclusion")
+                val currentRevisionId = requireNotNull(session.revisionId)
+                val linkedRawIds = 2L..1_002L
+                database.knowledgeDao().insertRawRecords(
+                    linkedRawIds.map { id ->
+                        RawRecordEntity(
+                            id = id,
+                            originalText = "Linked archive record $id",
+                            audioPath = "/unneeded/audio-$id",
+                            durationMs = 0L,
+                            createdAt = id
+                        )
+                    } + (2_000L..2_002L).map { id ->
+                        RawRecordEntity(
+                            id = id,
+                            originalText = "Unlinked archive record $id",
+                            audioPath = null,
+                            durationMs = 0L,
+                            createdAt = id
+                        )
+                    }
+                )
+                database.knowledgeDao().insertEvidenceLinks(
+                    linkedRawIds.map { rawId ->
+                        EvidenceLinkEntity(
+                            conclusionRevisionId = currentRevisionId,
+                            sourceRawRecordId = rawId,
+                            relationship = Relationship.SUPPORTS,
+                            status = "confirmed"
+                        )
+                    }
+                )
+
+                queries.clear()
+                val manual = knowledgeRepository.getManualLinkCandidates(currentRevisionId)
+
+                assertEquals(3, manual.size)
+                assertTrue(manual.all { it.sourceText.startsWith("Unlinked") })
+                assertTrue(manual.none { it.rawRecordId in linkedRawIds })
+                val selects = queries.selectStatements()
+                assertTrue(
+                    "Manual candidate flow must not fetch full raw-record entities",
+                    selects.none { it.lowercase().contains("select * from raw_records") }
+                )
+                assertTrue(
+                    "Manual candidate exclusion must not use a caller-sized NOT IN list",
+                    selects.any { it.lowercase().contains("not exists") }
+                )
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun detailViewModelLoadsManualCandidatesAsPagesWithManyLinkedRecords() {
+        val queries = Collections.synchronizedList(mutableListOf<String>())
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .setQueryCallback(
+                { sql, _ -> queries += sql },
+                Executor { command -> command.run() }
+            )
+            .build()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            runBlocking {
+                val currentRawId = reflectionRepository.captureRawText("Current reflection")
+                val proposal = reflectionRepository.createLocalProposal(currentRawId)
+                val session = reflectionRepository.confirm(proposal.hypothesisId, "Current conclusion")
+                val currentRevisionId = requireNotNull(session.revisionId)
+                val linkedRawIds = 2L..1_002L
+                database.knowledgeDao().insertRawRecords(
+                    linkedRawIds.map { id ->
+                        RawRecordEntity(
+                            id = id,
+                            originalText = "Linked archive record $id",
+                            audioPath = null,
+                            durationMs = 0L,
+                            createdAt = id
+                        )
+                    } + (2_000L..2_120L).map { id ->
+                        RawRecordEntity(
+                            id = id,
+                            originalText = "Unlinked archive record $id",
+                            audioPath = null,
+                            durationMs = 0L,
+                            createdAt = id
+                        )
+                    }
+                )
+                database.knowledgeDao().insertEvidenceLinks(
+                    linkedRawIds.map { rawId ->
+                        EvidenceLinkEntity(
+                            conclusionRevisionId = currentRevisionId,
+                            sourceRawRecordId = rawId,
+                            relationship = Relationship.SUPPORTS,
+                            status = "confirmed"
+                        )
+                    }
+                )
+
+                val viewModel = DetailViewModel(
+                    application = context.applicationContext as Application,
+                    entryRepository = EntryRepository(
+                        database,
+                        database.entryDao(),
+                        database.knowledgeDao(),
+                        context
+                    ),
+                    reflectionRepository = reflectionRepository,
+                    knowledgeRepository = knowledgeRepository(database),
+                    audioEncryptionUtil = AudioEncryptionUtil(context)
+                )
+                queries.clear()
+                viewModel.loadEntry(currentRawId)
+                val loaded = withTimeout(30_000) {
+                    viewModel.uiState.first { !it.isLoading }
+                }
+
+                assertTrue("Detail flow failed: ${loaded.error}", loaded.error == null)
+                assertEquals(100, loaded.manualCandidates.size)
+                assertTrue(loaded.manualCandidatesHasMore)
+                assertTrue(loaded.otherEntries.size <= 5)
+                assertTrue(queries.any { it.lowercase().contains("not exists") })
+
+                viewModel.loadMoreManualCandidates()
+                val secondPage = withTimeout(30_000) {
+                    viewModel.uiState.first {
+                        !it.manualCandidatesHasMore && it.manualCandidates.size == 121
+                    }
+                }
+                assertEquals(121, secondPage.manualCandidates.size)
+
+                viewModel.searchManualCandidates("Unlinked archive record 2120")
+                val searched = withTimeout(30_000) {
+                    viewModel.uiState.first { it.manualQuery == "Unlinked archive record 2120" }
+                }
+                assertEquals(listOf(2_120L), searched.manualCandidates.map { it.rawRecordId })
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun semanticLinksRejectDuplicatePairsAtDatabaseBoundary() {
         val database = inMemoryDatabase()
         try {
@@ -666,7 +832,9 @@ class KnowledgeRepositoryTest {
     }
 
     private fun List<String>.selectStatements(): List<String> =
-        filter { it.trimStart().startsWith("SELECT", ignoreCase = true) }
+        synchronized(this) {
+            filter { it.trimStart().startsWith("SELECT", ignoreCase = true) }
+        }
 
     private fun knowledgeRepository(database: AppDatabase) =
         KnowledgeRepository(database, database.knowledgeDao(), SettingsStore(context))

@@ -364,13 +364,17 @@ control runtime. The API26/API30 images do not provide a TalkBack package, so
 their accessibility fallback is covered by the Compose semantics oracle while
 the actual TalkBack tree smoke runs on API35.
 
-The repair-gate artifact from 2026-08-09 adds the remaining scoped P2-03
-oracles: Search uses historical/result projections, Decisions mapping uses
-bounded JOIN loads, and link candidates use only ranking payload projections.
-The Search, Decisions, and link-candidate public seams exercise 1k/10k
-histories and reject N+1 query growth or full raw-record payloads; the earlier
-Home oracle remains in place. CPU/FTS/pagination benchmarking for local text
-ranking is not claimed. See the matching entry in `JOURNAL.md`.
+The 2026-08-09 repair-gate artifact and the 2026-08-10 bounded repair follow-up
+cover Search projections, Decisions JOIN mapping, ranking payload projections,
+and the real Detail manual-candidate path. Detail now uses `NOT EXISTS`, a
+bounded projection page, server-side search, and explicit page loading; the
+1k/10k public seams reject N+1 growth, caller-sized bind lists, and full raw
+record payloads. Decisions mapping is read in one Room transaction, and the
+migrated v2 → export → empty restore → export path compares canonical manifests.
+This does not close the broader repair gate: local ranking still has no CPU/FTS
+benchmark, and the remaining accessibility/restart evidence stays open. See the
+matching entries in `JOURNAL.md` and
+`docs/OPENCODE_REPAIR_TRACEABILITY_2026-08-08.md`.
 
 ## UX/UI audit and approved implementation checkpoint
 

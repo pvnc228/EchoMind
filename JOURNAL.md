@@ -1399,3 +1399,49 @@ is not discarded by `KEEP`.
   evaluates candidate text in the local ranker.
 - Optional follow-up/reminder remains unimplemented. This artifact does not
   mark M4 or the broader M2/M3/M4 milestone complete.
+
+## 2026-08-10 - bounded Detail and canonical migration repair follow-up
+
+### Decision
+
+Keep the repair gate open while closing the two review P1s and the directly
+related Decision read-snapshot finding. Manual Detail browse remains available
+through explicit bounded pages and server-side search; no caller-sized ID list
+or full raw-record payload is allowed. Migration/export/restore evidence must
+start from a real legacy database and compare a second canonical export.
+
+### Implementation
+
+- Added `KnowledgeDao.getManualLinkCandidateRows` with a ranking/manual
+  projection, `NOT EXISTS` exclusion, escaped literal search, and `LIMIT/OFFSET`.
+- Bounded `KnowledgeRepository.getManualLinkCandidates` to 100 visible rows
+  plus one lookahead row. `DetailViewModel` now keeps ranked suggestions
+  separate from manual pages, supports server-side search and page loading, and
+  drops stale search responses. The existing picker exposes `Load more records`.
+- Wrapped `DecisionRepository.getDecisions` entity/revision/outcome reads and
+  mapping in one `database.withTransaction` snapshot.
+- Added a migrated v2 canonical round-trip oracle, a 1,001-linked-record
+  Detail/repository oracle, and concurrent Decisions read/write coverage.
+
+### Evidence
+
+- `detailManualCandidateLoadUsesBoundedProjectionWithManyLinkedRecords`:
+  **passed** on fresh `Pixel_8_2` API 35.
+- `detailViewModelLoadsManualCandidatesAsPagesWithManyLinkedRecords`:
+  **passed** on fresh `Pixel_8_2` API 35; first page is bounded and a searched
+  record outside the first page is returned by the public Detail seam.
+- `decisionMappingDoesNotCombineChoiceAndOutcomeFromDifferentSnapshots`:
+  **passed** on fresh `Pixel_8_2` API 35.
+- `migratedLegacyProfileRoundTripsThroughCanonicalManifest` and all seven
+  `ExportManagerTest` cases: **passed** on fresh `Pixel_8_2` API 35.
+- Full `:app:connectedDebugAndroidTest --rerun-tasks`: **66/66** on
+  `Pixel_8_2` API 35 after synchronizing the shared SQL-observation test
+  helpers.
+- `code-review-expert` self-review found no P0/P1 in the changed bounded path;
+  CPU/FTS ranking, API26/API30, accessibility, and restart/export UI evidence
+  remain open by design.
+
+The full completion gate and self-review remain required before declaring the
+broader M2/M3/M4 repair gate closed. CPU/FTS ranking benchmarks, API26/API30
+reruns after this follow-up, and the deferred accessibility/restart UI matrix
+remain explicitly unclaimed.

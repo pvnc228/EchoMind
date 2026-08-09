@@ -26,13 +26,13 @@ oracle:
 | P1-08 | implemented path; grounded decision UI/repository/export fields exist, но full restart/export UI oracle остаётся pending |
 | P1-09 | implemented; suggestion metadata is guarded and user-owned decision text is not labelled as EchoMind output |
 | P1-10 | implemented; repository state guards cover missing grounds, outcome-before-choice, choice replacement after outcome, and nonblank choice |
-| P1-11 | implemented round-trip and empty-profile preflight; connected negatives now cover corrupt hash, unsafe path, dangling FK, duplicate ID, unsupported version, cross-conclusion current revision and missing-audio cases |
+| P1-11 | implemented round-trip and empty-profile preflight; connected negatives now cover corrupt hash, unsafe path, dangling FK, duplicate ID, unsupported version, cross-conclusion current revision and missing-audio cases; migrated v2 → export → empty restore → export now compares canonical manifests |
 | P2-01 | implemented exact fingerprint Room dispositions and one-time legacy reset; full restart/manage-dismissed UI oracle remains pending |
 | P2-02 | implemented; fresh connected migration suite covers the four duplicate/conflict classes and schema identity |
 | P2-04 | implemented; connected wildcard/historical-revision search oracle passes |
 | P2-08 | implemented; Home flow uses the typed repository batch and no legacy collector state |
 | P2-10 | implemented; manual browse is independent of ranked top-5 suggestions and does not auto-confirm links |
-| P2-03 | scoped repair verified; Home, Search, Decisions mapping and link-candidate paths have 1k/10k query-count/payload oracles with projections/bounded loads; CPU/FTS/pagination benchmarking remains deferred |
+| P2-03 | partially verified; Home, Search, Decisions mapping, ranking payload, and Detail manual-candidate paths have bounded query/payload oracles; Detail uses paged `NOT EXISTS` manual browse, while CPU/FTS benchmarking for local ranking remains deferred |
 | P2-05 | partially implemented; the new negative/metamorphic seams have distinct tests, but no single exhaustive cross-package inventory exists |
 | P2-06 | partially verified; Home actions remain reachable at 320dp with fontScale 2 and evidence rows expose Button semantics on fresh API35 Compose coverage; landscape, Decisions and long-label matrix remain pending |
 | P2-07 | pending execution; owner selected API26+API30 AVD coverage and authorized system-image downloads, but fallback and TalkBack/IME oracles are not yet run |
@@ -83,6 +83,35 @@ revision `IN (...)` batching. The JOIN replacement passed the rerun, and the
 full connected suite passed 62/62 on each of cold-booted API26, API30, and the
 API35 control. This closes the scoped query-count/payload repair, not CPU/FTS/
 pagination benchmarking for local ranking or the broader product milestones.
+
+## 2026-08-10 bounded repair follow-up
+
+The Detail manual-candidate path no longer materializes a caller-sized `NOT IN`
+list or `RawRecordEntity` archive. `KnowledgeDao.getManualLinkCandidateRows`
+uses a three-column projection, `NOT EXISTS`, literal LIKE escaping, and
+`LIMIT/OFFSET`; `KnowledgeRepository` bounds pages to 100 visible rows plus a
+one-row lookahead. `DetailViewModel` keeps ranked suggestions separate from
+manual pages, provides server-side search and `Load more records`, and ignores
+stale search responses by generation.
+
+The new public seams are:
+
+- `detailManualCandidateLoadUsesBoundedProjectionWithManyLinkedRecords`
+  (1,001 linked records; no full raw projection and no `NOT IN` bind list);
+- `detailViewModelLoadsManualCandidatesAsPagesWithManyLinkedRecords` (real
+  DetailViewModel load, bounded first page, server-side search);
+- `decisionMappingDoesNotCombineChoiceAndOutcomeFromDifferentSnapshots`
+  (concurrent readers/writer; every observed outcome has its choice);
+- `migratedLegacyProfileRoundTripsThroughCanonicalManifest` (actual v2
+  migration, export, empty restore, second export, canonical manifest equality).
+
+Targeted Pixel 8 API 35 runs passed the Detail actual-flow oracle, the full
+KnowledgeRepository class, DecisionRepository race oracle, and all seven
+ExportManager tests. The subsequent full `:app:connectedDebugAndroidTest
+--rerun-tasks` run passed **66/66** on `Pixel_8_2` API 35. The broader repair
+gate remains open: this follow-up does not claim CPU/FTS benchmarking,
+API26/API30 reruns after these source changes, or the deferred
+accessibility/restart UI matrix.
 
 ## Package 1 — без изменения схемы
 

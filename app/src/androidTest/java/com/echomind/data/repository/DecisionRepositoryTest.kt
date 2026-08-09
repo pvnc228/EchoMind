@@ -22,6 +22,10 @@ import org.junit.Before
 import org.junit.Test
 import java.util.Collections
 import java.util.concurrent.Executor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.withContext
 
 class DecisionRepositoryTest {
 
@@ -561,6 +565,46 @@ class DecisionRepositoryTest {
     }
 
     @Test
+    fun decisionMappingDoesNotCombineChoiceAndOutcomeFromDifferentSnapshots() {
+        val database = inMemoryDatabase()
+        try {
+            val reflection = reflectionRepository(database)
+            val decisions = DecisionRepository(database, database.knowledgeDao(), reflection)
+            runBlocking {
+                val decisionId = decisions.createDecision(
+                    question = "Which path should remain coherent?",
+                    sourceRevisionId = currentRevision(database)
+                )
+                val snapshots = withContext(Dispatchers.Default) {
+                    val writer = async {
+                        decisions.setChoice(decisionId, "Path A")
+                        repeat(40) { index ->
+                            decisions.recordOutcome(decisionId, "Path A remained valid: $index")
+                        }
+                    }
+                    val readers = (1..4).map {
+                        async {
+                            buildList {
+                                repeat(100) { add(decisions.getDecisions().single()) }
+                            }
+                        }
+                    }
+                    val readerResults = readers.awaitAll()
+                    writer.await()
+                    readerResults.flatten()
+                }
+
+                assertTrue(
+                    "A decision with an outcome must always expose its choice in one read snapshot",
+                    snapshots.all { it.outcomes.isEmpty() || !it.choice.isNullOrBlank() }
+                )
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun deletingDecisionKeepsReferencedConclusionIntact() {
         val database = inMemoryDatabase()
         try {
@@ -621,5 +665,7 @@ class DecisionRepositoryTest {
     }
 
     private fun List<String>.selectStatements(): List<String> =
-        filter { it.trimStart().startsWith("SELECT", ignoreCase = true) }
+        synchronized(this) {
+            filter { it.trimStart().startsWith("SELECT", ignoreCase = true) }
+        }
 }
