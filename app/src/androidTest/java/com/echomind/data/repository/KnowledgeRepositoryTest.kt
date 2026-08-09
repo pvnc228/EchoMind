@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
 import com.echomind.data.local.entity.EvidenceLinkEntity
+import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.KnowledgeSearchResult
@@ -22,6 +23,8 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.util.Collections
+import java.util.concurrent.Executor
 
 class KnowledgeRepositoryTest {
 
@@ -382,6 +385,66 @@ class KnowledgeRepositoryTest {
             database.close()
         }
     }
+
+    @Test
+    fun homeRelevanceQueryCountAndPayloadStayBoundedAtOneAndTenThousandRecords() {
+        val queries = Collections.synchronizedList(mutableListOf<String>())
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .setQueryCallback(
+                { sql, _ -> queries += sql },
+                Executor { command -> command.run() }
+            )
+            .build()
+        try {
+            val repository = knowledgeRepository(database)
+            runBlocking {
+                database.knowledgeDao().insertRawRecords(rawRecords(1L..1_000L))
+                queries.clear()
+                repository.getHomeRelevance()
+                val oneThousandSelects = queries.selectStatements()
+
+                database.knowledgeDao().insertRawRecords(rawRecords(1_001L..10_000L))
+                queries.clear()
+                repository.getHomeRelevance()
+                val tenThousandSelects = queries.selectStatements()
+
+                assertTrue(
+                    "Home SELECT count should not grow with unrelated history",
+                    tenThousandSelects.size <= oneThousandSelects.size
+                )
+                assertTrue("Home should use at most 12 bounded SELECTs", tenThousandSelects.size <= 12)
+                listOf(
+                    "from raw_records order by",
+                    "from conclusion_revisions order by",
+                    "from evidence_links order by",
+                    "from ai_hypotheses order by",
+                    "from decisions order by",
+                    "from outcomes order by"
+                ).forEach { unboundedScan ->
+                    assertTrue(
+                        "Home should not execute an unbounded scan containing '$unboundedScan'",
+                        tenThousandSelects.none { it.lowercase().contains(unboundedScan) }
+                    )
+                }
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    private fun rawRecords(ids: LongRange): List<RawRecordEntity> = ids.map { id ->
+        RawRecordEntity(
+            id = id,
+            originalText = "Unrelated record $id",
+            audioPath = null,
+            durationMs = 0L,
+            createdAt = id
+        )
+    }
+
+    private fun List<String>.selectStatements(): List<String> =
+        filter { it.trimStart().startsWith("SELECT", ignoreCase = true) }
 
     private fun knowledgeRepository(database: AppDatabase) =
         KnowledgeRepository(database, database.knowledgeDao(), SettingsStore(context))

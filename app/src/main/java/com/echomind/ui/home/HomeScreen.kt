@@ -4,12 +4,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -270,6 +274,7 @@ private fun PromptHeader(onNavigateToRecord: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RelevantCard(
     card: HomeCard,
@@ -322,7 +327,10 @@ private fun RelevantCard(
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedButton(onClick = onInspect) { Text("Inspect") }
                 OutlinedButton(onClick = onContinue) { Text("Continue") }
                 OutlinedButton(onClick = onDismiss) { Text("Dismiss") }
@@ -347,9 +355,13 @@ private fun EvidenceCoverageSection(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = theme.navigationTarget != null) {
+                    .clickable(
+                        enabled = theme.navigationTarget != null,
+                        role = if (theme.navigationTarget != null) Role.Button else null
+                    ) {
                         theme.navigationTarget?.let(onOpenTarget)
                     }
+                    .heightIn(min = 48.dp)
                     .padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

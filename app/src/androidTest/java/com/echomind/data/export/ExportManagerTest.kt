@@ -380,6 +380,29 @@ class ExportManagerTest {
                         updatedAt = 1L
                     ),
                     counts = manifest.counts.copy(hasCaptureDraft = true)
+                ),
+                manifest.copy(
+                    conclusions = manifest.conclusions + ExportConclusion(
+                        id = manifest.conclusions.single().id + 1,
+                        rawRecordId = manifest.rawRecords.single().id,
+                        currentRevisionId = currentRevisionId,
+                        createdAt = 1L
+                    ),
+                    counts = manifest.counts.copy(conclusions = 2)
+                ),
+                manifest.copy(
+                    rawRecords = manifest.rawRecords + manifest.rawRecords.single(),
+                    counts = manifest.counts.copy(rawRecords = 2)
+                ),
+                manifest.copy(version = 4),
+                manifest.copy(
+                    hypotheses = manifest.hypotheses.map { it.copy(rawRecordId = 9999L) }
+                ),
+                manifest.copy(
+                    rawRecords = manifest.rawRecords.map {
+                        it.copy(audioFileName = "audio/missing.wav")
+                    },
+                    files = listOf(ExportFile("audio/missing.wav", 0L, EMPTY_SHA256))
                 )
             )
 
@@ -387,6 +410,7 @@ class ExportManagerTest {
                 val archive = File(context.cacheDir, "echomind-invalid-invariant-$index.zip")
                 invalidArchives += archive
                 rewriteArchive(requireNotNull(exportFile), archive, invalidManifest, emptyMap())
+                val artifactsBeforeRestore = restoreArtifactsSnapshot()
                 val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
                     .allowMainThreadQueries()
                     .build()
@@ -406,6 +430,11 @@ class ExportManagerTest {
                     assertTrue(target.knowledgeDao().getAllRawRecords().isEmpty())
                     assertTrue(target.knowledgeDao().getAllRevisions().isEmpty())
                 }
+                assertEquals(
+                    "case $index should not leave restore artifacts",
+                    artifactsBeforeRestore,
+                    restoreArtifactsSnapshot()
+                )
             }
         } finally {
             targets.forEach { it.close() }
@@ -450,6 +479,13 @@ class ExportManagerTest {
         analyzer = LocalReflectionAnalyzer(),
         json = Json { ignoreUnknownKeys = true }
     )
+
+    private fun restoreArtifactsSnapshot(): Set<String> =
+        context.noBackupFilesDir.listFiles()
+            .orEmpty()
+            .filter { it.name == "restored_audio" || it.name.startsWith("restore_") }
+            .flatMap { root -> root.walkTopDown().map(File::getAbsolutePath).toList() }
+            .toSet()
 
     private fun exportManager(database: AppDatabase) = ExportManager(
         context = context,

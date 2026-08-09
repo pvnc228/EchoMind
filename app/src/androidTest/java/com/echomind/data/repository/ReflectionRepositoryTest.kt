@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
+import com.echomind.data.local.entity.AudioCleanupEntity
 import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.Relationship
 import com.echomind.domain.model.ReflectionStatus
@@ -496,6 +497,71 @@ class ReflectionRepositoryTest {
         } finally {
             database.close()
             audioDirectory.delete()
+        }
+    }
+
+    @Test
+    fun audioCleanupSkipsTerminalRowsAndRetriesEligibleRowsBeyondTheBatchWindow() {
+        val database = inMemoryDatabase()
+        val terminalDirectories = (0 until EntryRepository.MAX_AUDIO_CLEANUP_BATCH).map { index ->
+            File(
+                context.cacheDir,
+                "terminal-audio-cleanup-${System.nanoTime()}-$index"
+            ).apply { mkdirs() }
+        }
+        val eligibleDirectory = File(
+            context.cacheDir,
+            "eligible-audio-cleanup-${System.nanoTime()}"
+        ).apply { mkdirs() }
+
+        try {
+            val entryRepository = EntryRepository(
+                database,
+                database.entryDao(),
+                database.knowledgeDao(),
+                context
+            )
+            runBlocking {
+                terminalDirectories.forEachIndexed { index, directory ->
+                    database.knowledgeDao().upsertAudioCleanup(
+                        AudioCleanupEntity(
+                            path = directory.absolutePath,
+                            entryId = index.toLong() + 1,
+                            failedAt = index.toLong(),
+                            attemptCount = EntryRepository.MAX_AUDIO_CLEANUP_ATTEMPTS
+                        )
+                    )
+                }
+                database.knowledgeDao().upsertAudioCleanup(
+                    AudioCleanupEntity(
+                        path = eligibleDirectory.absolutePath,
+                        entryId = 10_000L,
+                        failedAt = terminalDirectories.size.toLong(),
+                        attemptCount = EntryRepository.MAX_AUDIO_CLEANUP_ATTEMPTS - 1
+                    )
+                )
+
+                assertEquals(
+                    listOf(eligibleDirectory.absolutePath),
+                    entryRepository.getPendingAudioCleanup().map { it.path }
+                )
+                assertEquals(0, entryRepository.retryPendingAudioCleanup())
+                assertEquals(
+                    EntryRepository.MAX_AUDIO_CLEANUP_ATTEMPTS,
+                    database.knowledgeDao().getAudioCleanup(eligibleDirectory.absolutePath)?.attemptCount
+                )
+                terminalDirectories.forEach { directory ->
+                    assertEquals(
+                        EntryRepository.MAX_AUDIO_CLEANUP_ATTEMPTS,
+                        database.knowledgeDao().getAudioCleanup(directory.absolutePath)?.attemptCount
+                    )
+                }
+                assertTrue(entryRepository.getPendingAudioCleanup().isEmpty())
+            }
+        } finally {
+            database.close()
+            terminalDirectories.forEach(File::delete)
+            eligibleDirectory.delete()
         }
     }
 

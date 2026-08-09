@@ -275,15 +275,20 @@ class KnowledgeRepository @Inject constructor(
         val now = System.currentTimeMillis()
         val legacySuppressionReset = settingsStore.resetLegacySuppressionsIfNeeded()
         val themes = knowledgeDao.getActiveThemes()
-        val themeLinks = knowledgeDao.getConfirmedThemeLinksAll()
+        val themeLinks = knowledgeDao.getConfirmedThemeLinksForCurrentRevisions()
         val conclusions = knowledgeDao.getAllConclusions()
-        val rawRecords = knowledgeDao.getAllRawRecords().associateBy { it.id }
-        val revisions = knowledgeDao.getAllRevisions().associateBy { it.id }
-        val evidenceByRevision = knowledgeDao.getAllEvidenceLinks()
+        val conclusionsById = conclusions.associateBy { it.id }
+        val rawRecords = knowledgeDao.getRawRecordsForCurrentConclusions().associateBy { it.id }
+        val revisions = knowledgeDao.getCurrentRevisions().associateBy { it.id }
+        val ownRawRecordByRevision = revisions.mapValues { (_, revision) ->
+            conclusionsById[revision.conclusionId]?.rawRecordId
+        }
+        val evidenceByRevision = knowledgeDao.getEvidenceLinksForCurrentRevisions()
             .filter { it.status == "confirmed" }
             .groupBy { it.conclusionRevisionId }
-        val decisions = knowledgeDao.getAllDecisions()
-        val outcomesByDecision = knowledgeDao.getAllOutcomes().groupBy { it.decisionId }
+        val decisions = knowledgeDao.getDecisionsForCurrentRevisions()
+        val outcomesByDecision = knowledgeDao.getOutcomesForCurrentRevisionDecisions()
+            .groupBy { it.decisionId }
         val decisionsByRevision = decisions
             .filter { it.sourceRevisionId != null }
             .groupBy { it.sourceRevisionId }
@@ -308,19 +313,14 @@ class KnowledgeRepository @Inject constructor(
         ): ThemeCandidate {
             val currentEvidence = revisionIds.flatMap { evidenceByRevision[it].orEmpty() }
             val externalEvidence = currentEvidence.filter { evidence ->
-                val ownRaw = revisions[evidence.conclusionRevisionId]?.let { revision ->
-                    conclusions.firstOrNull { it.id == revision.conclusionId }?.rawRecordId
-                }
+                val ownRaw = ownRawRecordByRevision[evidence.conclusionRevisionId]
                 evidence.sourceRawRecordId != ownRaw
             }
             val contradictions = externalEvidence.count { it.relationship == Relationship.CONTRADICTS }
             val supports = externalEvidence.size
             val sourceRawRecordIds = (
-                revisionIds.mapNotNull { revisionId ->
-                    revisions[revisionId]?.let { revision ->
-                        conclusions.firstOrNull { it.id == revision.conclusionId }?.rawRecordId
-                    }
-                } + externalEvidence.map { it.sourceRawRecordId }
+                revisionIds.mapNotNull(ownRawRecordByRevision::get) +
+                    externalEvidence.map { it.sourceRawRecordId }
             ).distinct().sorted()
             val outcomeIds = revisionIds.flatMap { revisionId ->
                 decisionsByRevision[revisionId].orEmpty().flatMap { decision ->
@@ -368,8 +368,9 @@ class KnowledgeRepository @Inject constructor(
             )
         }
 
+        val themeLinksByTheme = themeLinks.groupBy { it.themeId }
         val themeCandidates = themes.map { theme ->
-            val links = themeLinks.filter { it.themeId == theme.id }
+            val links = themeLinksByTheme[theme.id].orEmpty()
             val revisionIds = links.map { it.conclusionRevisionId }
                 .filter { it in currentRevisionIds }
                 .distinct()
@@ -398,8 +399,7 @@ class KnowledgeRepository @Inject constructor(
                 navigationTarget = HomeNavigationTarget.Entry(entryId)
             )
         }
-        val unfinishedCandidates = knowledgeDao.getAllHypotheses()
-            .filter { it.status.equals("proposed", ignoreCase = true) }
+        val unfinishedCandidates = knowledgeDao.getProposedHypotheses()
             .map { hypothesis ->
                 candidate(
                     themeId = 0L,

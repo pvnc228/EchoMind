@@ -19,24 +19,54 @@ oracle:
 | P1-01 | implemented; `OnboardingScreenTest` проверяет text-first copy и отсутствие Voice Diary/automatic transcription |
 | P1-02 | implemented Room draft and encrypted completed-audio path; connected repository coverage exists, but a fresh device process-death/interrupted-recording oracle remains pending |
 | P1-03 | implemented; `reviseCreatesNewRevisionKeepsHistoricalLinksAndDoesNotRebaseThem` плюс отдельный pending-link review flow |
-| P1-04 | pending dedicated UI duplicate-key oracle; production key uses `revisionId` |
-| P1-05 | implemented graph/dependency preview; `externalEvidenceDeletionRequiresPreviewAndExplicitUnlink` passes, while app-owned audio path validation and bounded orphan-cleanup queue remain pending |
+| P1-04 | implemented; `ThemeDetailScreenTest` renders two distinct conclusions at revision v1 and production LazyColumn keys remain `revisionId` |
+| P1-05 | implemented graph/dependency preview; `externalEvidenceDeletionRequiresPreviewAndExplicitUnlink` passes, app-owned audio path validation and persisted bounded cleanup queue pass, including the 33-plus terminal/eligible regression |
 | P1-06 | implemented; `LinkCandidateRankerTest` содержит русские NFKC/Locale.ROOT golden и metamorphic cases |
 | P1-07 | implemented; `HomeRelevanceBuilderTest` и connected `homeCoverageKeepsTypedStatesAndDispositionUsesExactFingerprint` |
 | P1-08 | implemented path; grounded decision UI/repository/export fields exist, но full restart/export UI oracle остаётся pending |
 | P1-09 | implemented; suggestion metadata is guarded and user-owned decision text is not labelled as EchoMind output |
 | P1-10 | implemented; repository state guards cover missing grounds, outcome-before-choice, choice replacement after outcome, and nonblank choice |
-| P1-11 | implemented round-trip and empty-profile preflight; connected negatives cover corrupt hash and unsafe archive paths; dangling FK, duplicate ID, unsupported version and missing-audio cases remain pending |
+| P1-11 | implemented round-trip and empty-profile preflight; connected negatives now cover corrupt hash, unsafe path, dangling FK, duplicate ID, unsupported version, cross-conclusion current revision and missing-audio cases |
 | P2-01 | implemented exact fingerprint Room dispositions and one-time legacy reset; full restart/manage-dismissed UI oracle remains pending |
 | P2-02 | implemented; fresh connected migration suite covers the four duplicate/conflict classes and schema identity |
 | P2-04 | implemented; connected wildcard/historical-revision search oracle passes |
 | P2-08 | implemented; Home flow uses the typed repository batch and no legacy collector state |
 | P2-10 | implemented; manual browse is independent of ranked top-5 suggestions and does not auto-confirm links |
-| P2-03 | pending; no query-count benchmark fixture yet |
+| P2-03 | partially verified; Home uses current-graph JOIN queries and the 1k/10k query-count/payload oracle passes; search, Decisions mapping and heuristic candidate scan remain separate unbounded/N+1 follow-ups |
 | P2-05 | partially implemented; the new negative/metamorphic seams have distinct tests, but no single exhaustive cross-package inventory exists |
-| P2-06 | pending; accessibility matrix for 200% text, compact width and landscape is not freshly executed |
-| P2-07 | pending; API 26–30 fallback and TalkBack/IME oracle is not freshly executed |
-| P3-01 | implemented; fresh `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest`, JVM 36/36 and connected 35/35 artifacts captured |
+| P2-06 | partially verified; Home actions remain reachable at 320dp with fontScale 2 and evidence rows expose Button semantics on fresh API35 Compose coverage; landscape, Decisions and long-label matrix remain pending |
+| P2-07 | pending execution; owner selected API26+API30 AVD coverage and authorized system-image downloads, but fallback and TalkBack/IME oracles are not yet run |
+| P3-01 | implemented; fresh `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest`, JVM 40/40 and connected 50/50 artifacts captured |
+
+### 2026-08-09 follow-up artifact
+
+The non-blocking audio-cleanup follow-up is implemented without a schema bump:
+`KnowledgeDao.getPendingAudioCleanup` selects only retryable rows below the
+attempt limit, `AudioCleanupScheduler` uses `ExistingWorkPolicy.REPLACE`, and
+`audioCleanupSkipsTerminalRowsAndRetriesEligibleRowsBeyondTheBatchWindow`
+passes on fresh `Pixel_8_2` API 35. The remaining M2/M3/M4 completion oracles
+listed below are not changed by this follow-up.
+
+The restore negative matrix is now also covered on fresh `Pixel_8_2` API 35:
+cross-conclusion current-revision mismatch, duplicate stable ID, unsupported
+manifest version, dangling raw-record foreign key, and missing audio payload
+are rejected before persistence. Each case leaves the target database empty and
+does not add restore artifacts.
+
+The Home compact/dynamic-text slice is partially verified on the same API35
+runtime: the four relevant-card actions remain reachable through the
+scrollable content at 320dp and fontScale 2, and evidence navigation rows use
+explicit Button semantics. This is not API26-30, landscape, TalkBack, IME, or
+DecisionsScreen evidence; those remain open rather than being inferred.
+
+The Theme detail duplicate-key oracle now renders two different conclusions
+whose revision version is `1`; stable `revisionId` keys keep both rows and
+their distinct outcome labels visible. Home graph loading now uses JOIN queries
+limited to current revisions and their reachable raw/evidence/theme/decision
+rows plus proposed hypotheses. The 1k/10k fixture proves SELECT count does not
+grow with unrelated history and rejects the former unbounded table scans.
+P2-03 remains partial because search, Decisions mapping, and heuristic
+candidate scanning still require their own bounded-query work.
 
 ## Package 1 — без изменения схемы
 

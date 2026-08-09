@@ -1,6 +1,6 @@
 # EchoMind — Product Roadmap
 
-**Last updated:** 2026-08-07
+**Last updated:** 2026-08-09
 
 **Product direction:** [VISION.md](VISION.md)
 
@@ -209,6 +209,15 @@ explicit author/source/status metadata and are not created by the ordinary user
 flow. Export carries the metadata. The outcome-to-reviewed-revision leg and
 full restart/export UI oracle remain deferred.
 
+**Owner decision (2026-08-09):** следующий M4 slice — необязательный локальный
+`Review impact`: outcome сравнивается с исходными grounds/choice, proposal
+показывается как diff, а новая revision появляется только после явного
+подтверждения. После choice приложение может один раз предложить follow-up на
+1-3 дня; принятый reminder локальный, opt-in, с действиями postpone/cancel в
+notification и приложении. Решение зафиксировано в
+[`docs/OWNER_DECISIONS_API_COMPAT_M4_2026-08-09.md`](docs/OWNER_DECISIONS_API_COMPAT_M4_2026-08-09.md),
+но ещё не реализовано.
+
 ### Scope
 
 - [x] Let the user turn a question into an explicit decision record.
@@ -316,6 +325,31 @@ remaining negative tests must be captured before those milestones are marked
 complete. The implemented slice already includes user-owned themes,
 immutable/pending links, dated revisions, graph-wide search, typed Home
 coverage, guarded decisions, and empty-profile restore (2026-08-08).
+
+The non-blocking audio-cleanup follow-up from the 2026-08-08 review is also
+implemented and verified (2026-08-09): terminal retry rows no longer starve
+later eligible rows, terminal attempts do not grow, and concurrent cleanup
+enqueue uses race-safe replacement. This does not close the M2/M3/M4
+completion gate or its remaining migration/import, accessibility, and restart
+oracles.
+
+The next technical follow-up is partially advanced (2026-08-09): restore now
+has connected negative coverage for graph/archive integrity failures, and Home
+relevant-card actions have a fresh compact-width/fontScale-2 Compose oracle
+with adaptive action wrapping. API26-30 fallback, landscape/TalkBack/IME
+validation, and Decisions UI coverage remain explicit follow-ups.
+Owner input for those deferred choices was recorded and confirmed in
+[`docs/USER_INPUT_API_COMPAT_AND_M4_2026-08-09.md`](docs/USER_INPUT_API_COMPAT_AND_M4_2026-08-09.md)
+and
+[`docs/OWNER_DECISIONS_API_COMPAT_M4_2026-08-09.md`](docs/OWNER_DECISIONS_API_COMPAT_M4_2026-08-09.md).
+The owner selected API26+API30 AVD validation and authorized the required system
+image downloads; no image was downloaded in this repair commit.
+
+Two more repair oracles are captured in the same follow-up: Theme detail keeps
+different conclusions with the same revision version distinct through stable
+revision IDs, and Home graph loading has a 1k/10k bounded-query regression
+using current-graph JOIN projections. The broader P2-03 search/Decisions/link-
+candidate performance work remains open.
 
 ## UX/UI audit and approved implementation checkpoint
 

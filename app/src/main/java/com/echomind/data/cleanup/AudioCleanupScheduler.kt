@@ -12,6 +12,14 @@ object AudioCleanupScheduler {
     const val UNIQUE_WORK_NAME = "audio-cleanup"
 
     fun enqueue(context: Context) {
+        enqueue { name, policy, request ->
+            WorkManager.getInstance(context).enqueueUniqueWork(name, policy, request)
+        }
+    }
+
+    internal fun enqueue(
+        enqueueUniqueWork: (String, ExistingWorkPolicy, androidx.work.OneTimeWorkRequest) -> Unit
+    ) {
         val request = OneTimeWorkRequestBuilder<AudioCleanupWorker>()
             .setConstraints(Constraints.Builder().build())
             .setBackoffCriteria(
@@ -20,9 +28,9 @@ object AudioCleanupScheduler {
                 TimeUnit.SECONDS
             )
             .build()
-        WorkManager.getInstance(context).enqueueUniqueWork(
+        enqueueUniqueWork(
             UNIQUE_WORK_NAME,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.REPLACE,
             request
         )
     }

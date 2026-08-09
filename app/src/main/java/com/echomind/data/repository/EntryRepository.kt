@@ -177,7 +177,7 @@ class EntryRepository @Inject constructor(
         require(limit in 1..MAX_AUDIO_CLEANUP_BATCH) {
             "Audio cleanup batch must be between 1 and $MAX_AUDIO_CLEANUP_BATCH."
         }
-        return knowledgeDao.getPendingAudioCleanup(limit)
+        return knowledgeDao.getPendingAudioCleanup(limit, MAX_AUDIO_CLEANUP_ATTEMPTS)
     }
 
     suspend fun getPendingAudioCleanupCount(): Int = knowledgeDao.getAudioCleanupCount()

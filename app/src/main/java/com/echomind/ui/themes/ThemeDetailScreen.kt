@@ -43,6 +43,18 @@ fun ThemeDetailScreen(
         viewModel.load()
     }
 
+    ThemeDetailScreenContent(
+        uiState = uiState,
+        onNavigateBack = onNavigateBack
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ThemeDetailScreenContent(
+    uiState: ThemeDetailUiState,
+    onNavigateBack: () -> Unit
+) {
     Scaffold(
         topBar = {
             TopAppBar(

@@ -1137,3 +1137,136 @@ testable hardware available.
   database reopen.
 - Documentation synchronized to Room schema v7 and the operational cleanup
   queue.
+
+---
+
+## 2026-08-09 - bounded audio-cleanup follow-up
+
+### Decision
+
+The review follow-up is implemented at the repository/WorkManager boundary:
+cleanup retries select only rows with `attemptCount < 8`, terminal rows remain
+visible as partial-cleanup state but are never retried, and unique cleanup
+work uses `REPLACE` so a failure enqueued while an active worker is finishing
+is not discarded by `KEEP`.
+
+### Done
+
+- Added the 33-plus-entry regression oracle with the first 32 rows terminal.
+- Made the DAO query eligible-only, removing starvation and preventing
+  terminal `attemptCount` growth.
+- Added a JVM scheduler-policy regression test for race-safe replacement.
+
+### Evidence
+
+- TDD red artifact: the new connected test failed on the pre-fix DAO because
+  the first 32 terminal rows masked the eligible 33rd row.
+- `:app:testDebugUnitTest --rerun-tasks`: **40/40**.
+- `:app:connectedDebugAndroidTest --rerun-tasks`: **47/47** on fresh cold-boot
+  `Pixel_8_2` API 35.
+
+### Remaining limitations
+
+- The scheduler race is covered by the replacement-policy oracle and the
+  WorkManager contract; a deterministic fault-injection test for the exact
+  cancellation timing remains a future infrastructure concern.
+
+---
+
+## 2026-08-09 - restore negative matrix and compact Home accessibility slice
+
+### Done
+
+- Expanded the restore oracle with cross-conclusion current-revision mismatch,
+  duplicate stable ID, unsupported manifest version, dangling raw-record FK,
+  and missing audio payload cases.
+- Each invalid archive is rejected before persistence; the target remains empty
+  and the restore-artifact snapshot is unchanged.
+- Replaced the Home relevant-card action Row with an adaptive `FlowRow`, so
+  Inspect, Continue, Dismiss, and Later can wrap at compact width and large
+  system text. Evidence coverage rows now expose explicit Button semantics when
+  navigable.
+- Added a Compose oracle that uses 320dp width and fontScale 2, scrolls the
+  long content, and verifies all four actions remain displayed and clickable.
+
+### Evidence
+
+- `:app:testDebugUnitTest --rerun-tasks`: **40/40**.
+- `:app:connectedDebugAndroidTest --rerun-tasks`: **48/48** on fresh cold-boot
+  `Pixel_8_2` API 35, including the restore matrix and compact Home oracle.
+- `:app:lintDebug --rerun-tasks`, `:app:assembleDebug --rerun-tasks`, and
+  `:app:assembleDebugAndroidTest --rerun-tasks`: passed after the new tests and
+  UI compilation.
+
+### Remaining limitations
+
+- This closes only a compact/dynamic-text Home slice. Landscape, a full
+  Decisions-screen accessibility matrix, TalkBack/IME behavior, and API 26-30
+  fallback still need a matching runtime oracle.
+- The personal device remains intentionally unconnected; no API level or
+  hardware behavior was inferred from it.
+
+---
+
+## 2026-08-09 - Theme stable-key oracle and bounded Home graph loading
+
+### Done
+
+- Added a public `ThemeDetailScreenContent` seam and a Compose oracle with two
+  distinct conclusions that both have revision version 1. Both rows and their
+  different outcome labels render; LazyColumn identity remains the stable
+  `revisionId`, not the user-visible version number.
+- Replaced Home's historical full-table reads with schema-neutral JOIN queries
+  for current revisions and their reachable raw records, evidence, theme links,
+  decisions, outcomes, plus proposed hypotheses.
+- Replaced repeated linear conclusion/theme-link lookups in Home graph assembly
+  with precomputed maps.
+- Added a real Room query callback fixture at 1,000 and 10,000 unrelated raw
+  records. SELECT count does not grow, stays at or below 12, and the former
+  unbounded history scans are forbidden by the oracle.
+
+### TDD evidence
+
+- ThemeDetail test first failed to compile because the pure content seam did
+  not exist, then compiled after the minimal extraction.
+- The corrected 1k/10k benchmark failed on the pre-fix
+  `SELECT * FROM raw_records ORDER BY ...` and passed after current-graph JOIN
+  projections were introduced.
+
+### Validation
+
+- `:app:connectedDebugAndroidTest --rerun-tasks`: **50/50** on fresh cold-boot
+  `Pixel_8_2` API 35, including the Theme stable-key and 1k/10k query oracles.
+
+### Remaining limitation
+
+- This advances P2-03 only for Home. Search result enrichment, Decisions domain
+  mapping, and heuristic link-candidate scanning still need bounded batch/query
+  oracles before the finding can be marked complete.
+
+---
+
+## 2026-08-09 - confirmed owner decisions for API coverage and M4
+
+### Confirmed direction
+
+- The owner selected API 26 and API 30 AVDs for the fallback gate and authorized
+  downloading the required system images. API35 remains the control runtime;
+  the owner's Xiaomi POCO X6 5G on Android 16/API36 may be tested later without
+  being used as a substitute for API26-30.
+- The next M4 slice is an optional local `Review impact` flow. It shows the
+  original grounds/choice, reported outcome, and a proposed diff. No conclusion
+  changes until the user explicitly confirms a new revision.
+- After choice, EchoMind may once offer an optional follow-up in the 1-3 day
+  range. Accepted follow-up may use a local Android notification with Postpone
+  and Cancel actions, mirrored in-app. Notification denial falls back to the
+  in-app state and never blocks the decision flow.
+
+### Provenance and implementation status
+
+- Raw owner input is preserved in
+  `docs/USER_INPUT_API_COMPAT_AND_M4_2026-08-09.md`.
+- The normalized contract is
+  `docs/OWNER_DECISIONS_API_COMPAT_M4_2026-08-09.md`.
+- These decisions remove product ambiguity; API images, M4 Review impact, and
+  follow-up notifications are not implemented by this commit.

@@ -54,6 +54,14 @@ interface KnowledgeDao {
     suspend fun getAllRawRecords(): List<RawRecordEntity>
 
     @Query(
+        "SELECT DISTINCT raw_records.* FROM raw_records " +
+            "INNER JOIN conclusions ON conclusions.raw_record_id = raw_records.id " +
+            "WHERE conclusions.current_revision_id IS NOT NULL " +
+            "ORDER BY raw_records.created_at, raw_records.id"
+    )
+    suspend fun getRawRecordsForCurrentConclusions(): List<RawRecordEntity>
+
+    @Query(
         "SELECT * FROM raw_records WHERE id NOT IN (:excludedIds) " +
             "ORDER BY created_at DESC, id DESC"
     )
@@ -61,14 +69,36 @@ interface KnowledgeDao {
     @Query("SELECT * FROM ai_hypotheses ORDER BY created_at, id")
     suspend fun getAllHypotheses(): List<AiHypothesisEntity>
 
+    @Query(
+        "SELECT * FROM ai_hypotheses WHERE status = 'proposed' COLLATE NOCASE " +
+            "ORDER BY created_at, id"
+    )
+    suspend fun getProposedHypotheses(): List<AiHypothesisEntity>
+
     @Query("SELECT * FROM conclusions ORDER BY created_at, id")
     suspend fun getAllConclusions(): List<ConclusionEntity>
 
     @Query("SELECT * FROM conclusion_revisions ORDER BY conclusion_id, version")
     suspend fun getAllRevisions(): List<ConclusionRevisionEntity>
 
+    @Query(
+        "SELECT conclusion_revisions.* FROM conclusion_revisions " +
+            "INNER JOIN conclusions " +
+            "ON conclusions.current_revision_id = conclusion_revisions.id " +
+            "ORDER BY conclusion_revisions.conclusion_id, conclusion_revisions.version"
+    )
+    suspend fun getCurrentRevisions(): List<ConclusionRevisionEntity>
+
     @Query("SELECT * FROM evidence_links ORDER BY id")
     suspend fun getAllEvidenceLinks(): List<EvidenceLinkEntity>
+
+    @Query(
+        "SELECT DISTINCT evidence_links.* FROM evidence_links " +
+            "INNER JOIN conclusions " +
+            "ON conclusions.current_revision_id = evidence_links.conclusion_revision_id " +
+            "ORDER BY evidence_links.id"
+    )
+    suspend fun getEvidenceLinksForCurrentRevisions(): List<EvidenceLinkEntity>
 
     @Query("SELECT * FROM raw_records WHERE id = :id")
     suspend fun getRawRecordById(id: Long): RawRecordEntity?
@@ -191,6 +221,14 @@ interface KnowledgeDao {
     @Query("SELECT * FROM theme_links WHERE confirmed = 1")
     suspend fun getConfirmedThemeLinksAll(): List<ThemeLinkEntity>
 
+    @Query(
+        "SELECT DISTINCT theme_links.* FROM theme_links " +
+            "INNER JOIN conclusions " +
+            "ON conclusions.current_revision_id = theme_links.conclusion_revision_id " +
+            "WHERE theme_links.confirmed = 1"
+    )
+    suspend fun getConfirmedThemeLinksForCurrentRevisions(): List<ThemeLinkEntity>
+
     @Query("SELECT * FROM theme_links ORDER BY id")
     suspend fun getAllThemeLinks(): List<ThemeLinkEntity>
 
@@ -273,8 +311,25 @@ interface KnowledgeDao {
     @Query("SELECT * FROM decisions ORDER BY created_at DESC, id DESC")
     suspend fun getAllDecisions(): List<DecisionEntity>
 
+    @Query(
+        "SELECT DISTINCT decisions.* FROM decisions " +
+            "INNER JOIN conclusions " +
+            "ON conclusions.current_revision_id = decisions.source_revision_id " +
+            "ORDER BY decisions.created_at DESC, decisions.id DESC"
+    )
+    suspend fun getDecisionsForCurrentRevisions(): List<DecisionEntity>
+
     @Query("SELECT * FROM outcomes ORDER BY created_at DESC, id DESC")
     suspend fun getAllOutcomes(): List<OutcomeEntity>
+
+    @Query(
+        "SELECT DISTINCT outcomes.* FROM outcomes " +
+            "INNER JOIN decisions ON decisions.id = outcomes.decision_id " +
+            "INNER JOIN conclusions " +
+            "ON conclusions.current_revision_id = decisions.source_revision_id " +
+            "ORDER BY outcomes.created_at DESC, outcomes.id DESC"
+    )
+    suspend fun getOutcomesForCurrentRevisionDecisions(): List<OutcomeEntity>
 
     @Query("SELECT * FROM decisions WHERE id = :id")
     suspend fun getDecisionById(id: Long): DecisionEntity?
@@ -340,9 +395,10 @@ interface KnowledgeDao {
 
     @Query(
         "SELECT * FROM audio_cleanup_queue " +
+            "WHERE attempt_count < :maxAttempts " +
             "ORDER BY failed_at, path LIMIT :limit"
     )
-    suspend fun getPendingAudioCleanup(limit: Int): List<AudioCleanupEntity>
+    suspend fun getPendingAudioCleanup(limit: Int, maxAttempts: Int): List<AudioCleanupEntity>
 
     @Query("DELETE FROM audio_cleanup_queue WHERE path = :path")
     suspend fun deleteAudioCleanup(path: String): Int
