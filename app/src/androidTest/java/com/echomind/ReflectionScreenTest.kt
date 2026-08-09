@@ -3,6 +3,7 @@ package com.echomind
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import com.echomind.domain.model.ReflectionDraft
 import com.echomind.domain.model.ReflectionSession
 import com.echomind.domain.model.ReflectionStatus
@@ -57,7 +58,10 @@ class ReflectionScreenTest {
             .onNodeWithText("My edited conclusion")
             .assertIsDisplayed()
         composeTestRule.onNodeWithText("Confirm my conclusion").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Reject EchoMind's proposal").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithText("Reject EchoMind's proposal")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test

@@ -343,20 +343,26 @@ enqueue uses race-safe replacement. This does not close the M2/M3/M4
 completion gate or its remaining migration/import, accessibility, and restart
 oracles.
 
-The next technical follow-up is partially advanced (2026-08-09): restore now
-has connected negative coverage for graph/archive integrity failures, and Home
-relevant-card actions have a fresh compact-width/fontScale-2 Compose oracle
-with adaptive action wrapping. Landscape/TalkBack/IME validation, full
-Decisions restart/export coverage, and the API26-30 runtime fallback remain
-explicit follow-ups. The M4 Review impact flow is now covered
-by repository negative/positive oracles and a Compose provenance oracle, but
-this does not close the broader Decisions UI completion gate.
+The next technical follow-up is advanced but not closed (2026-08-09): restore
+now has connected negative coverage for graph/archive integrity failures, Home
+relevant-card actions have a fresh compact-width/fontScale-2 Compose oracle,
+and Decisions actions use adaptive wrapping. The Decisions gate now has
+instrumented compact/landscape/IME/accessibility-semantics coverage, an actual
+API35 TalkBack accessibility-tree smoke, database-restart and ZIP
+export/restore oracles, plus cold-boot API26 and API30 runtime evidence. The
+M4 Review impact flow remains covered by repository negative/positive oracles
+and a Compose provenance oracle, but this does not close the general M4 or
+broader M2/M3/M4 completion gate.
 Owner input for those deferred choices was recorded and confirmed in
 [`docs/USER_INPUT_API_COMPAT_AND_M4_2026-08-09.md`](docs/USER_INPUT_API_COMPAT_AND_M4_2026-08-09.md)
 and
 [`docs/OWNER_DECISIONS_API_COMPAT_M4_2026-08-09.md`](docs/OWNER_DECISIONS_API_COMPAT_M4_2026-08-09.md).
 The owner selected API26+API30 AVD validation and authorized the required system
-image downloads; no image was downloaded in this repair commit.
+image downloads. The agreed Google APIs x86_64 images are provisioned in
+`EchoMind_API26_GoogleApis` and `EchoMind_API30_GoogleApis`; API35 remains the
+control runtime. The API26/API30 images do not provide a TalkBack package, so
+their accessibility fallback is covered by the Compose semantics oracle while
+the actual TalkBack tree smoke runs on API35.
 
 Two more repair oracles are captured in the same follow-up: Theme detail keeps
 different conclusions with the same revision version distinct through stable

@@ -142,6 +142,54 @@ class DecisionRepositoryTest {
     }
 
     @Test
+    fun decisionChoiceAndOutcomeSurviveDatabaseRestart() {
+        val firstDatabase = fileDatabase()
+        val decisionId: Long
+        try {
+            val reflection = reflectionRepository(firstDatabase)
+            val decisions = DecisionRepository(
+                firstDatabase,
+                firstDatabase.knowledgeDao(),
+                reflection
+            )
+            decisionId = runBlocking {
+                val revisionId = currentRevision(firstDatabase)
+                val createdId = decisions.createDecision(
+                    question = "Which path survives a restart?",
+                    sourceRevisionId = revisionId
+                )
+                decisions.setChoice(createdId, "Keep the selected path")
+                decisions.recordOutcome(createdId, "The selected path remained valid.")
+                createdId
+            }
+        } finally {
+            firstDatabase.close()
+        }
+
+        val reopenedDatabase = fileDatabase()
+        try {
+            val restored = runBlocking {
+                DecisionRepository(
+                    reopenedDatabase,
+                    reopenedDatabase.knowledgeDao(),
+                    reflectionRepository(reopenedDatabase)
+                ).getDecision(decisionId)
+            }
+
+            assertEquals("Which path survives a restart?", restored?.question)
+            assertEquals("Keep the selected path", restored?.choice)
+            assertEquals(1, restored?.outcomes?.size)
+            assertEquals(
+                "The selected path remained valid.",
+                restored?.outcomes?.single()?.report
+            )
+            assertTrue(restored?.sourceRevisionId != null)
+        } finally {
+            reopenedDatabase.close()
+        }
+    }
+
+    @Test
     fun outcomeCannotBeRecordedBeforeChoice() {
         val database = inMemoryDatabase()
         try {
@@ -464,6 +512,11 @@ class DecisionRepositoryTest {
 
     private fun inMemoryDatabase(): AppDatabase =
         Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+
+    private fun fileDatabase(): AppDatabase =
+        Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
             .allowMainThreadQueries()
             .build()
 

@@ -1310,3 +1310,53 @@ is not discarded by `KEEP`.
 - Full Decisions restart/export UI coverage, landscape/TalkBack/IME matrix, and
   API26/API30 fallback runtime evidence remain open. This slice does not mark
   M4 or the broader M2/M3/M4 repair gate complete.
+
+## 2026-08-09 - API26/API30 runtime fallback and Decisions gate
+
+### Implementation
+
+- Added `DecisionsScreenContent` as a testable UI seam and changed the
+  decision action row to `FlowRow`. The actions remain native text buttons but
+  now wrap instead of overflowing at compact width and large font scale.
+- Added Decisions instrumented oracles for compact width + fontScale 2,
+  landscape, IME editing, and click semantics used by TalkBack. The API26
+  reflection oracle now scrolls to the reject action before asserting it is
+  displayed; the production behavior and provenance boundary are unchanged.
+- Added database close/reopen coverage for decision question, current grounds,
+  choice, and outcome. Added ZIP export/restore coverage for the same decision
+  graph. Neither test confirms an AI proposal or creates a revision implicitly.
+
+### Runtime evidence
+
+- Cold-booted `EchoMind_API26_GoogleApis` (API26) and
+  `EchoMind_API30_GoogleApis` (API30) with `-no-snapshot-load`; both installed
+  and ran the full instrumented suite. `Pixel_8_2` API35 remained the control.
+- `:app:connectedDebugAndroidTest --rerun-tasks`: **59/59** on each of API26,
+  API30, and API35. This includes `DecisionsScreenTest` and the restart/export
+  oracles.
+- Isolated `DecisionsScreenTest`: **4/4** on API26, API30, and API35.
+  Isolated restart and export tests: **1/1** each on all three runtimes.
+- On API35, TalkBack was enabled temporarily for a real accessibility-tree
+  dump. `Decisions`, `New decision`, and the empty Decisions state were
+  exposed; the question field appeared as `EditText`, and focusing it yielded
+  `mInputShown=true`. With rotation fixed to 1, the Decisions screen retained
+  its title, empty-state text, back action, and New decision action. TalkBack
+  was disabled and the emulator restored to portrait afterward.
+- API26/API30 Google APIs images contain no TalkBack package; their fallback
+  accessibility evidence is the native Compose semantics oracle, while the
+  actual service/tree smoke is API35-only.
+
+### Final gate
+
+- `:app:testDebugUnitTest --rerun-tasks`: **40/40**.
+- `:app:connectedDebugAndroidTest --rerun-tasks`: **59/59** on each of the
+  three online AVDs; API26 and API30 were cold-booted for this validation.
+- `:app:lintDebug --rerun-tasks`: passed.
+- `git diff --check`: passed.
+
+### Scope boundary
+
+- This advances the API fallback and Decisions validation follow-up but does
+  not close general M4, the optional follow-up/reminder, or the broader
+  M2/M3/M4 repair gate. The runtime smoke did not autonomously confirm a
+  proposal or create user-authored data.

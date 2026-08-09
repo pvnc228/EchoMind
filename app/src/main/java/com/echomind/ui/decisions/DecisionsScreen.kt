@@ -2,6 +2,8 @@ package com.echomind.ui.decisions
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -74,72 +76,23 @@ fun DecisionsScreen(
             }
         }
     ) { padding ->
-        when {
-            uiState.isLoading -> {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) { Text("Loading...") }
-            }
-            uiState.error != null -> {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text("Error: ${uiState.error}", color = MaterialTheme.colorScheme.error)
-                }
-            }
-            uiState.decisions.isEmpty() -> {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text("No decisions recorded", style = MaterialTheme.typography.titleLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Turn a question into an explicit decision, then report what happened.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
-                    contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 32.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(uiState.decisions, key = { it.id }) { decision ->
-                        DecisionCard(
-                            decision = decision,
-                            sources = uiState.sources,
-                            impactReview = uiState.impactReview?.takeIf {
-                                it.decisionId == decision.id
-                            },
-                            impactLoading = uiState.impactDecisionId == decision.id &&
-                                uiState.impactLoading,
-                            impactError = uiState.impactError.takeIf {
-                                uiState.impactDecisionId == decision.id
-                            },
-                            onReviewImpact = { viewModel.reviewImpact(decision.id) },
-                            onDismissImpact = viewModel::dismissImpactReview,
-                            onApplyImpact = { wording ->
-                                viewModel.applyImpact(decision.id, wording)
-                            },
-                            onChoose = { choice -> viewModel.choose(decision.id, choice) },
-                            onReplaceChoice = { choice -> viewModel.replaceChoice(decision.id, choice) },
-                            onReplaceGrounds = { revisionId -> viewModel.replaceGrounds(decision.id, revisionId) },
-                            onReportOutcome = { report -> viewModel.reportOutcome(decision.id, report) },
-                            onDeleteOutcome = { outcomeId -> viewModel.deleteOutcome(decision.id, outcomeId) },
-                            onDelete = { viewModel.delete(decision.id) }
-                        )
-                    }
-                }
-            }
-        }
+        DecisionsScreenContent(
+            uiState = uiState,
+            modifier = Modifier.fillMaxSize().padding(padding),
+            onReviewImpact = viewModel::reviewImpact,
+            onDismissImpact = viewModel::dismissImpactReview,
+            onApplyImpact = { decisionId, wording -> viewModel.applyImpact(decisionId, wording) },
+            onChoose = { decisionId, choice -> viewModel.choose(decisionId, choice) },
+            onReplaceChoice = { decisionId, choice -> viewModel.replaceChoice(decisionId, choice) },
+            onReplaceGrounds = { decisionId, revisionId ->
+                viewModel.replaceGrounds(decisionId, revisionId)
+            },
+            onReportOutcome = { decisionId, report -> viewModel.reportOutcome(decisionId, report) },
+            onDeleteOutcome = { decisionId, outcomeId ->
+                viewModel.deleteOutcome(decisionId, outcomeId)
+            },
+            onDelete = viewModel::delete
+        )
     }
 
     if (showNewDialog) {
@@ -154,6 +107,91 @@ fun DecisionsScreen(
     }
 }
 
+@Composable
+fun DecisionsScreenContent(
+    uiState: DecisionsUiState,
+    modifier: Modifier = Modifier,
+    onReviewImpact: (Long) -> Unit = {},
+    onDismissImpact: () -> Unit = {},
+    onApplyImpact: (Long, String) -> Unit = { _, _ -> },
+    onChoose: (Long, String) -> Unit = { _, _ -> },
+    onReplaceChoice: (Long, String) -> Unit = { _, _ -> },
+    onReplaceGrounds: (Long, Long) -> Unit = { _, _ -> },
+    onReportOutcome: (Long, String) -> Unit = { _, _ -> },
+    onDeleteOutcome: (Long, Long) -> Unit = { _, _ -> },
+    onDelete: (Long) -> Unit = {}
+) {
+    when {
+        uiState.isLoading -> {
+            Column(
+                modifier = modifier,
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) { Text("Loading...") }
+        }
+        uiState.error != null -> {
+            Column(
+                modifier = modifier,
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text("Error: ${uiState.error}", color = MaterialTheme.colorScheme.error)
+            }
+        }
+        uiState.decisions.isEmpty() -> {
+            Column(
+                modifier = modifier,
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text("No decisions recorded", style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Turn a question into an explicit decision, then report what happened.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        else -> {
+            LazyColumn(
+                modifier = modifier.imePadding(),
+                contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 32.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(uiState.decisions, key = { it.id }) { decision ->
+                    DecisionCard(
+                        decision = decision,
+                        sources = uiState.sources,
+                        impactReview = uiState.impactReview?.takeIf {
+                            it.decisionId == decision.id
+                        },
+                        impactLoading = uiState.impactDecisionId == decision.id &&
+                            uiState.impactLoading,
+                        impactError = uiState.impactError.takeIf {
+                            uiState.impactDecisionId == decision.id
+                        },
+                        onReviewImpact = { onReviewImpact(decision.id) },
+                        onDismissImpact = onDismissImpact,
+                        onApplyImpact = { wording -> onApplyImpact(decision.id, wording) },
+                        onChoose = { choice -> onChoose(decision.id, choice) },
+                        onReplaceChoice = { choice -> onReplaceChoice(decision.id, choice) },
+                        onReplaceGrounds = { revisionId ->
+                            onReplaceGrounds(decision.id, revisionId)
+                        },
+                        onReportOutcome = { report -> onReportOutcome(decision.id, report) },
+                        onDeleteOutcome = { outcomeId ->
+                            onDeleteOutcome(decision.id, outcomeId)
+                        },
+                        onDelete = { onDelete(decision.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DecisionCard(
     decision: Decision,
@@ -291,7 +329,11 @@ private fun DecisionCard(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 if (!decision.isDecided) {
                     OutlinedTextButtonSmall("Choose...") { showChoiceDialog = true }
                 } else if (!decision.hasOutcome) {

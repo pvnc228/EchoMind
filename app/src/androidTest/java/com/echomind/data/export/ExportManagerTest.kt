@@ -243,6 +243,55 @@ class ExportManagerTest {
     }
 
     @Test
+    fun decisionChoiceAndOutcomeSurviveExportAndRestore() {
+        val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var exportFile: File? = null
+        try {
+            val reflection = reflectionRepository(source)
+            runBlocking {
+                val rawId = reflection.captureRawText("Decision export source")
+                val proposal = reflection.createLocalProposal(rawId)
+                val revisionId = requireNotNull(
+                    reflection.confirm(proposal.hypothesisId, "The exported grounds").revisionId
+                )
+                val decisions = DecisionRepository(source, source.knowledgeDao(), reflection)
+                val decisionId = decisions.createDecision(
+                    question = "Should this decision survive export?",
+                    sourceRevisionId = revisionId
+                )
+                decisions.setChoice(decisionId, "Keep the decision")
+                decisions.recordOutcome(decisionId, "The decision remained useful after restore.")
+
+                exportFile = exportManager(source).exportToZip().getOrThrow()
+                exportManager(target).restoreFromZip(requireNotNull(exportFile)).getOrThrow()
+
+                val restored = DecisionRepository(
+                    target,
+                    target.knowledgeDao(),
+                    reflectionRepository(target)
+                ).getDecision(decisionId)
+                assertEquals("Should this decision survive export?", restored?.question)
+                assertEquals("Keep the decision", restored?.choice)
+                assertEquals(revisionId, restored?.sourceRevisionId)
+                assertEquals(1, restored?.outcomes?.size)
+                assertEquals(
+                    "The decision remained useful after restore.",
+                    restored?.outcomes?.single()?.report
+                )
+            }
+        } finally {
+            source.close()
+            target.close()
+            exportFile?.delete()
+        }
+    }
+
+    @Test
     fun legacyPersistedStatesSurviveExportAndRestore() {
         val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
