@@ -5,6 +5,11 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
+import com.echomind.data.local.entity.ConclusionEntity
+import com.echomind.data.local.entity.ConclusionRevisionEntity
+import com.echomind.data.local.entity.DecisionEntity
+import com.echomind.data.local.entity.OutcomeEntity
+import com.echomind.data.local.entity.RawRecordEntity
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.junit.After
@@ -15,6 +20,8 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.util.Collections
+import java.util.concurrent.Executor
 
 class DecisionRepositoryTest {
 
@@ -465,6 +472,95 @@ class DecisionRepositoryTest {
     }
 
     @Test
+    fun decisionMappingQueryCountStaysBoundedForManyDecisions() {
+        val queries = Collections.synchronizedList(mutableListOf<String>())
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .setQueryCallback(
+                { sql, _ -> queries += sql },
+                Executor { command -> command.run() }
+            )
+            .build()
+        try {
+            val repository = DecisionRepository(
+                database,
+                database.knowledgeDao(),
+                reflectionRepository(database)
+            )
+            runBlocking {
+                val ids = 1L..10_000L
+                database.knowledgeDao().insertRawRecords(
+                    ids.map { id ->
+                        RawRecordEntity(
+                            id = id,
+                            originalText = "decision raw $id",
+                            audioPath = null,
+                            durationMs = 0L,
+                            createdAt = id
+                        )
+                    }
+                )
+                database.knowledgeDao().insertConclusions(
+                    ids.map { id ->
+                        ConclusionEntity(
+                            id = id,
+                            rawRecordId = id,
+                            currentRevisionId = id,
+                            createdAt = id
+                        )
+                    }
+                )
+                database.knowledgeDao().insertRevisions(
+                    ids.map { id ->
+                        ConclusionRevisionEntity(
+                            id = id,
+                            conclusionId = id,
+                            version = 1,
+                            text = "decision grounds $id",
+                            author = "user",
+                            createdAt = id
+                        )
+                    }
+                )
+                database.knowledgeDao().insertDecisions(
+                    ids.map { id ->
+                        DecisionEntity(
+                            id = id,
+                            question = "decision question $id",
+                            choice = "chosen path",
+                            sourceRevisionId = id,
+                            createdAt = id
+                        )
+                    }
+                )
+                database.knowledgeDao().insertOutcomes(
+                    ids.map { id ->
+                        OutcomeEntity(
+                            id = id + 2_000L,
+                            decisionId = id,
+                            report = "decision outcome $id",
+                            createdAt = id
+                        )
+                    }
+                )
+
+                queries.clear()
+                val decisions = repository.getDecisions()
+                val selects = queries.selectStatements()
+
+                assertEquals(10_000, decisions.size)
+                assertTrue(decisions.all { it.outcomes.size == 1 })
+                assertTrue(
+                    "Decision mapping should use a bounded number of SELECTs, got ${selects.size}",
+                    selects.size <= 4
+                )
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun deletingDecisionKeepsReferencedConclusionIntact() {
         val database = inMemoryDatabase()
         try {
@@ -523,4 +619,7 @@ class DecisionRepositoryTest {
     private companion object {
         const val TEST_DATABASE = "decision-repository-test.db"
     }
+
+    private fun List<String>.selectStatements(): List<String> =
+        filter { it.trimStart().startsWith("SELECT", ignoreCase = true) }
 }

@@ -364,11 +364,13 @@ control runtime. The API26/API30 images do not provide a TalkBack package, so
 their accessibility fallback is covered by the Compose semantics oracle while
 the actual TalkBack tree smoke runs on API35.
 
-Two more repair oracles are captured in the same follow-up: Theme detail keeps
-different conclusions with the same revision version distinct through stable
-revision IDs, and Home graph loading has a 1k/10k bounded-query regression
-using current-graph JOIN projections. The broader P2-03 search/Decisions/link-
-candidate performance work remains open.
+The repair-gate artifact from 2026-08-09 adds the remaining scoped P2-03
+oracles: Search uses historical/result projections, Decisions mapping uses
+bounded JOIN loads, and link candidates use only ranking payload projections.
+The Search, Decisions, and link-candidate public seams exercise 1k/10k
+histories and reject N+1 query growth or full raw-record payloads; the earlier
+Home oracle remains in place. CPU/FTS/pagination benchmarking for local text
+ranking is not claimed. See the matching entry in `JOURNAL.md`.
 
 ## UX/UI audit and approved implementation checkpoint
 

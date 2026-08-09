@@ -1,6 +1,7 @@
 package com.echomind.data.local.dao
 
 import androidx.room.Dao
+import androidx.room.ColumnInfo
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -17,6 +18,35 @@ import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.local.entity.HomeCardDispositionEntity
 import com.echomind.data.local.entity.AudioCleanupEntity
+
+data class SearchConclusionRow(
+    @ColumnInfo(name = "revision_id") val revisionId: Long,
+    @ColumnInfo(name = "conclusion_id") val conclusionId: Long,
+    @ColumnInfo(name = "legacy_entry_id") val legacyEntryId: Long?,
+    val text: String,
+    val version: Int,
+    @ColumnInfo(name = "revision_created_at") val revisionCreatedAt: Long,
+    @ColumnInfo(name = "current_revision_id") val currentRevisionId: Long?
+)
+
+data class SearchRawRow(
+    @ColumnInfo(name = "raw_record_id") val rawRecordId: Long,
+    @ColumnInfo(name = "legacy_entry_id") val legacyEntryId: Long?,
+    @ColumnInfo(name = "original_text") val originalText: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long
+)
+
+data class SearchThemeRow(
+    @ColumnInfo(name = "theme_id") val themeId: Long,
+    val name: String,
+    @ColumnInfo(name = "conclusion_count") val conclusionCount: Int
+)
+
+data class LinkCandidateRawRow(
+    @ColumnInfo(name = "raw_record_id") val rawRecordId: Long,
+    @ColumnInfo(name = "original_text") val originalText: String,
+    @ColumnInfo(name = "recorded_at") val recordedAt: Long
+)
 
 @Dao
 interface KnowledgeDao {
@@ -141,6 +171,12 @@ interface KnowledgeDao {
 
     @Query("SELECT * FROM conclusion_revisions WHERE id = :id")
     suspend fun getRevisionById(id: Long): ConclusionRevisionEntity?
+
+    @Query(
+        "SELECT DISTINCT conclusion_revisions.* FROM conclusion_revisions " +
+            "INNER JOIN decisions ON decisions.source_revision_id = conclusion_revisions.id"
+    )
+    suspend fun getRevisionsForDecisions(): List<ConclusionRevisionEntity>
 
     @Query("SELECT * FROM conclusion_revisions WHERE conclusion_id = :conclusionId ORDER BY version")
     suspend fun getRevisionsForConclusion(conclusionId: Long): List<ConclusionRevisionEntity>
@@ -278,23 +314,52 @@ interface KnowledgeDao {
     suspend fun deleteThemeById(themeId: Long): Int
 
     @Query(
-        "SELECT * FROM raw_records WHERE original_text LIKE '%' || :query || '%' " +
+        "SELECT id AS raw_record_id, legacy_entry_id, original_text, created_at " +
+            "FROM raw_records WHERE original_text LIKE '%' || :query || '%' " +
             "ESCAPE '\\' ORDER BY created_at DESC, id DESC"
     )
-    suspend fun searchRawRecords(query: String): List<RawRecordEntity>
+    suspend fun searchRawRows(query: String): List<SearchRawRow>
 
     @Query(
-        "SELECT * FROM conclusion_revisions " +
-            "WHERE text LIKE '%' || :query || '%' " +
-            "ESCAPE '\\' ORDER BY created_at DESC, id DESC"
+        "SELECT conclusion_revisions.id AS revision_id, " +
+            "conclusion_revisions.conclusion_id AS conclusion_id, " +
+            "raw_records.legacy_entry_id AS legacy_entry_id, " +
+            "conclusion_revisions.text AS text, " +
+            "conclusion_revisions.version AS version, " +
+            "conclusion_revisions.created_at AS revision_created_at, " +
+            "conclusions.current_revision_id AS current_revision_id " +
+            "FROM conclusion_revisions " +
+            "INNER JOIN conclusions ON conclusions.id = conclusion_revisions.conclusion_id " +
+            "INNER JOIN raw_records ON raw_records.id = conclusions.raw_record_id " +
+            "WHERE conclusion_revisions.text LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "ORDER BY conclusion_revisions.created_at DESC, conclusion_revisions.id DESC"
     )
-    suspend fun searchRevisions(query: String): List<ConclusionRevisionEntity>
+    suspend fun searchConclusionRows(query: String): List<SearchConclusionRow>
 
     @Query(
-        "SELECT * FROM themes WHERE name LIKE '%' || :query || '%' " +
-            "ESCAPE '\\' ORDER BY name"
+        "SELECT themes.id AS theme_id, themes.name AS name, COUNT(theme_links.id) AS conclusion_count " +
+            "FROM themes LEFT JOIN theme_links " +
+            "ON theme_links.theme_id = themes.id AND theme_links.confirmed = 1 " +
+            "WHERE themes.name LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "GROUP BY themes.id ORDER BY themes.name"
     )
-    suspend fun searchThemes(query: String): List<ThemeEntity>
+    suspend fun searchThemeRows(query: String): List<SearchThemeRow>
+
+    @Query(
+        "SELECT themes.name FROM themes " +
+            "INNER JOIN theme_links ON theme_links.theme_id = themes.id " +
+            "WHERE theme_links.conclusion_revision_id = :revisionId " +
+            "AND theme_links.confirmed = 1 ORDER BY themes.id"
+    )
+    suspend fun getConfirmedThemeNamesForRevision(revisionId: Long): List<String>
+
+    @Query(
+        "SELECT id AS raw_record_id, original_text AS original_text, " +
+            "created_at AS recorded_at FROM raw_records " +
+            "WHERE :currentRawRecordId IS NULL OR id != :currentRawRecordId " +
+            "ORDER BY created_at DESC, id DESC"
+    )
+    suspend fun getRawRecordsForLinkCandidates(currentRawRecordId: Long?): List<LinkCandidateRawRow>
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertDecision(decision: DecisionEntity): Long
@@ -339,6 +404,13 @@ interface KnowledgeDao {
 
     @Query("SELECT * FROM outcomes WHERE decision_id = :decisionId ORDER BY created_at, id")
     suspend fun getOutcomesForDecision(decisionId: Long): List<OutcomeEntity>
+
+    @Query(
+        "SELECT outcomes.* FROM outcomes " +
+            "INNER JOIN decisions ON decisions.id = outcomes.decision_id " +
+            "ORDER BY outcomes.decision_id, outcomes.created_at, outcomes.id"
+    )
+    suspend fun getOutcomesForAllDecisions(): List<OutcomeEntity>
 
     @Query(
         "UPDATE decisions SET choice = :choice WHERE id = :id AND choice IS NULL"

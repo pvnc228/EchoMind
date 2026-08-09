@@ -1360,3 +1360,42 @@ is not discarded by `KEEP`.
   not close general M4, the optional follow-up/reminder, or the broader
   M2/M3/M4 repair gate. The runtime smoke did not autonomously confirm a
   proposal or create user-authored data.
+
+## 2026-08-09 - repair gate: bounded graph consumers and cross-API validation
+
+### Implementation
+
+- Search now uses DAO projections for raw records, historical conclusion
+  revisions, and theme counts. JOIN/GROUP BY preserves historical revisions,
+  current-revision status, literal LIKE escaping, and confirmed-link counts
+  without per-result conclusion, raw-record, or theme queries.
+- Decision mapping now loads source revisions and outcomes through bounded
+  JOIN queries and groups them in memory. A 10,000-decision oracle covers
+  source grounds and outcomes without per-decision reads.
+- Link candidates now load confirmed theme names and only the ranking payload
+  (`id`, text, timestamp); the result remains limited to the ranker's top five.
+  Audio metadata and other unused raw-record columns are not loaded.
+- The first API26 full run exposed SQLite's bind-variable limit in the initial
+  batched revision lookup. Replacing that `IN (...)` lookup with a JOIN was the
+  minimal compatibility fix; the rerun passed on API26.
+
+### Repair-gate evidence
+
+- Search, Decisions, and link-candidate public-seam oracles exercise 1k and
+  10k histories and reject N+1 query growth or full raw-record payloads.
+- Fresh cold-boot connected suites passed **62/62** on `Pixel_8_2` API35,
+  `EchoMind_API26_GoogleApis`, and `EchoMind_API30_GoogleApis`. The suite
+  includes migration, export/empty-restore, deletion, restart, graph-negative,
+  and concurrency coverage.
+- `:app:testDebugUnitTest --rerun-tasks`, `:app:lintDebug --rerun-tasks`, and
+  `git diff --check` passed. API35 was the final control run after the last
+  source/test changes; API26 and API30 were cold-booted with
+  `-no-snapshot-load` for the fallback runs.
+
+### Scope boundary
+
+- The scoped P2-03 query-count/payload and N+1 repair is validated. This does
+  not claim a CPU/FTS/pagination benchmark for candidate ranking, which still
+  evaluates candidate text in the local ranker.
+- Optional follow-up/reminder remains unimplemented. This artifact does not
+  mark M4 or the broader M2/M3/M4 milestone complete.

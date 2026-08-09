@@ -134,8 +134,19 @@ class DecisionRepository @Inject constructor(
         }
     }
 
-    suspend fun getDecisions(): List<Decision> =
-        knowledgeDao.getAllDecisions().map { toDomain(it) }
+    suspend fun getDecisions(): List<Decision> {
+        val entities = knowledgeDao.getAllDecisions()
+        if (entities.isEmpty()) return emptyList()
+        val revisions = knowledgeDao.getRevisionsForDecisions().associateBy { it.id }
+        val outcomesByDecision = knowledgeDao.getOutcomesForAllDecisions().groupBy { it.decisionId }
+        return entities.map { entity ->
+            toDomain(
+                entity = entity,
+                sourceText = entity.sourceRevisionId?.let { revisions[it]?.text },
+                outcomes = outcomesByDecision[entity.id].orEmpty()
+            )
+        }
+    }
 
     suspend fun getDecisionSources(): List<DecisionSourceOption> {
         val revisions = knowledgeDao.getAllRevisions().associateBy { it.id }
@@ -208,10 +219,17 @@ class DecisionRepository @Inject constructor(
         }
     }
 
-    private suspend fun toDomain(entity: DecisionEntity): Decision {
-        val sourceText = entity.sourceRevisionId?.let {
-            knowledgeDao.getRevisionById(it)?.text
-        }
+    private suspend fun toDomain(entity: DecisionEntity): Decision = toDomain(
+        entity = entity,
+        sourceText = entity.sourceRevisionId?.let { knowledgeDao.getRevisionById(it)?.text },
+        outcomes = knowledgeDao.getOutcomesForDecision(entity.id)
+    )
+
+    private fun toDomain(
+        entity: DecisionEntity,
+        sourceText: String?,
+        outcomes: List<OutcomeEntity>
+    ): Decision {
         return Decision(
             id = entity.id,
             question = entity.question,
@@ -223,7 +241,7 @@ class DecisionRepository @Inject constructor(
             sourceRevisionId = entity.sourceRevisionId,
             sourceConclusionText = sourceText,
             createdAt = entity.createdAt,
-            outcomes = knowledgeDao.getOutcomesForDecision(entity.id).map {
+            outcomes = outcomes.map {
                 DecisionOutcome(it.id, it.decisionId, it.report, it.createdAt)
             }
         )

@@ -5,8 +5,11 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.echomind.data.analysis.LocalReflectionAnalyzer
 import com.echomind.data.local.AppDatabase
+import com.echomind.data.local.entity.ConclusionEntity
+import com.echomind.data.local.entity.ConclusionRevisionEntity
 import com.echomind.data.local.entity.EvidenceLinkEntity
 import com.echomind.data.local.entity.RawRecordEntity
+import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.KnowledgeSearchResult
@@ -225,6 +228,115 @@ class KnowledgeRepositoryTest {
     }
 
     @Test
+    fun searchQueryCountStaysBoundedForManyGraphMatches() {
+        val queries = Collections.synchronizedList(mutableListOf<String>())
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .setQueryCallback(
+                { sql, _ -> queries += sql },
+                Executor { command -> command.run() }
+            )
+            .build()
+        try {
+            val repository = knowledgeRepository(database)
+            runBlocking {
+                val ids = 1L..1_000L
+                database.knowledgeDao().insertRawRecords(
+                    ids.map { id ->
+                        RawRecordEntity(
+                            id = id,
+                            originalText = "needle raw $id",
+                            audioPath = null,
+                            durationMs = 0L,
+                            createdAt = id
+                        )
+                    }
+                )
+                database.knowledgeDao().insertConclusions(
+                    ids.map { id ->
+                        ConclusionEntity(
+                            id = id,
+                            rawRecordId = id,
+                            currentRevisionId = id,
+                            createdAt = id
+                        )
+                    }
+                )
+                database.knowledgeDao().insertRevisions(
+                    ids.map { id ->
+                        ConclusionRevisionEntity(
+                            id = id,
+                            conclusionId = id,
+                            version = 1,
+                            text = "needle conclusion $id",
+                            author = "user",
+                            createdAt = id
+                        )
+                    }
+                )
+
+                queries.clear()
+                val oneThousandResults = repository.search("needle")
+                val oneThousandSelects = queries.selectStatements()
+
+                database.knowledgeDao().insertRawRecords(
+                    (1_001L..10_000L).map { id ->
+                        RawRecordEntity(
+                            id = id,
+                            originalText = "other raw $id",
+                            audioPath = "/unneeded/audio-$id",
+                            durationMs = 1L,
+                            createdAt = id
+                        )
+                    }
+                )
+                database.knowledgeDao().insertConclusions(
+                    (1_001L..10_000L).map { id ->
+                        ConclusionEntity(
+                            id = id,
+                            rawRecordId = id,
+                            currentRevisionId = id,
+                            createdAt = id
+                        )
+                    }
+                )
+                database.knowledgeDao().insertRevisions(
+                    (1_001L..10_000L).map { id ->
+                        ConclusionRevisionEntity(
+                            id = id,
+                            conclusionId = id,
+                            version = 1,
+                            text = "other conclusion $id",
+                            author = "user",
+                            createdAt = id
+                        )
+                    }
+                )
+
+                queries.clear()
+                val tenThousandResults = repository.search("needle")
+                val tenThousandSelects = queries.selectStatements()
+
+                assertEquals(1_000, oneThousandResults.count { it is KnowledgeSearchResult.RawRecord })
+                assertEquals(1_000, oneThousandResults.count { it is KnowledgeSearchResult.Conclusion })
+                assertEquals(1_000, tenThousandResults.count { it is KnowledgeSearchResult.RawRecord })
+                assertEquals(1_000, tenThousandResults.count { it is KnowledgeSearchResult.Conclusion })
+                assertTrue(
+                    "Search SELECT count should stay bounded at 1k and 10k records: " +
+                        "1k=${oneThousandSelects.size}, 10k=${tenThousandSelects.size}",
+                    oneThousandSelects.size <= 6 && tenThousandSelects.size <= 6
+                )
+                assertTrue(
+                    "Search should not fetch full raw-record entities",
+                    tenThousandSelects.none { it.lowercase().contains("select * from raw_records") }
+                )
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun manualLinkCandidatesIncludeNoOverlapAndRecordsBeyondSuggestionLimit() {
         val database = inMemoryDatabase()
         try {
@@ -410,10 +522,10 @@ class KnowledgeRepositoryTest {
                 val tenThousandSelects = queries.selectStatements()
 
                 assertTrue(
-                    "Home SELECT count should not grow with unrelated history",
-                    tenThousandSelects.size <= oneThousandSelects.size
+                    "Home SELECT count should stay bounded at 1k and 10k records: " +
+                        "1k=${oneThousandSelects.size}, 10k=${tenThousandSelects.size}",
+                    oneThousandSelects.size <= 12 && tenThousandSelects.size <= 12
                 )
-                assertTrue("Home should use at most 12 bounded SELECTs", tenThousandSelects.size <= 12)
                 listOf(
                     "from raw_records order by",
                     "from conclusion_revisions order by",
@@ -427,6 +539,116 @@ class KnowledgeRepositoryTest {
                         tenThousandSelects.none { it.lowercase().contains(unboundedScan) }
                     )
                 }
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun linkCandidateQueriesStayBoundedAndUseOnlyRankingPayloadAtOneAndTenThousandRecords() {
+        val queries = Collections.synchronizedList(mutableListOf<String>())
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .setQueryCallback(
+                { sql, _ -> queries += sql },
+                Executor { command -> command.run() }
+            )
+            .build()
+        try {
+            val repository = knowledgeRepository(database)
+            runBlocking {
+                database.knowledgeDao().insertRawRecord(
+                    RawRecordEntity(
+                        id = 1L,
+                        originalText = "Current conclusion shared-term",
+                        audioPath = null,
+                        durationMs = 0L,
+                        createdAt = 1L
+                    )
+                )
+                database.knowledgeDao().insertConclusion(
+                    ConclusionEntity(
+                        id = 1L,
+                        rawRecordId = 1L,
+                        currentRevisionId = 1L,
+                        createdAt = 2L
+                    )
+                )
+                database.knowledgeDao().insertRevision(
+                    ConclusionRevisionEntity(
+                        id = 1L,
+                        conclusionId = 1L,
+                        version = 1,
+                        text = "Current conclusion shared-term",
+                        author = "user",
+                        createdAt = 3L
+                    )
+                )
+                database.knowledgeDao().insertRawRecords(
+                    (2L..1_000L).map { id ->
+                        RawRecordEntity(
+                            id = id,
+                            originalText = "Candidate shared-term $id",
+                            audioPath = "/unneeded/audio-$id",
+                            durationMs = 1L,
+                            createdAt = id
+                        )
+                    }
+                )
+                database.knowledgeDao().insertThemes(
+                    (1L..100L).map { id ->
+                        ThemeEntity(id = id, name = "Theme $id", createdAt = id)
+                    }
+                )
+                database.knowledgeDao().insertThemeLinks(
+                    (1L..100L).map { id ->
+                        ThemeLinkEntity(
+                            id = id,
+                            themeId = id,
+                            conclusionRevisionId = 1L,
+                            confirmed = true,
+                            createdAt = id
+                        )
+                    }
+                )
+
+                queries.clear()
+                val oneThousand = repository.getLinkCandidates(1L)
+                val oneThousandSelects = queries.selectStatements()
+
+                database.knowledgeDao().insertRawRecords(
+                    (1_001L..10_000L).map { id ->
+                        RawRecordEntity(
+                            id = id,
+                            originalText = "Candidate shared-term $id",
+                            audioPath = "/unneeded/audio-$id",
+                            durationMs = 1L,
+                            createdAt = id
+                        )
+                    }
+                )
+                queries.clear()
+                val tenThousand = repository.getLinkCandidates(1L)
+                val tenThousandSelects = queries.selectStatements()
+
+                assertTrue(oneThousand.size <= 5)
+                assertTrue(tenThousand.size <= 5)
+                assertTrue(
+                    "Candidate query count should stay bounded at 1k and 10k records: " +
+                        "1k=${oneThousandSelects.size}, 10k=${tenThousandSelects.size}",
+                    oneThousandSelects.size <= 6 && tenThousandSelects.size <= 6
+                )
+                assertTrue(
+                    "Candidate loading should use bounded queries, got ${tenThousandSelects.size}",
+                    tenThousandSelects.size <= 6
+                )
+                assertTrue(
+                    "Candidate loading must not fetch full raw-record entities",
+                    tenThousandSelects.none {
+                        it.lowercase().contains("select * from raw_records")
+                    }
+                )
             }
         } finally {
             database.close()

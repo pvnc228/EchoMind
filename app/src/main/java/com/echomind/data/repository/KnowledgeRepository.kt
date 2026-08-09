@@ -221,19 +221,18 @@ class KnowledgeRepository @Inject constructor(
         val currentConclusion = currentRevision.text
         val currentRaw = knowledgeDao.getConclusionById(currentRevision.conclusionId)
             ?.rawRecordId
-        val currentThemeNames = knowledgeDao.getConfirmedLinksForRevision(currentRevisionId)
-            .mapNotNull { link -> knowledgeDao.getThemeById(link.themeId)?.name.orEmpty() }
+        val currentThemeNames = knowledgeDao.getConfirmedThemeNamesForRevision(currentRevisionId)
         val linkedSourceIds = knowledgeDao.getEvidenceLinksForRevision(currentRevisionId)
             .map { it.sourceRawRecordId }
             .toSet()
         return LinkCandidateRanker.rank(
             currentText = currentConclusion,
             themeText = currentThemeNames.joinToString(" "),
-            candidates = knowledgeDao.getAllRawRecords().map { raw ->
+            candidates = knowledgeDao.getRawRecordsForLinkCandidates(currentRaw).map { raw ->
                 LinkCandidateInput(
-                    rawRecordId = raw.id,
+                    rawRecordId = raw.rawRecordId,
                     text = raw.originalText,
-                    recordedAt = raw.createdAt
+                    recordedAt = raw.recordedAt
                 )
             },
             currentRawRecordId = currentRaw,
@@ -456,32 +455,30 @@ class KnowledgeRepository @Inject constructor(
         if (trimmed.isBlank()) return emptyList()
         val escaped = escapeLikeQuery(trimmed)
 
-        val rawResults = knowledgeDao.searchRawRecords(escaped).map { raw ->
+        val rawResults = knowledgeDao.searchRawRows(escaped).map { raw ->
             KnowledgeSearchResult.RawRecord(
-                rawRecordId = raw.id,
+                rawRecordId = raw.rawRecordId,
                 entryId = raw.legacyEntryId,
                 text = raw.originalText,
                 createdAt = raw.createdAt
             )
         }
-        val conclusionResults = knowledgeDao.searchRevisions(escaped).mapNotNull { revision ->
-            val conclusion = knowledgeDao.getConclusionById(revision.conclusionId) ?: return@mapNotNull null
-            val raw = knowledgeDao.getRawRecordById(conclusion.rawRecordId)
+        val conclusionResults = knowledgeDao.searchConclusionRows(escaped).map { row ->
             KnowledgeSearchResult.Conclusion(
-                conclusionId = conclusion.id,
-                revisionId = revision.id,
-                entryId = raw?.legacyEntryId,
-                text = revision.text,
-                revisionVersion = revision.version,
-                createdAt = revision.createdAt,
-                isCurrent = conclusion.currentRevisionId == revision.id
+                conclusionId = row.conclusionId,
+                revisionId = row.revisionId,
+                entryId = row.legacyEntryId,
+                text = row.text,
+                revisionVersion = row.version,
+                createdAt = row.revisionCreatedAt,
+                isCurrent = row.currentRevisionId == row.revisionId
             )
         }
-        val themeResults = knowledgeDao.searchThemes(escaped).map { theme ->
+        val themeResults = knowledgeDao.searchThemeRows(escaped).map { theme ->
             KnowledgeSearchResult.Theme(
-                themeId = theme.id,
+                themeId = theme.themeId,
                 text = theme.name,
-                conclusionCount = knowledgeDao.getConfirmedLinksForTheme(theme.id).size
+                conclusionCount = theme.conclusionCount
             )
         }
         return rawResults + conclusionResults + themeResults

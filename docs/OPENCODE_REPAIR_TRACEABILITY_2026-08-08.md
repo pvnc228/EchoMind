@@ -32,7 +32,7 @@ oracle:
 | P2-04 | implemented; connected wildcard/historical-revision search oracle passes |
 | P2-08 | implemented; Home flow uses the typed repository batch and no legacy collector state |
 | P2-10 | implemented; manual browse is independent of ranked top-5 suggestions and does not auto-confirm links |
-| P2-03 | partially verified; Home uses current-graph JOIN queries and the 1k/10k query-count/payload oracle passes; search, Decisions mapping and heuristic candidate scan remain separate unbounded/N+1 follow-ups |
+| P2-03 | scoped repair verified; Home, Search, Decisions mapping and link-candidate paths have 1k/10k query-count/payload oracles with projections/bounded loads; CPU/FTS/pagination benchmarking remains deferred |
 | P2-05 | partially implemented; the new negative/metamorphic seams have distinct tests, but no single exhaustive cross-package inventory exists |
 | P2-06 | partially verified; Home actions remain reachable at 320dp with fontScale 2 and evidence rows expose Button semantics on fresh API35 Compose coverage; landscape, Decisions and long-label matrix remain pending |
 | P2-07 | pending execution; owner selected API26+API30 AVD coverage and authorized system-image downloads, but fallback and TalkBack/IME oracles are not yet run |
@@ -65,8 +65,24 @@ their distinct outcome labels visible. Home graph loading now uses JOIN queries
 limited to current revisions and their reachable raw/evidence/theme/decision
 rows plus proposed hypotheses. The 1k/10k fixture proves SELECT count does not
 grow with unrelated history and rejects the former unbounded table scans.
-P2-03 remains partial because search, Decisions mapping, and heuristic
-candidate scanning still require their own bounded-query work.
+At the time of this baseline, P2-03 remained partial because search,
+Decisions mapping, and heuristic candidate scanning still required their own
+bounded-query work.
+
+### 2026-08-09 repair-gate performance artifact
+
+The previously open P2-03 query/payload slice is now covered by fresh public
+repository seams. Search uses three result projections; Decisions mapping uses
+bounded JOIN loads for source revisions and outcomes; link candidates use a
+joined theme-name lookup plus a raw-record ranking projection without audio
+payload. The 1k/10k fixtures preserve result semantics and reject N+1 query
+growth and full raw-record entity loading.
+
+The first API26 full run caught SQLite's bind-variable limit in the initial
+revision `IN (...)` batching. The JOIN replacement passed the rerun, and the
+full connected suite passed 62/62 on each of cold-booted API26, API30, and the
+API35 control. This closes the scoped query-count/payload repair, not CPU/FTS/
+pagination benchmarking for local ranking or the broader product milestones.
 
 ## Package 1 — без изменения схемы
 
