@@ -32,7 +32,7 @@ class DecisionRepositoryTest {
         val database = inMemoryDatabase()
         try {
             val reflectionRepository = reflectionRepository(database)
-            val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao(), reflectionRepository)
             runBlocking {
                 val rawId = reflectionRepository.captureRawText(
                     "I keep going back and forth about changing roles."
@@ -95,7 +95,7 @@ class DecisionRepositoryTest {
     fun choiceIsRecordedOnlyOnce() {
         val database = inMemoryDatabase()
         try {
-            val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao(), reflectionRepository(database))
             runBlocking {
                 val id = decisionRepository.createDecision(
                     "Which path?",
@@ -121,7 +121,7 @@ class DecisionRepositoryTest {
     fun choiceCanBeReplacedBeforeOutcomeButNotAfterOutcome() {
         val database = inMemoryDatabase()
         try {
-            val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao(), reflectionRepository(database))
             runBlocking {
                 val id = decisionRepository.createDecision(
                     "Which path?",
@@ -145,7 +145,7 @@ class DecisionRepositoryTest {
     fun outcomeCannotBeRecordedBeforeChoice() {
         val database = inMemoryDatabase()
         try {
-            val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao(), reflectionRepository(database))
             runBlocking {
                 val decisionId = decisionRepository.createDecision(
                     "Which path?",
@@ -166,7 +166,7 @@ class DecisionRepositoryTest {
     fun concreteOutcomeCanBeRemovedWithoutDeletingTheDecision() {
         val database = inMemoryDatabase()
         try {
-            val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao(), reflectionRepository(database))
             runBlocking {
                 val decisionId = decisionRepository.createDecision(
                     "Which path?",
@@ -190,11 +190,145 @@ class DecisionRepositoryTest {
     }
 
     @Test
+    fun outcomeImpactReviewShowsOriginalGroundsAndDoesNotCreateRevision() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao(), reflectionRepository)
+            runBlocking {
+                val rawId = reflectionRepository.captureRawText("A decision source")
+                val proposal = reflectionRepository.createLocalProposal(rawId)
+                val originalRevisionId = requireNotNull(
+                    reflectionRepository.confirm(proposal.hypothesisId, "The original conclusion").revisionId
+                )
+                val decisionId = decisionRepository.createDecision(
+                    question = "Should I continue?",
+                    sourceRevisionId = originalRevisionId
+                )
+                decisionRepository.setChoice(decisionId, "Continue")
+                decisionRepository.recordOutcome(decisionId, "The result was better than expected.")
+
+                val review = requireNotNull(decisionRepository.getOutcomeImpact(decisionId))
+
+                assertEquals(decisionId, review.decisionId)
+                assertEquals(originalRevisionId, review.sourceRevisionId)
+                assertEquals("The original conclusion", review.originalText)
+                assertEquals("Continue", review.choice)
+                assertEquals(
+                    listOf("The result was better than expected."),
+                    review.outcomes
+                )
+                assertEquals(
+                    "The original conclusion\nOutcome after choosing \"Continue\": " +
+                        "The result was better than expected.",
+                    review.proposedText
+                )
+                assertEquals(
+                    originalRevisionId,
+                    database.knowledgeDao().getAllConclusions().single().currentRevisionId
+                )
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun confirmingOutcomeImpactAppendsRevisionWithoutRewritingDecisionGrounds() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val decisionRepository = DecisionRepository(
+                database,
+                database.knowledgeDao(),
+                reflectionRepository
+            )
+            runBlocking {
+                val rawId = reflectionRepository.captureRawText("A decision source")
+                val proposal = reflectionRepository.createLocalProposal(rawId)
+                val originalRevisionId = requireNotNull(
+                    reflectionRepository.confirm(proposal.hypothesisId, "The original conclusion").revisionId
+                )
+                val decisionId = decisionRepository.createDecision(
+                    question = "Should I continue?",
+                    sourceRevisionId = originalRevisionId
+                )
+                decisionRepository.setChoice(decisionId, "Continue")
+                decisionRepository.recordOutcome(decisionId, "The result was better than expected.")
+
+                val newRevisionId = decisionRepository.applyOutcomeImpact(
+                    decisionId,
+                    "The outcome supports continuing with the same approach."
+                )
+
+                assertTrue(newRevisionId != originalRevisionId)
+                assertEquals(
+                    "The original conclusion",
+                    database.knowledgeDao().getRevisionById(originalRevisionId)?.text
+                )
+                assertEquals(
+                    "The outcome supports continuing with the same approach.",
+                    database.knowledgeDao().getRevisionById(newRevisionId)?.text
+                )
+                assertEquals(
+                    newRevisionId,
+                    database.knowledgeDao().getAllConclusions().single().currentRevisionId
+                )
+                assertEquals(
+                    originalRevisionId,
+                    decisionRepository.getDecision(decisionId)?.sourceRevisionId
+                )
+                assertNull(decisionRepository.getOutcomeImpact(decisionId))
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun staleOutcomeImpactCannotApplyAfterGroundsChange() {
+        val database = inMemoryDatabase()
+        try {
+            val reflection = reflectionRepository(database)
+            val decisions = DecisionRepository(database, database.knowledgeDao(), reflection)
+            runBlocking {
+                val rawId = reflection.captureRawText("A decision source")
+                val proposal = reflection.createLocalProposal(rawId)
+                val originalRevisionId = requireNotNull(
+                    reflection.confirm(proposal.hypothesisId, "The original conclusion").revisionId
+                )
+                val decisionId = decisions.createDecision("Should I continue?", sourceRevisionId = originalRevisionId)
+                decisions.setChoice(decisionId, "Continue")
+                decisions.recordOutcome(decisionId, "The result changed the context.")
+                val latestRevision = reflection.revise(proposal.hypothesisId, "A newer current conclusion")
+                val currentRevisionId = requireNotNull(latestRevision.revisionId)
+
+                assertNull(decisions.getOutcomeImpact(decisionId))
+                assertThrows(IllegalStateException::class.java) {
+                    runBlocking {
+                        decisions.applyOutcomeImpact(decisionId, "A stale proposal")
+                    }
+                }
+                assertEquals(
+                    currentRevisionId,
+                    database.knowledgeDao().getAllConclusions().single().currentRevisionId
+                )
+                assertEquals(
+                    "A newer current conclusion",
+                    database.knowledgeDao().getRevisionById(currentRevisionId)?.text
+                )
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun newDecisionRequiresTheCurrentRevisionAsGrounds() {
         val database = inMemoryDatabase()
         try {
             val reflectionRepository = reflectionRepository(database)
-            val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao(), reflectionRepository)
             runBlocking {
                 assertThrows(IllegalArgumentException::class.java) {
                     runBlocking { decisionRepository.createDecision("Missing grounds") }
@@ -236,7 +370,7 @@ class DecisionRepositoryTest {
         val database = inMemoryDatabase()
         try {
             val reflection = reflectionRepository(database)
-            val decisions = DecisionRepository(database, database.knowledgeDao())
+            val decisions = DecisionRepository(database, database.knowledgeDao(), reflection)
             runBlocking {
                 val firstRaw = reflection.captureRawText("First grounds")
                 val firstProposal = reflection.createLocalProposal(firstRaw)
@@ -287,7 +421,7 @@ class DecisionRepositoryTest {
         val database = inMemoryDatabase()
         try {
             val reflectionRepository = reflectionRepository(database)
-            val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+            val decisionRepository = DecisionRepository(database, database.knowledgeDao(), reflectionRepository)
             runBlocking {
                 val rawId = reflectionRepository.captureRawText("A decision source")
                 val proposal = reflectionRepository.createLocalProposal(rawId)

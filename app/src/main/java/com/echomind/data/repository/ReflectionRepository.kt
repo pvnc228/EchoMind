@@ -264,58 +264,84 @@ class ReflectionRepository @Inject constructor(
                 }
             } ?: throw IllegalStateException("No current revision to revise.")
 
-            val createdAt = System.currentTimeMillis()
-            val newRevisionId = knowledgeDao.insertRevision(
-                ConclusionRevisionEntity(
-                    conclusionId = conclusion.id,
-                    version = (knowledgeDao.getMaxRevisionVersion(conclusion.id) ?: currentRevision.version) + 1,
-                    text = newWording,
-                    author = "user",
-                    createdAt = createdAt
-                )
-            )
-            val now = System.currentTimeMillis()
-            knowledgeDao.insertEvidenceLink(
-                EvidenceLinkEntity(
-                    conclusionRevisionId = newRevisionId,
-                    sourceRawRecordId = conclusion.rawRecordId,
-                    relationship = "supports",
-                    status = ReflectionStatus.CONFIRMED,
-                    origin = "intrinsic_source",
-                    createdAt = now
-                )
-            )
-            knowledgeDao.getEvidenceLinksForRevision(currentRevision.id)
-                .filter { it.sourceRawRecordId != conclusion.rawRecordId }
-                .forEach { link ->
-                    knowledgeDao.insertEvidenceLink(
-                        link.copy(
-                            id = 0,
-                            conclusionRevisionId = newRevisionId,
-                            status = "needs_review",
-                            origin = "proposed_inherited",
-                            createdAt = now,
-                            createdAtEstimated = false,
-                            reviewMetadata = "inherited_from_revision=${currentRevision.id}"
-                        )
-                    )
-                }
-            knowledgeDao.getThemeLinksForRevision(currentRevision.id).forEach { link ->
-                knowledgeDao.insertThemeLink(
-                    link.copy(
-                        id = 0,
-                        conclusionRevisionId = newRevisionId,
-                        confirmed = false,
-                        origin = "proposed_inherited",
-                        reviewRequired = true,
-                        createdAt = now
-                    )
-                )
-            }
-            check(knowledgeDao.setCurrentRevision(conclusion.id, newRevisionId) == 1)
+            appendRevisionInTransaction(conclusion, currentRevision, newWording)
         }
 
         return loadReflection(hypothesisId)
+    }
+
+    internal suspend fun reviseCurrentConclusionInTransaction(
+        sourceRevisionId: Long,
+        newWording: String
+    ): Long {
+        require(newWording.isNotBlank()) { "A revised conclusion cannot be blank." }
+        val currentRevision = requireNotNull(knowledgeDao.getRevisionById(sourceRevisionId)) {
+            "Source revision $sourceRevisionId does not exist."
+        }
+        val conclusion = requireNotNull(knowledgeDao.getConclusionById(currentRevision.conclusionId)) {
+            "Source revision $sourceRevisionId has no conclusion."
+        }
+        check(conclusion.currentRevisionId == sourceRevisionId) {
+            "The decision grounds changed before review confirmation."
+        }
+        return appendRevisionInTransaction(conclusion, currentRevision, newWording)
+    }
+
+    private suspend fun appendRevisionInTransaction(
+        conclusion: ConclusionEntity,
+        currentRevision: ConclusionRevisionEntity,
+        newWording: String
+    ): Long {
+        val createdAt = System.currentTimeMillis()
+        val newRevisionId = knowledgeDao.insertRevision(
+            ConclusionRevisionEntity(
+                conclusionId = conclusion.id,
+                version = (knowledgeDao.getMaxRevisionVersion(conclusion.id) ?: currentRevision.version) + 1,
+                text = newWording,
+                author = "user",
+                createdAt = createdAt
+            )
+        )
+        val now = System.currentTimeMillis()
+        knowledgeDao.insertEvidenceLink(
+            EvidenceLinkEntity(
+                conclusionRevisionId = newRevisionId,
+                sourceRawRecordId = conclusion.rawRecordId,
+                relationship = "supports",
+                status = ReflectionStatus.CONFIRMED,
+                origin = "intrinsic_source",
+                createdAt = now
+            )
+        )
+        knowledgeDao.getEvidenceLinksForRevision(currentRevision.id)
+            .filter { it.sourceRawRecordId != conclusion.rawRecordId }
+            .forEach { link ->
+                knowledgeDao.insertEvidenceLink(
+                    link.copy(
+                        id = 0,
+                        conclusionRevisionId = newRevisionId,
+                        status = "needs_review",
+                        origin = "proposed_inherited",
+                        createdAt = now,
+                        createdAtEstimated = false,
+                        reviewMetadata = "inherited_from_revision=${currentRevision.id}"
+                    )
+                )
+            }
+        knowledgeDao.getThemeLinksForRevision(currentRevision.id).forEach { link ->
+            knowledgeDao.insertThemeLink(
+                link.copy(
+                    id = 0,
+                    conclusionRevisionId = newRevisionId,
+                    confirmed = false,
+                    origin = "proposed_inherited",
+                    reviewRequired = true,
+                    createdAt = now
+                )
+            )
+        }
+        check(knowledgeDao.setCurrentRevision(conclusion.id, newRevisionId) == 1)
+        return newRevisionId
     }
 
     suspend fun reject(hypothesisId: Long): ReflectionSession {

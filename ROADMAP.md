@@ -206,8 +206,17 @@ first-class, inspectable objects. A decision must be grounded in a current
 revision; user choice and reported outcomes are guarded by the derived
 `CREATED → CHOSEN → OUTCOME_REPORTED` state machine. System suggestions require
 explicit author/source/status metadata and are not created by the ordinary user
-flow. Export carries the metadata. The outcome-to-reviewed-revision leg and
-full restart/export UI oracle remain deferred.
+flow. Export carries the metadata. The full restart/export UI oracle remained
+deferred until the Review impact slice below.
+
+**Status (2026-08-09, Review impact slice):** the optional local Review impact
+flow is implemented and verified. It reads the original current grounds, choice,
+and reported outcomes in one transaction, builds an unconfirmed deterministic
+proposal, shows the original/proposed wording separately, and appends a new
+revision only after explicit confirmation. Stale grounds are rejected without a
+write; historical revisions and the decision's original grounds remain intact.
+The full Decisions restart/export UI oracle and API26/API30 runtime evidence
+remain open, so M4 and the M2/M3/M4 repair gate are not marked complete.
 
 **Owner decision (2026-08-09):** следующий M4 slice — необязательный локальный
 `Review impact`: outcome сравнивается с исходными grounds/choice, proposal
@@ -216,7 +225,8 @@ full restart/export UI oracle remain deferred.
 1-3 дня; принятый reminder локальный, opt-in, с действиями postpone/cancel в
 notification и приложении. Решение зафиксировано в
 [`docs/OWNER_DECISIONS_API_COMPAT_M4_2026-08-09.md`](docs/OWNER_DECISIONS_API_COMPAT_M4_2026-08-09.md),
-но ещё не реализовано.
+а Review impact реализован в отдельном срезе ниже; follow-up остаётся
+не реализованным.
 
 ### Scope
 
@@ -224,12 +234,12 @@ notification и приложении. Решение зафиксировано 
 - [x] Store the user's choice separately from EchoMind's suggestion.
 - [ ] Offer an optional, user-controlled follow-up.
 - [x] Capture the reported outcome with minimal friction.
-- [ ] Compare an outcome with the original expectation and revise relevant conclusions only after review.
+- [x] Compare an outcome with the original expectation and revise relevant conclusions only after review.
 - [x] Show when a theme lacks outcome evidence.
 
 ### Completion criteria
 
-- [ ] The complete chain `question → grounds → suggestion → choice → outcome → revision` is inspectable; outcome-to-reviewed-revision remains deferred.
+- [x] The complete chain `question → grounds → suggestion → choice → outcome → revision` is inspectable through an explicit local Review impact proposal and confirmation; automatic revision remains forbidden.
 - [x] Ignoring follow-up never blocks basic reflection or retrieval.
 - [x] Reminders are opt-in, dismissible, and do not use guilt or streak mechanics.
 - [x] Advice quality is never inferred from entry count alone.
@@ -336,8 +346,11 @@ oracles.
 The next technical follow-up is partially advanced (2026-08-09): restore now
 has connected negative coverage for graph/archive integrity failures, and Home
 relevant-card actions have a fresh compact-width/fontScale-2 Compose oracle
-with adaptive action wrapping. API26-30 fallback, landscape/TalkBack/IME
-validation, and Decisions UI coverage remain explicit follow-ups.
+with adaptive action wrapping. Landscape/TalkBack/IME validation, full
+Decisions restart/export coverage, and the API26-30 runtime fallback remain
+explicit follow-ups. The M4 Review impact flow is now covered
+by repository negative/positive oracles and a Compose provenance oracle, but
+this does not close the broader Decisions UI completion gate.
 Owner input for those deferred choices was recorded and confirmed in
 [`docs/USER_INPUT_API_COMPAT_AND_M4_2026-08-09.md`](docs/USER_INPUT_API_COMPAT_AND_M4_2026-08-09.md)
 and

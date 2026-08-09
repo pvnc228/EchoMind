@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.echomind.data.repository.DecisionRepository
 import com.echomind.domain.model.Decision
 import com.echomind.domain.model.DecisionSourceOption
+import com.echomind.domain.model.OutcomeImpactReview
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,7 +17,11 @@ data class DecisionsUiState(
     val decisions: List<Decision> = emptyList(),
     val sources: List<DecisionSourceOption> = emptyList(),
     val isLoading: Boolean = true,
-    val error: String? = null
+    val error: String? = null,
+    val impactDecisionId: Long? = null,
+    val impactReview: OutcomeImpactReview? = null,
+    val impactLoading: Boolean = false,
+    val impactError: String? = null
 )
 
 @HiltViewModel
@@ -46,6 +51,65 @@ class DecisionsViewModel @Inject constructor(
                 }
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
+                }
+        }
+    }
+
+    fun reviewImpact(decisionId: Long) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                impactDecisionId = decisionId,
+                impactReview = null,
+                impactLoading = true,
+                impactError = null
+            )
+            runCatching { repository.getOutcomeImpact(decisionId) }
+                .onSuccess { review ->
+                    _uiState.value = _uiState.value.copy(
+                        impactReview = review,
+                        impactLoading = false,
+                        impactError = if (review == null) {
+                            "This decision's grounds are no longer current; review the latest conclusion instead."
+                        } else {
+                            null
+                        }
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        impactLoading = false,
+                        impactError = e.message
+                    )
+                }
+        }
+    }
+
+    fun dismissImpactReview() {
+        _uiState.value = _uiState.value.copy(
+            impactDecisionId = null,
+            impactReview = null,
+            impactLoading = false,
+            impactError = null
+        )
+    }
+
+    fun applyImpact(decisionId: Long, acceptedText: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(impactLoading = true, impactError = null)
+            runCatching { repository.applyOutcomeImpact(decisionId, acceptedText) }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(
+                        impactDecisionId = null,
+                        impactReview = null,
+                        impactLoading = false
+                    )
+                    load()
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        impactLoading = false,
+                        impactError = e.message
+                    )
                 }
         }
     }

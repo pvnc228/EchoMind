@@ -32,6 +32,15 @@ data class DecisionOutcome(
     val createdAt: Long
 )
 
+data class OutcomeImpactReview(
+    val decisionId: Long,
+    val sourceRevisionId: Long,
+    val originalText: String,
+    val choice: String,
+    val outcomes: List<String>,
+    val proposedText: String
+)
+
 data class DecisionSourceOption(
     val revisionId: Long,
     val version: Int,

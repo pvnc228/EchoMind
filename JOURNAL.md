@@ -1270,3 +1270,43 @@ is not discarded by `KEEP`.
   `docs/OWNER_DECISIONS_API_COMPAT_M4_2026-08-09.md`.
 - These decisions remove product ambiguity; API images, M4 Review impact, and
   follow-up notifications are not implemented by this commit.
+
+## 2026-08-09 - M4 Review impact slice
+
+### Implementation
+
+- Added `OutcomeImpactReview` as an unconfirmed, in-memory review proposal. It
+  includes the decision's original current grounds, the recorded choice, all
+  reported outcomes, and deterministic proposed wording; no background work or
+  import path can confirm it.
+- Added `DecisionRepository.getOutcomeImpact()` as a transactionally consistent
+  read seam and `applyOutcomeImpact()` as the explicit write seam. Apply checks
+  the decision, choice, outcome, and current grounds inside the Room transaction.
+- Reused the append-only revision path from `ReflectionRepository`; old revision
+  text and links are not rewritten, inherited links remain pending, and the
+  decision continues to point at its original grounds. A stale review is rejected
+  without creating a revision.
+- Added a Decisions UI progressive disclosure card with distinct original
+  grounds, choice, outcome, and editable proposed revision. The confirmation
+  action is disabled while saving, and the review field uses IME padding and an
+  adaptive vertical action layout.
+
+### Verification
+
+- Red oracle first failed because `getOutcomeImpact()` did not exist; the second
+  red oracle caught repeat review after apply because stale grounds were not
+  guarded. Both became green after the minimal fixes.
+- `DecisionRepositoryTest`: 12/12 on fresh `Pixel_8_2` API 35, including stale
+  grounds rejection and historical-ground preservation.
+- `DecisionsScreenTest`: 1/1 on fresh `Pixel_8_2` API 35, verifying the visible
+  provenance/diff labels and explicit confirm callback.
+- Final gate: `:app:testDebugUnitTest --rerun-tasks` passed 40/40; full
+  `:app:connectedDebugAndroidTest --rerun-tasks` passed 54/54 on `Pixel_8_2`
+  API 35; `:app:lintDebug --rerun-tasks` passed; `git diff --check` passed.
+
+### Remaining limitations
+
+- M4 optional follow-up/reminder remains unimplemented.
+- Full Decisions restart/export UI coverage, landscape/TalkBack/IME matrix, and
+  API26/API30 fallback runtime evidence remain open. This slice does not mark
+  M4 or the broader M2/M3/M4 repair gate complete.

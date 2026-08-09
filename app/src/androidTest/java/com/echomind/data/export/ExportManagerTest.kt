@@ -219,7 +219,7 @@ class ExportManagerTest {
                 val proposal = reflection.createLocalProposal(rawId)
                 val first = reflection.confirm(proposal.hypothesisId, "First conclusion")
                 val firstRevisionId = requireNotNull(first.revisionId)
-                DecisionRepository(source, source.knowledgeDao()).createDecision(
+                DecisionRepository(source, source.knowledgeDao(), reflection).createDecision(
                     question = "Keep the original plan?",
                     sourceRevisionId = firstRevisionId
                 )

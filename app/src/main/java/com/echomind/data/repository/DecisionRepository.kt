@@ -8,13 +8,15 @@ import com.echomind.data.local.entity.OutcomeEntity
 import com.echomind.domain.model.Decision
 import com.echomind.domain.model.DecisionOutcome
 import com.echomind.domain.model.DecisionSourceOption
+import com.echomind.domain.model.OutcomeImpactReview
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class DecisionRepository @Inject constructor(
     private val database: AppDatabase,
-    private val knowledgeDao: KnowledgeDao
+    private val knowledgeDao: KnowledgeDao,
+    private val reflectionRepository: ReflectionRepository
 ) {
     suspend fun createDecision(
         question: String,
@@ -146,6 +148,57 @@ class DecisionRepository @Inject constructor(
     suspend fun getDecision(decisionId: Long): Decision? =
         knowledgeDao.getDecisionById(decisionId)?.let { toDomain(it) }
 
+    suspend fun getOutcomeImpact(decisionId: Long): OutcomeImpactReview? =
+        database.withTransaction {
+            val decision = requireNotNull(knowledgeDao.getDecisionById(decisionId)) {
+                "Decision $decisionId missing."
+            }
+            val sourceRevisionId = decision.sourceRevisionId ?: return@withTransaction null
+            val choice = decision.choice?.takeIf { it.isNotBlank() }
+                ?: return@withTransaction null
+            val outcomes = knowledgeDao.getOutcomesForDecision(decisionId)
+            if (outcomes.isEmpty()) return@withTransaction null
+            val sourceRevision = requireNotNull(knowledgeDao.getRevisionById(sourceRevisionId)) {
+                "Source revision $sourceRevisionId does not exist."
+            }
+            val conclusion = requireNotNull(knowledgeDao.getConclusionById(sourceRevision.conclusionId)) {
+                "Source revision $sourceRevisionId has no conclusion."
+            }
+            if (conclusion.currentRevisionId != sourceRevisionId) return@withTransaction null
+            val originalText = sourceRevision.text
+            val reports = outcomes.map { it.report }
+            OutcomeImpactReview(
+                decisionId = decisionId,
+                sourceRevisionId = sourceRevisionId,
+                originalText = originalText,
+                choice = choice,
+                outcomes = reports,
+                proposedText = buildOutcomeImpactProposal(originalText, choice, reports)
+            )
+        }
+
+    suspend fun applyOutcomeImpact(decisionId: Long, acceptedText: String): Long {
+        require(acceptedText.isNotBlank()) { "A reviewed conclusion cannot be blank." }
+        return database.withTransaction {
+            val decision = requireNotNull(knowledgeDao.getDecisionById(decisionId)) {
+                "Decision $decisionId missing."
+            }
+            check(!decision.choice.isNullOrBlank()) {
+                "Record a choice before reviewing its outcome."
+            }
+            check(knowledgeDao.getOutcomesForDecision(decisionId).isNotEmpty()) {
+                "Report an outcome before reviewing its impact."
+            }
+            val sourceRevisionId = requireNotNull(decision.sourceRevisionId) {
+                "A decision must be grounded in a conclusion revision."
+            }
+            reflectionRepository.reviseCurrentConclusionInTransaction(
+                sourceRevisionId = sourceRevisionId,
+                newWording = acceptedText.trim()
+            )
+        }
+    }
+
     suspend fun hasOutcomeForRevision(revisionId: Long): Boolean {
         val decisionIds = knowledgeDao
             .getDecisionsForSourceRevision(revisionId)
@@ -186,5 +239,17 @@ class DecisionRepository @Inject constructor(
         require(conclusion.currentRevisionId == revisionId) {
             "Decision grounds must use the current conclusion revision."
         }
+    }
+
+    private fun buildOutcomeImpactProposal(
+        originalText: String,
+        choice: String,
+        outcomes: List<String>
+    ): String = buildString {
+        append(originalText.trim())
+        append("\nOutcome after choosing \"")
+        append(choice.trim())
+        append("\": ")
+        append(outcomes.joinToString(" ") { it.trim() })
     }
 }

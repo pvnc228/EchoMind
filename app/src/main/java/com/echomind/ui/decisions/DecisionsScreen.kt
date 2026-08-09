@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -42,6 +43,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.echomind.domain.model.Decision
 import com.echomind.domain.model.DecisionSourceOption
+import com.echomind.domain.model.OutcomeImpactReview
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -106,14 +108,27 @@ fun DecisionsScreen(
             }
             else -> {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    contentPadding = PaddingValues(16.dp),
+                    modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
+                    contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 32.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(uiState.decisions, key = { it.id }) { decision ->
                         DecisionCard(
                             decision = decision,
                             sources = uiState.sources,
+                            impactReview = uiState.impactReview?.takeIf {
+                                it.decisionId == decision.id
+                            },
+                            impactLoading = uiState.impactDecisionId == decision.id &&
+                                uiState.impactLoading,
+                            impactError = uiState.impactError.takeIf {
+                                uiState.impactDecisionId == decision.id
+                            },
+                            onReviewImpact = { viewModel.reviewImpact(decision.id) },
+                            onDismissImpact = viewModel::dismissImpactReview,
+                            onApplyImpact = { wording ->
+                                viewModel.applyImpact(decision.id, wording)
+                            },
                             onChoose = { choice -> viewModel.choose(decision.id, choice) },
                             onReplaceChoice = { choice -> viewModel.replaceChoice(decision.id, choice) },
                             onReplaceGrounds = { revisionId -> viewModel.replaceGrounds(decision.id, revisionId) },
@@ -143,6 +158,12 @@ fun DecisionsScreen(
 private fun DecisionCard(
     decision: Decision,
     sources: List<DecisionSourceOption>,
+    impactReview: OutcomeImpactReview?,
+    impactLoading: Boolean,
+    impactError: String?,
+    onReviewImpact: () -> Unit,
+    onDismissImpact: () -> Unit,
+    onApplyImpact: (String) -> Unit,
     onChoose: (String) -> Unit,
     onReplaceChoice: (String) -> Unit,
     onReplaceGrounds: (Long) -> Unit,
@@ -239,6 +260,33 @@ private fun DecisionCard(
                     "No outcome reported.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (decision.isDecided && decision.hasOutcome) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextButtonSmall("Review impact", onClick = onReviewImpact)
+            }
+            if (impactLoading && impactReview == null) {
+                Text(
+                    "Preparing a local review proposal...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (impactError != null && impactReview == null) {
+                Text(
+                    impactError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            impactReview?.let { review ->
+                OutcomeImpactReviewCard(
+                    review = review,
+                    isSaving = impactLoading,
+                    onDismiss = onDismissImpact,
+                    onConfirm = onApplyImpact
                 )
             }
 
@@ -388,6 +436,79 @@ private fun DecisionCard(
                 TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
             }
         )
+    }
+}
+
+@Composable
+fun OutcomeImpactReviewCard(
+    review: OutcomeImpactReview,
+    isSaving: Boolean = false,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var proposedText by remember(review.proposedText) {
+        mutableStateOf(review.proposedText)
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Review impact", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Original grounds", style = MaterialTheme.typography.labelLarge)
+            Text(review.originalText, style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Your choice", style = MaterialTheme.typography.labelLarge)
+            Text(review.choice, style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Reported outcome", style = MaterialTheme.typography.labelLarge)
+            review.outcomes.forEach { outcome ->
+                Text(outcome, style = MaterialTheme.typography.bodyMedium)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Proposed revision (diff)", style = MaterialTheme.typography.labelLarge)
+            Text(
+                "The original grounds stay unchanged until you confirm a new revision.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            OutlinedTextField(
+                value = proposedText,
+                onValueChange = { proposedText = it },
+                label = { Text("Your revised conclusion") },
+                supportingText = { Text("Edit EchoMind's proposal in your own words.") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    enabled = !isSaving && proposedText.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onConfirm(proposedText.trim()) }
+                ) {
+                    Text(if (isSaving) "Saving revision..." else "Confirm new revision")
+                }
+                TextButton(
+                    enabled = !isSaving,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onDismiss
+                ) {
+                    Text("Keep current conclusion")
+                }
+            }
+        }
     }
 }
 

@@ -410,7 +410,7 @@ class ReflectionRepositoryTest {
                     sourceRecordId = foreignSourceRawId,
                     relationship = Relationship.SUPPORTS
                 )
-                val decisionRepository = DecisionRepository(database, database.knowledgeDao())
+                val decisionRepository = DecisionRepository(database, database.knowledgeDao(), reflectionRepository)
                 val decisionId = decisionRepository.createDecision(
                     question = "Unrelated question",
                     sourceRevisionId = revisionId
