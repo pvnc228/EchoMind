@@ -1585,7 +1585,101 @@ complete; those remain deferred product work.
 
 Optional M4 follow-up/reminder remains deferred.
 
-## 2026-08-10 - GitHub Project and issue workflow
+## 2026-08-10 - M2 import integrity and selective restore implementation
+
+### Scope and contract
+
+- GitHub Issue [#4](https://github.com/pvnc228/EchoMind/issues/4) was selected
+  from `Ready` and moved to `In Progress` in the `EchoMind Work` Project.
+- The old empty-profile `restoreFromZip(archive)` contract remains available.
+  The new `RestoreScope.All` performs additive merge and
+  `RestoreScope.SelectedRawRecords` performs selective raw-root restore.
+- Stable IDs and natural keys are never remapped or overwritten. Conflicts are
+  returned by the preview and rejected again inside the final Room transaction.
+  ZIP validation still happens before any staging or writes.
+
+### Implementation
+
+- `ExportManager.previewRestore` reports selected roots, graph dependency
+  counts, referenced audio, and conflicts without writes.
+- Selective closure preserves selected raw records, legacy entries, proposals,
+  conclusions, all revisions, evidence links, referenced evidence-source raw
+  records, related themes, and decisions/outcomes. Full restore preserves
+  legacy global states such as decisions without source revisions.
+- Settings now stages an archive only for preflight, shows a scope/dependency
+  preview, supports deselecting roots, and requires an explicit `Restore
+  selected` or `Merge all` action. Failure paths remove the staged archive and
+  restore artifacts.
+
+### Fresh targeted evidence
+
+- `ExportManagerTest`: **12/12** on `Pixel_8_2` API 35 after the legacy full-
+  restore regression was fixed. This includes selective merge, evidence-source
+  dependency closure, conflict preflight, corrupt archive negatives, stable
+  graph restore, database reopen, and canonical export comparison.
+- `SettingsRestartExportUiTest`: **3/3** on `Pixel_8_2` API 35. The real
+  Settings screen displayed both roots and dependency counts before writes,
+  exposed an accessible name for each root checkbox, then deselected one root
+  and restored only the selected record through the ViewModel.
+- `:app:testDebugUnitTest --rerun-tasks`: **41/41**, 0 failures/errors.
+- `:app:lintDebug --rerun-tasks`: passed.
+- `git diff --check`: passed.
+
+### Adversarial gate result
+
+- The full `:app:connectedDebugAndroidTest --rerun-tasks` was attempted after a
+  cold `Pixel_8_2` boot. It reached 47/83 before the existing
+  `KnowledgeRepositoryPerformanceTest` instrumentation process was killed with
+  SIGKILL; an earlier warm-device attempt stopped at the existing
+  `DecisionsScreenTest` process crash. The targeted M2 classes pass after the
+  same cold boot, so M2 is not being claimed green through the failed full
+  suite. API26/API30 were not rerun after the final M2 changes.
+- Self-review covered stable-ID/natural-key conflict policy, final in-transaction
+  recheck, ZIP/path/hash/graph validation, audio/session cleanup, concurrent
+  preview responses, accessible dialog controls, and empty/legacy graph states.
+
+### Boundary at the initial attempt
+
+At that point the full M2 completion gate remained open because the full
+connected suite had an unresolved instrumentation SIGKILL and API26/API30 had
+not been rerun after the final changes. The selective restart/export artifact,
+JVM, lint, diff-check, and final self-review were fresh. The subsequent
+exclusive-emulator rerun below supersedes this boundary.
+
+## 2026-08-10 - M2 exclusive-emulator completion rerun
+
+### Diagnosis and fix
+
+- After the emulator became exclusive to this task, the full API35 run no
+  longer reproduced the earlier instrumentation-process SIGKILL. Its only
+  failure was the new Settings selective-restore UI oracle timing out after
+  five seconds while waiting for the pre-write restore preview.
+- The isolated `SettingsRestartExportUiTest` passed 3/3 on the same emulator,
+  proving the production flow and data assertions were sound. The oracle now
+  uses a named 15-second load-tolerant wait for preview, selection recompute,
+  and completion; it still requires the same visible scope, accessible root,
+  zero-before-confirmation, and selected-row-after-restore assertions.
+
+### Fresh completion evidence
+
+- `SettingsRestartExportUiTest`: **3/3** on `Pixel_8_2` API 35 after the
+  timeout hardening.
+- `:app:connectedDebugAndroidTest --rerun-tasks`: **83/83**, 0 skipped,
+  failures, or errors on the exclusively used `Pixel_8_2` API 35 emulator.
+  The XML artifact reports `tests="83" failures="0" errors="0" skipped="0"`.
+- The M2 public-seam `ExportManagerTest` remains **12/12** in that full
+  artifact, and the real Settings restart/export oracle remains green.
+- Final `:app:testDebugUnitTest --rerun-tasks`: **41/41**; final
+  `:app:lintDebug --rerun-tasks` and `git diff --check`: passed.
+
+### Boundary
+
+Issue #4's stated import-integrity/selective-restore criteria are met; the
+Project card is moved from `Verify` to `Done`. API26/API30 were not rerun after
+this final M2 test-oracle change, so that compatibility evidence remains
+deferred and is not represented as completed.
+
+## 2026-08-10 — GitHub Project and issue workflow
 
 ### Operational setup
 

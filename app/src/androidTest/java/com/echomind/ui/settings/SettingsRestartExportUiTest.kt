@@ -2,9 +2,11 @@ package com.echomind.ui.settings
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.room.Room
@@ -22,11 +24,16 @@ import com.echomind.data.settings.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
 
 class SettingsRestartExportUiTest {
+
+    companion object {
+        private const val RESTORE_UI_TIMEOUT_MS = 15_000L
+    }
 
     @get:Rule
     val composeTestRule = createComposeRule()
@@ -72,6 +79,64 @@ class SettingsRestartExportUiTest {
 
         val viewModel = settingsViewModel(target)
         renderAndRestoreDismissedCard(viewModel)
+    }
+
+    @Test
+    fun settingsShowsRestoreScopeBeforeWritingToTarget() {
+        val source = inMemoryDatabase()
+        val target = inMemoryDatabase()
+        val sourceReflection = com.echomind.data.repository.ReflectionRepository(
+            source,
+            source.entryDao(),
+            source.knowledgeDao(),
+            com.echomind.data.analysis.LocalReflectionAnalyzer(),
+            kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        )
+        val archive = runBlocking {
+            sourceReflection.captureRawText("First imported source")
+            sourceReflection.captureRawText("Second imported source")
+            exportManager(source).exportToZip().getOrThrow()
+        }
+        filesToDelete += archive
+
+        val viewModel = settingsViewModel(target)
+        composeTestRule.setContent {
+            SettingsScreen(onNavigateBack = {}, viewModel = viewModel)
+        }
+        viewModel.restoreData(Uri.fromFile(archive))
+
+        composeTestRule.waitUntil(RESTORE_UI_TIMEOUT_MS) {
+            composeTestRule.onAllNodesWithText("Review restore scope")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeTestRule.onNodeWithText("Review restore scope").assertIsDisplayed()
+        composeTestRule.onNodeWithText("First imported source").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Second imported source").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("First imported source").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Restore selected").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Merge all").assertIsDisplayed()
+        runBlocking {
+            assertEquals(0, target.knowledgeDao().getAllRawRecords().size)
+        }
+
+        val initialPreview = viewModel.uiState.value.restoreState as RestoreState.PreviewReady
+        viewModel.toggleRestoreRoot(initialPreview.preview.availableRoots.first().rawRecordId, selected = false)
+        composeTestRule.waitUntil(RESTORE_UI_TIMEOUT_MS) {
+            composeTestRule.onAllNodesWithText("Selected records: 1.", substring = true)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeTestRule.onNodeWithText("Restore selected").performClick()
+        composeTestRule.waitUntil(RESTORE_UI_TIMEOUT_MS) {
+            runBlocking { target.knowledgeDao().getAllRawRecords().size == 1 }
+        }
+        runBlocking {
+            assertEquals(
+                listOf("Second imported source"),
+                target.knowledgeDao().getAllRawRecords().map { it.originalText }
+            )
+        }
     }
 
     private fun renderAndRestoreDismissedCard(viewModel: SettingsViewModel) {

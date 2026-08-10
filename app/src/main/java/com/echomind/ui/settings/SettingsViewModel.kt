@@ -7,6 +7,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.echomind.data.export.ExportManager
 import com.echomind.data.export.MAX_RESTORE_ARCHIVE_BYTES
+import com.echomind.data.export.RestorePreview
+import com.echomind.data.export.RestoreScope
 import com.echomind.data.repository.KnowledgeRepository
 import com.echomind.data.repository.EntryRepository
 import com.echomind.data.remote.BaseUrlProvider
@@ -22,6 +24,7 @@ import kotlinx.coroutines.launch
 import com.echomind.di.IoDispatcher
 import javax.inject.Inject
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
 data class SettingsUiState(
     val apiEndpoint: String = "http://localhost:1234",
@@ -44,6 +47,7 @@ sealed interface ExportState {
 sealed interface RestoreState {
     data object Idle : RestoreState
     data object InProgress : RestoreState
+    data class PreviewReady(val preview: RestorePreview) : RestoreState
     data object Success : RestoreState
     data class Error(val message: String) : RestoreState
 }
@@ -62,6 +66,9 @@ class SettingsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+    private var stagedRestoreFile: File? = null
+    private var pendingRestoreRootIds: Set<Long>? = null
+    private val restoreOperationGeneration = AtomicLong(0L)
 
     init {
         viewModelScope.launch {
@@ -140,9 +147,26 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun restoreData(uri: Uri) {
+        val generation = restoreOperationGeneration.incrementAndGet()
         viewModelScope.launch(ioDispatcher) {
             _uiState.value = _uiState.value.copy(restoreState = RestoreState.InProgress)
-            val staged = File(getApplication<Application>().cacheDir, "restore_${System.currentTimeMillis()}.zip")
+            stagedRestoreFile?.delete()
+            stagedRestoreFile = null
+            pendingRestoreRootIds = null
+            val staged = runCatching {
+                File.createTempFile(
+                    "restore_",
+                    ".zip",
+                    getApplication<Application>().cacheDir
+                )
+            }.getOrElse { error ->
+                if (generation == restoreOperationGeneration.get()) {
+                    _uiState.value = _uiState.value.copy(
+                        restoreState = RestoreState.Error(error.message ?: "Restore failed")
+                    )
+                }
+                return@launch
+            }
             runCatching {
                 getApplication<Application>().contentResolver.openInputStream(uri).use { input ->
                     requireNotNull(input) { "Could not open restore archive." }
@@ -162,20 +186,136 @@ class SettingsViewModel @Inject constructor(
                         }
                     }
                 }
-                exportManager.restoreFromZip(staged).getOrThrow()
-            }.onSuccess {
-                _uiState.value = _uiState.value.copy(restoreState = RestoreState.Success)
-            }.onFailure { error ->
-                _uiState.value = _uiState.value.copy(
-                    restoreState = RestoreState.Error(error.message ?: "Restore failed")
-                )
-            }
-            staged.delete()
+                exportManager.previewRestore(staged, RestoreScope.All).getOrThrow()
+            }.fold(
+                onSuccess = { preview ->
+                    if (generation == restoreOperationGeneration.get()) {
+                        stagedRestoreFile = staged
+                        pendingRestoreRootIds = preview.rootRawRecordIds.toSet()
+                        _uiState.value = _uiState.value.copy(
+                            restoreState = RestoreState.PreviewReady(preview)
+                        )
+                    } else {
+                        staged.delete()
+                    }
+                },
+                onFailure = { error ->
+                    staged.delete()
+                    if (generation == restoreOperationGeneration.get()) {
+                        stagedRestoreFile = null
+                        pendingRestoreRootIds = null
+                        _uiState.value = _uiState.value.copy(
+                            restoreState = RestoreState.Error(error.message ?: "Restore failed")
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun toggleRestoreRoot(rawRecordId: Long, selected: Boolean) {
+        val current = _uiState.value.restoreState as? RestoreState.PreviewReady ?: return
+        if (rawRecordId !in current.preview.availableRoots.map { it.rawRecordId }) return
+        val selectedIds = (pendingRestoreRootIds ?: current.preview.rootRawRecordIds).toMutableSet()
+        if (selected) {
+            selectedIds += rawRecordId
+        } else {
+            if (selectedIds.size == 1 && rawRecordId in selectedIds) return
+            selectedIds -= rawRecordId
+        }
+        pendingRestoreRootIds = selectedIds
+        previewSelectedRestore(selectedIds)
+    }
+
+    fun restoreSelectedData() {
+        val current = _uiState.value.restoreState as? RestoreState.PreviewReady ?: return
+        val selectedIds = pendingRestoreRootIds ?: current.preview.rootRawRecordIds.toSet()
+        restoreStaged(RestoreScope.SelectedRawRecords(selectedIds))
+    }
+
+    fun mergeAllData() {
+        restoreStaged(RestoreScope.All)
+    }
+
+    fun cancelRestorePreview() {
+        stagedRestoreFile?.delete()
+        stagedRestoreFile = null
+        pendingRestoreRootIds = null
+        _uiState.value = _uiState.value.copy(restoreState = RestoreState.Idle)
+    }
+
+    private fun previewSelectedRestore(selectedIds: Set<Long>) {
+        val staged = stagedRestoreFile ?: return
+        val generation = restoreOperationGeneration.incrementAndGet()
+        viewModelScope.launch(ioDispatcher) {
+            exportManager.previewRestore(
+                staged,
+                RestoreScope.SelectedRawRecords(selectedIds)
+            ).fold(
+                onSuccess = { preview ->
+                    if (generation == restoreOperationGeneration.get() && staged == stagedRestoreFile) {
+                        pendingRestoreRootIds = preview.rootRawRecordIds.toSet()
+                        _uiState.value = _uiState.value.copy(
+                            restoreState = RestoreState.PreviewReady(preview)
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    if (generation == restoreOperationGeneration.get() && staged == stagedRestoreFile) {
+                        staged.delete()
+                        stagedRestoreFile = null
+                        pendingRestoreRootIds = null
+                        _uiState.value = _uiState.value.copy(
+                            restoreState = RestoreState.Error(error.message ?: "Restore preview failed")
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    private fun restoreStaged(scope: RestoreScope) {
+        val staged = stagedRestoreFile ?: return
+        val generation = restoreOperationGeneration.incrementAndGet()
+        viewModelScope.launch(ioDispatcher) {
+            _uiState.value = _uiState.value.copy(restoreState = RestoreState.InProgress)
+            exportManager.restoreFromZip(staged, scope).fold(
+                onSuccess = {
+                    if (generation == restoreOperationGeneration.get() && staged == stagedRestoreFile) {
+                        staged.delete()
+                        stagedRestoreFile = null
+                        pendingRestoreRootIds = null
+                        _uiState.value = _uiState.value.copy(restoreState = RestoreState.Success)
+                    }
+                },
+                onFailure = { error ->
+                    if (generation == restoreOperationGeneration.get() && staged == stagedRestoreFile) {
+                        staged.delete()
+                        stagedRestoreFile = null
+                        pendingRestoreRootIds = null
+                        _uiState.value = _uiState.value.copy(
+                            restoreState = RestoreState.Error(error.message ?: "Restore failed")
+                        )
+                    }
+                }
+            )
         }
     }
 
     fun clearRestoreState() {
+        restoreOperationGeneration.incrementAndGet()
+        stagedRestoreFile?.delete()
+        stagedRestoreFile = null
+        pendingRestoreRootIds = null
         _uiState.value = _uiState.value.copy(restoreState = RestoreState.Idle)
+    }
+
+    override fun onCleared() {
+        restoreOperationGeneration.incrementAndGet()
+        stagedRestoreFile?.delete()
+        stagedRestoreFile = null
+        pendingRestoreRootIds = null
+        super.onCleared()
     }
 
     fun restoreCard(cardKey: String) {
