@@ -222,14 +222,15 @@ explicit author/source/status metadata and are not created by the ordinary user
 flow. Export carries the metadata. The full restart/export UI oracle remained
 deferred until the Review impact slice below.
 
-**Status (2026-08-09, Review impact slice):** the optional local Review impact
+**Historical status (2026-08-09, Review impact slice):** the optional local Review impact
 flow is implemented and verified. It reads the original current grounds, choice,
 and reported outcomes in one transaction, builds an unconfirmed deterministic
 proposal, shows the original/proposed wording separately, and appends a new
 revision only after explicit confirmation. Stale grounds are rejected without a
 write; historical revisions and the decision's original grounds remain intact.
 The full Decisions restart/export UI oracle and API26/API30 runtime evidence
-remain open, so M4 and the M2/M3/M4 repair gate are not marked complete.
+remained open at that point, so M4 and the M2/M3/M4 repair gate were not marked
+complete then. Later entries below supersede that boundary.
 
 **Owner decision (2026-08-09, historical planning record):** следующий M4 slice — необязательный локальный
 `Review impact`: outcome сравнивается с исходными grounds/choice, proposal
@@ -264,7 +265,7 @@ work, provides postpone/cancel in the notification and Decisions screen, and
 keeps an in-app `FIRED` fallback when notification permission is unavailable.
 Fresh API 35 public-seam evidence exists for scheduling, duplicate prevention,
 restart persistence, postpone, cancel, and the Decisions UI. The full API 35
-completion gate is green; the broader M4 milestone remains open pending
+completion gate for this implementation slice is green; the broader M4 milestone remains open pending
 separately required API26/API30/accessibility evidence.
 
 ## M5 — Explainable personal guidance
@@ -361,8 +362,8 @@ Home coverage, guarded decisions, bounded Detail browsing, and empty-profile
 restore.
 
 The live implementation backlog is tracked in
-[`docs/GITHUB_WORKFLOW.md`](docs/GITHUB_WORKFLOW.md): Issue #6 is the next
-`Ready` M4 slice, while Issues #2–#5 and #7–#9 represent the remaining M0,
+[`docs/GITHUB_WORKFLOW.md`](docs/GITHUB_WORKFLOW.md): Issue #6 is currently in
+`Verify` after the optional follow-up slice, while Issues #2–#5 and #7–#9 represent the remaining M0,
 M1, M2, M3, M5, M6, and M7 work. Issue #1 is the completed repair-gate card.
 
 The non-blocking audio-cleanup follow-up from the 2026-08-08 review is also

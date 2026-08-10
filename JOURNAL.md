@@ -1787,3 +1787,29 @@ This slice does not mark the broader M4 milestone or the M2/M3/M4 repair gate
 complete. API26/API30 reruns and wider accessibility/restart-export matrices
 remain separate evidence requirements. Issue #6 is ready for `Verify`; the
 broader M4 milestone remains open.
+
+## 2026-08-10 - Documentation synchronization after M2/M4 merges
+
+### Review
+
+- Reviewed merge commits `1b720115` (M2, PR #10) and `ecd515961` (M4, PR #11)
+  on `origin/master`.
+- Live Project status was rechecked: Issue #4 is `Done` and Issue #6 is
+  `Verify`. The current workflow and roadmap now use those statuses.
+- The dated pre-merge journal entries remain unchanged as historical evidence.
+  The M2 `83/83` and M4 `81/81` counts are slice/branch artifacts recorded
+  before the two PRs were combined; this entry makes no claim of a new full
+  completion gate on merged `master`.
+- Updated the M4 roadmap and owner-decision wording so the 2026-08-09
+  pre-closure boundary is explicitly historical and the API35 gate is scoped
+  to the implementation slice.
+
+### Validation
+
+- `git diff --check`: passed.
+- No production code was changed by this documentation synchronization.
+
+### Boundary
+
+API26/API30 evidence and a fresh combined post-merge `master` completion gate
+remain open evidence requirements; the broader M4 milestone remains open.
