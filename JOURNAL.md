@@ -1813,3 +1813,19 @@ broader M4 milestone remains open.
 
 API26/API30 evidence and a fresh combined post-merge `master` completion gate
 remain open evidence requirements; the broader M4 milestone remains open.
+
+## 2026-08-10 - Issue #6 verification accepted
+
+### Result
+
+- The product owner moved Issue #6 from `Verify` to `Done` after reviewing the
+  scoped optional local follow-up implementation.
+- The `Done` status closes the Issue #6 result only: API35 slice evidence,
+  tests, lint, diff-check, and the implementation artifact are recorded above.
+- The broader M4 milestone remains open; API26/API30 evidence and a fresh
+  combined post-merge `master` completion gate are still separate requirements.
+
+### Documentation
+
+- `ROADMAP.md` and `docs/GITHUB_WORKFLOW.md` now reflect the live `Done`
+  status without claiming that the broader M4 milestone is complete.

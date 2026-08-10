@@ -43,7 +43,7 @@ deferred boundaries recorded in `JOURNAL.md`. The current live mapping is:
 | Issues | Status | Type | Priority | Milestone | Scope |
 |---|---|---|---|---|---|
 | [#1](https://github.com/pvnc228/EchoMind/issues/1) | `Done` | `verification` | `P1` | `M4` | Scoped repair gate closure |
-| [#6](https://github.com/pvnc228/EchoMind/issues/6) | `Verify` | `feature` | `P2` | `M4` | Optional local follow-up/reminder |
+| [#6](https://github.com/pvnc228/EchoMind/issues/6) | `Done` | `feature` | `P2` | `M4` | Optional local follow-up/reminder |
 | [#2](https://github.com/pvnc228/EchoMind/issues/2) | `Backlog` | `feature` | `P0` | `M0` | Minimized context preview and per-request consent |
 | [#3](https://github.com/pvnc228/EchoMind/issues/3) | `Backlog` | `feature` | `P0` | `M1` | Bounded continue-discussion flow |
 | [#4](https://github.com/pvnc228/EchoMind/issues/4) | `Done` | `verification` | `P1` | `M2` | Import integrity and selective restore |
@@ -54,13 +54,14 @@ deferred boundaries recorded in `JOURNAL.md`. The current live mapping is:
 
 `Blocked` is intentionally empty. Issue #4 is in `Done` after the M2
 implementation, fresh API35 full connected artifact, and journal entry. Issue
-#6 is in `Verify` after the M4 implementation and its fresh API35 slice
-evidence; the broader M4 milestone and the API26/API30 compatibility rerun
-remain explicitly deferred.
+#6 is in `Done` after the M4 implementation, its fresh API35 slice evidence,
+and the recorded journal result; the broader M4 milestone and the API26/API30
+compatibility rerun remain explicitly deferred.
 
 Issue #1 is a tracking card for the closed scoped repair gate. Its closure
 does not close M4 or the broader M2/M3/M4 product milestones. Issue #6 is the
-current verification card; the other cards remain documented backlog work.
+completed scoped verification card; the other cards remain documented backlog
+work.
 
 ## Working cycle
 

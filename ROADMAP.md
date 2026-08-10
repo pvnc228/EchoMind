@@ -362,8 +362,8 @@ Home coverage, guarded decisions, bounded Detail browsing, and empty-profile
 restore.
 
 The live implementation backlog is tracked in
-[`docs/GITHUB_WORKFLOW.md`](docs/GITHUB_WORKFLOW.md): Issue #6 is currently in
-`Verify` after the optional follow-up slice, while Issues #2–#5 and #7–#9 represent the remaining M0,
+[`docs/GITHUB_WORKFLOW.md`](docs/GITHUB_WORKFLOW.md): Issue #6 is `Done` for
+the scoped optional follow-up slice, while Issues #2–#5 and #7–#9 represent the remaining M0,
 M1, M2, M3, M5, M6, and M7 work. Issue #1 is the completed repair-gate card.
 
 The non-blocking audio-cleanup follow-up from the 2026-08-08 review is also
