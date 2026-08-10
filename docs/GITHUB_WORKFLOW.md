@@ -35,17 +35,30 @@ The project uses only the following fields for issue triage:
 `Milestone` is GitHub's built-in repository milestone field. The `M0`–`M7`
 options therefore live in the repository, not in a duplicate Project field.
 
-## Current ticket
+## Current board contents
 
-- [Issue #1 — Проверить repair gate после bounded Detail follow-up](https://github.com/pvnc228/EchoMind/issues/1)
-- Status: `Ready`
-- Type: `verification`
-- Priority: `P1`
-- Milestone: `M4`
+The board is populated from the still-open work in `ROADMAP.md` and the
+deferred boundaries recorded in `JOURNAL.md`. The current live mapping is:
 
-The issue is a tracking card. Its existence does not override the current
-repair-gate artifact in `JOURNAL.md` and `ROADMAP.md`, and it does not by
-itself close M4 or the broader M2/M3/M4 product milestones.
+| Issues | Status | Type | Priority | Milestone | Scope |
+|---|---|---|---|---|---|
+| [#1](https://github.com/pvnc228/EchoMind/issues/1) | `Done` | `verification` | `P1` | `M4` | Scoped repair gate closure |
+| [#6](https://github.com/pvnc228/EchoMind/issues/6) | `Ready` | `feature` | `P2` | `M4` | Optional local follow-up/reminder |
+| [#2](https://github.com/pvnc228/EchoMind/issues/2) | `Backlog` | `feature` | `P0` | `M0` | Minimized context preview and per-request consent |
+| [#3](https://github.com/pvnc228/EchoMind/issues/3) | `Backlog` | `feature` | `P0` | `M1` | Bounded continue-discussion flow |
+| [#4](https://github.com/pvnc228/EchoMind/issues/4) | `Backlog` | `verification` | `P1` | `M2` | Import integrity and selective restore |
+| [#5](https://github.com/pvnc228/EchoMind/issues/5) | `Backlog` | `verification` | `P1` | `M3` | Repeat-use evidence for Home resurfacing |
+| [#7](https://github.com/pvnc228/EchoMind/issues/7) | `Backlog` | `feature` | `P2` | `M5` | Explainable guidance on explicit request |
+| [#8](https://github.com/pvnc228/EchoMind/issues/8) | `Backlog` | `feature` | `P3` | `M6` | Voice capture through the text review flow |
+| [#9](https://github.com/pvnc228/EchoMind/issues/9) | `Backlog` | `verification` | `P3` | `M7` | Private-beta and release evidence |
+
+`In Progress`, `Blocked`, and `Verify` are intentionally empty: the current
+repository evidence does not justify claiming active implementation, a
+blocker, or an unfinished verification run.
+
+Issue #1 is a tracking card for the closed scoped repair gate. Its closure
+does not close M4 or the broader M2/M3/M4 product milestones. Issue #6 is the
+next agreed product slice; the other cards remain documented backlog work.
 
 ## Working cycle
 
@@ -55,8 +68,8 @@ itself close M4 or the broader M2/M3/M4 product milestones.
 3. Create a branch from the issue and keep production changes linked to it:
 
    ```powershell
-   gh issue view 1 --repo pvnc228/EchoMind --comments
-   gh issue develop 1 --repo pvnc228/EchoMind --name issue-1-repair-gate --checkout
+   gh issue view 6 --repo pvnc228/EchoMind --comments
+   gh issue develop 6 --repo pvnc228/EchoMind --name issue-6-m4-follow-up --checkout
    ```
 
 4. Open a pull request with `Closes #N` only when merging that pull request

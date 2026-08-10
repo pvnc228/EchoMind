@@ -1598,7 +1598,27 @@ Optional M4 follow-up/reminder remains deferred.
 - Added only the custom `Type` and `Priority` fields; the built-in `Milestone`
   field uses repository milestones `M0` through `M7`.
 - Created [Issue #1](https://github.com/pvnc228/EchoMind/issues/1) as the first
-  verification ticket and set it to `Ready`, `verification`, `P1`, and `M4`.
+  verification ticket, then closed it as `Done` after the repair-gate artifact
+  was complete.
+- Created the current backlog from the open roadmap boundaries:
+  - [Issue #2](https://github.com/pvnc228/EchoMind/issues/2): M0 preview and
+    per-request consent — `Backlog`, `feature`, `P0`.
+  - [Issue #3](https://github.com/pvnc228/EchoMind/issues/3): M1 bounded
+    continue-discussion flow — `Backlog`, `feature`, `P0`.
+  - [Issue #4](https://github.com/pvnc228/EchoMind/issues/4): M2 import
+    integrity and selective restore — `Backlog`, `verification`, `P1`.
+  - [Issue #5](https://github.com/pvnc228/EchoMind/issues/5): M3 repeat-use
+    evidence for Home resurfacing — `Backlog`, `verification`, `P1`.
+  - [Issue #6](https://github.com/pvnc228/EchoMind/issues/6): optional M4
+    local follow-up/reminder — `Ready`, `feature`, `P2`.
+  - [Issue #7](https://github.com/pvnc228/EchoMind/issues/7): M5 explainable
+    guidance — `Backlog`, `feature`, `P2`.
+  - [Issue #8](https://github.com/pvnc228/EchoMind/issues/8): M6 voice to
+    text review flow — `Backlog`, `feature`, `P3`.
+  - [Issue #9](https://github.com/pvnc228/EchoMind/issues/9): M7 private-beta
+    and release evidence — `Backlog`, `verification`, `P3`.
+- `In Progress`, `Blocked`, and `Verify` remain empty because no current
+  evidence supports those statuses.
 
 ### Validation
 
@@ -1607,6 +1627,8 @@ Optional M4 follow-up/reminder remains deferred.
   `Pixel_8_2` API 35.
 - `:app:lintDebug --rerun-tasks`: passed.
 - Markdown local-link validation and `git diff --check`: passed.
+- Live `gh project item-list` confirmed the nine cards, statuses, types,
+  priorities, and repository milestones listed above.
 
 ### Boundary
 
