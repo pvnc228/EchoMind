@@ -60,34 +60,6 @@ emulator и старые XML не являются evidence.
 Не отмечай milestone/P1/P2 закрытым до свежего artifact. Незапущенные device,
 accessibility, performance или restart проверки называй незапущенными.
 
-## Текущий порядок roadmap
-
-После commit `5209984` следующий этап — **repair gate**, а не реализация
-optional follow-up. Решение владельца о follow-up фиксирует следующий
-продуктовый M4-срез, но не требует выполнять его раньше общего repair gate.
-
-Сначала провести свежий repair-gate audit:
-
-1. Проверить migration/import/deletion на fresh schema и реальные legacy states.
-2. Пройти полный путь `migration → export → empty restore → export`.
-3. Проверить ZIP/import до записей: archive limits, paths, hashes, exact graph
-   references, rollback, zero rows и отсутствие retained files после failure.
-4. Перепроверить atomic graph writes, stale/extra IDs, restart persistence и
-   negative/concurrency cases.
-5. Закрыть оставшиеся bounded-performance oracles P2-03 для Search, Decisions
-   и link candidates на масштабах 1k/10k, если они входят в текущий scope.
-6. Выполнить весь completion gate, self-review и записать свежий artifact в
-   `JOURNAL.md`/`ROADMAP.md`.
-
-До зелёного repair gate не начинать optional follow-up/reminder. После него
-следующий M4-срез должен оставаться opt-in, локальным, dismissible и не
-блокировать reflection/retrieval; notification permission denial должен иметь
-рабочий in-app fallback, а `postpone/cancel` не должны подтверждать proposal,
-revision или передачу raw data.
-
-Общий M4 и broader M2/M3/M4 repair gate не считать закрытыми без свежего
-артефакта, даже если отдельные Decisions/API26/API30 проверки уже зелёные.
-
 ## Правило против преждевременного закрытия gate
 
 Зелёные тесты сами по себе не доказывают закрытие замечания. Для каждого
@@ -125,10 +97,16 @@ repository/DAO data tests вместо restart/export UI-flow и противо�
 
 ## GitHub issue workflow
 
-- Каждое production-изменение должно быть связано с GitHub Issue; текущая
-  доска и команды описаны в `docs/GITHUB_WORKFLOW.md`.
+- Каждое production-изменение должно быть связано с GitHub Issue; порядок
+  работы с GitHub Project описан в `docs/GITHUB_WORKFLOW.md`.
 - Перед началом работы прочитать Issue и связанные документы проекта.
 - Одна Issue должна описывать один проверяемый результат.
+- Перед началом выбрать одну карточку из `Ready` и сразу перевести её в
+  `In Progress`.
+- Не брать карточку, которая уже находится в `In Progress`; для параллельной
+  работы использовать отдельную Issue и отдельную ветку/worktree.
+- Не выполнять параллельные изменения в одном локальном checkout.
+- После реализации и локальной проверки перевести карточку в `Verify`.
 - Pull Request обязан содержать `Closes #N`, если merge должен закрыть Issue.
 - Issue нельзя переводить в `Done` без тестов, runtime evidence и записи
   результата в `JOURNAL.md`.
