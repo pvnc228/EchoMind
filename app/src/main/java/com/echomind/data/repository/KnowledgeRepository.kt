@@ -7,6 +7,7 @@ import com.echomind.data.local.entity.EvidenceLinkEntity
 import com.echomind.data.local.entity.HomeCardDispositionEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
+import com.echomind.data.local.entity.normalizeSearchText
 import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.HomeRelevance
 import com.echomind.domain.model.HomeRelevanceBuilder
@@ -260,7 +261,7 @@ class KnowledgeRepository @Inject constructor(
             "Revision $currentRevisionId missing."
         }
         val currentRaw = knowledgeDao.getConclusionById(currentRevision.conclusionId)?.rawRecordId
-        val escapedQuery = escapeLikeQuery(query.trim())
+        val escapedQuery = escapeLikeQuery(normalizeSearchText(query.trim()))
         return knowledgeDao.getManualLinkCandidateRows(
             revisionId = currentRevisionId,
             currentRawRecordId = currentRaw,

@@ -38,6 +38,7 @@ data class DetailUiState(
     val manualCandidates: List<RelatedRecord> = emptyList(),
     val manualCandidatesHasMore: Boolean = false,
     val manualQuery: String = "",
+    val isManualLoading: Boolean = false,
     val revisions: List<Revision> = emptyList(),
     val isRevising: Boolean = false,
     val isLoading: Boolean = true,
@@ -91,7 +92,7 @@ class DetailViewModel @Inject constructor(
     }
 
     private suspend fun loadLinked(reflection: ReflectionSession?) {
-        manualRequestGeneration += 1
+        val requestGeneration = ++manualRequestGeneration
         val revisionId = reflection?.revisionId
         if (revisionId == null) {
             _uiState.value = _uiState.value.copy(
@@ -103,7 +104,8 @@ class DetailViewModel @Inject constructor(
                 otherEntries = emptyList(),
                 manualCandidates = emptyList(),
                 manualCandidatesHasMore = false,
-                manualQuery = ""
+                manualQuery = "",
+                isManualLoading = false
             )
             return
         }
@@ -118,6 +120,7 @@ class DetailViewModel @Inject constructor(
             currentRevisionId = revisionId,
             limit = KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE + 1
         )
+        if (requestGeneration != manualRequestGeneration) return
         val manualCandidates = manualPage.take(KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE)
         _uiState.value = _uiState.value.copy(
             themes = themes,
@@ -128,24 +131,53 @@ class DetailViewModel @Inject constructor(
             otherEntries = suggestions.values.toList(),
             manualCandidates = manualCandidates,
             manualCandidatesHasMore = manualPage.size > KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE,
-            manualQuery = ""
+            manualQuery = "",
+            isManualLoading = false
         )
     }
 
     fun searchManualCandidates(query: String) {
-        loadManualCandidates(query = query, append = false)
+        val revisionId = _uiState.value.reflection?.revisionId ?: return
+        val requestGeneration = ++manualRequestGeneration
+        _uiState.value = _uiState.value.copy(
+            manualCandidates = emptyList(),
+            manualCandidatesHasMore = false,
+            manualQuery = query,
+            isManualLoading = true
+        )
+        loadManualCandidates(
+            revisionId = revisionId,
+            query = query,
+            append = false,
+            offset = 0,
+            requestGeneration = requestGeneration
+        )
     }
 
     fun loadMoreManualCandidates() {
-        loadManualCandidates(query = _uiState.value.manualQuery, append = true)
+        val state = _uiState.value
+        if (state.isManualLoading || !state.manualCandidatesHasMore) return
+        val revisionId = state.reflection?.revisionId ?: return
+        val requestGeneration = ++manualRequestGeneration
+        _uiState.value = state.copy(isManualLoading = true)
+        loadManualCandidates(
+            revisionId = revisionId,
+            query = state.manualQuery,
+            append = true,
+            offset = state.manualCandidates.size,
+            requestGeneration = requestGeneration
+        )
     }
 
-    private fun loadManualCandidates(query: String, append: Boolean) {
-        val revisionId = _uiState.value.reflection?.revisionId ?: return
-        val requestGeneration = ++manualRequestGeneration
+    private fun loadManualCandidates(
+        revisionId: Long,
+        query: String,
+        append: Boolean,
+        offset: Int,
+        requestGeneration: Long
+    ) {
         viewModelScope.launch {
             runCatching {
-                val offset = if (append) _uiState.value.manualCandidates.size else 0
                 val page = knowledgeRepository.getManualLinkCandidates(
                     currentRevisionId = revisionId,
                     query = query,
@@ -162,10 +194,16 @@ class DetailViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     manualCandidates = candidates,
                     manualCandidatesHasMore = page.size > KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE,
-                    manualQuery = query
+                    manualQuery = query,
+                    isManualLoading = false
                 )
             }.onFailure { error ->
-                _uiState.value = _uiState.value.copy(error = error.message)
+                if (requestGeneration == manualRequestGeneration) {
+                    _uiState.value = _uiState.value.copy(
+                        isManualLoading = false,
+                        error = error.message
+                    )
+                }
             }
         }
     }

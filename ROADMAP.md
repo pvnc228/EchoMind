@@ -376,6 +376,17 @@ benchmark, and the remaining accessibility/restart evidence stays open. See the
 matching entries in `JOURNAL.md` and
 `docs/OPENCODE_REPAIR_TRACEABILITY_2026-08-08.md`.
 
+The 2026-08-10 review follow-up closes the Unicode manual-search regression and
+the Search/Load more race. Manual Detail search uses a persisted NFKC plus
+`Locale.ROOT` lowercase key with a v7 -> v8 legacy backfill; the raw text and
+export contract remain unchanged. `DetailViewModel` publishes query/loading
+state before launching the request, captures the query and offset, disables
+pagination during an active request, and rejects stale success/error paths.
+Fresh evidence is recorded in `JOURNAL.md`: JVM 40/40, connected 68/68 on
+Pixel_8_2 API 35, lint, and diff-check. This does not close the broader repair
+gate; CPU/FTS ranking, post-change API26/API30 runs, and the deferred
+accessibility/restart-export UI matrix remain open.
+
 ## UX/UI audit and approved implementation checkpoint
 
 **Status:** audit complete and UX direction approved on 2026-08-01; the P1

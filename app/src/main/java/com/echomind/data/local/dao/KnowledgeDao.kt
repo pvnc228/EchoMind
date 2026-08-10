@@ -372,7 +372,7 @@ interface KnowledgeDao {
             "WHERE evidence_links.conclusion_revision_id = :revisionId " +
             "AND evidence_links.source_raw_record_id = raw_records.id" +
             ") " +
-            "AND (:query = '' OR raw_records.original_text LIKE '%' || :query || '%' ESCAPE '\\') " +
+            "AND (:query = '' OR raw_records.original_text_search_key LIKE '%' || :query || '%' ESCAPE '\\') " +
             "ORDER BY raw_records.created_at DESC, raw_records.id DESC " +
             "LIMIT :limit OFFSET :offset"
     )

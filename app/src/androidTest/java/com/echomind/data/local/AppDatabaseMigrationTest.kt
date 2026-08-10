@@ -43,7 +43,8 @@ class AppDatabaseMigrationTest {
                 AppDatabase.MIGRATION_3_4,
                 AppDatabase.MIGRATION_4_5,
                 AppDatabase.MIGRATION_5_6,
-                AppDatabase.MIGRATION_6_7
+                AppDatabase.MIGRATION_6_7,
+                AppDatabase.MIGRATION_7_8
             )
             .allowMainThreadQueries()
             .build()
@@ -54,7 +55,8 @@ class AppDatabaseMigrationTest {
             assertEquals(1, rawRecords.size)
             assertEquals(42L, rawRecords.single().id)
             assertEquals(42L, rawRecords.single().legacyEntryId)
-            assertEquals("Original thought", rawRecords.single().originalText)
+            assertEquals("КАРЬЕРА", rawRecords.single().originalText)
+            assertEquals("карьера", rawRecords.single().originalTextSearchKey)
             assertTrue(runBlocking { database.knowledgeDao().getAllHypotheses() }.isEmpty())
             assertTrue(runBlocking { database.knowledgeDao().getAllConclusions() }.isEmpty())
             assertTrue(runBlocking { database.knowledgeDao().getAllThemes() }.isEmpty())
@@ -187,7 +189,8 @@ class AppDatabaseMigrationTest {
                 AppDatabase.MIGRATION_3_4,
                 AppDatabase.MIGRATION_4_5,
                 AppDatabase.MIGRATION_5_6,
-                AppDatabase.MIGRATION_6_7
+                AppDatabase.MIGRATION_6_7,
+                AppDatabase.MIGRATION_7_8
             )
             .allowMainThreadQueries()
             .build()
@@ -229,7 +232,8 @@ class AppDatabaseMigrationTest {
             .addMigrations(
                 AppDatabase.MIGRATION_4_5,
                 AppDatabase.MIGRATION_5_6,
-                AppDatabase.MIGRATION_6_7
+                AppDatabase.MIGRATION_6_7,
+                AppDatabase.MIGRATION_7_8
             )
             .allowMainThreadQueries()
             .build()
@@ -306,7 +310,11 @@ class AppDatabaseMigrationTest {
         createVersion5DatabaseWithDuplicateLinks()
 
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
-            .addMigrations(AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7)
+            .addMigrations(
+                AppDatabase.MIGRATION_5_6,
+                AppDatabase.MIGRATION_6_7,
+                AppDatabase.MIGRATION_7_8
+            )
             .allowMainThreadQueries()
             .build()
         try {
@@ -748,7 +756,7 @@ class AppDatabaseMigrationTest {
             """.trimIndent(),
             arrayOf(
                 42,
-                "Original thought",
+                "КАРЬЕРА",
                 "entry_42.m4a.enc",
                 1_000,
                 2_000,

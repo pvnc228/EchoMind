@@ -32,7 +32,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class KnowledgeRepositoryTest {
 
@@ -369,6 +372,31 @@ class KnowledgeRepositoryTest {
     }
 
     @Test
+    fun manualLinkSearchMatchesCyrillicRegardlessOfCase() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val knowledgeRepository = knowledgeRepository(database)
+            runBlocking {
+                val currentRawId = reflectionRepository.captureRawText("Текущая запись")
+                val proposal = reflectionRepository.createLocalProposal(currentRawId)
+                val session = reflectionRepository.confirm(proposal.hypothesisId, "Текущий вывод")
+                val currentRevisionId = requireNotNull(session.revisionId)
+                val candidateId = reflectionRepository.captureRawText("КАРЬЕРА и следующий шаг")
+
+                val matches = knowledgeRepository.getManualLinkCandidates(
+                    currentRevisionId = currentRevisionId,
+                    query = "карьера"
+                )
+
+                assertEquals(listOf(candidateId), matches.map { it.rawRecordId })
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun detailManualCandidateLoadUsesBoundedProjectionWithManyLinkedRecords() {
         val queries = Collections.synchronizedList(mutableListOf<String>())
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
@@ -520,11 +548,86 @@ class KnowledgeRepositoryTest {
 
                 viewModel.searchManualCandidates("Unlinked archive record 2120")
                 val searched = withTimeout(30_000) {
-                    viewModel.uiState.first { it.manualQuery == "Unlinked archive record 2120" }
+                    viewModel.uiState.first {
+                        it.manualQuery == "Unlinked archive record 2120" &&
+                            it.manualCandidates.map { candidate -> candidate.rawRecordId } == listOf(2_120L)
+                    }
                 }
                 assertEquals(listOf(2_120L), searched.manualCandidates.map { it.rawRecordId })
             }
         } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun detailManualSearchCannotBeOvertakenByLoadMore() {
+        val searchStarted = CountDownLatch(1)
+        val releaseSearch = CountDownLatch(1)
+        val blockNextSelect = AtomicBoolean(false)
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .setQueryCallback(
+                { sql, _ ->
+                    if (sql.trimStart().startsWith("SELECT", ignoreCase = true) &&
+                        blockNextSelect.compareAndSet(true, false)
+                    ) {
+                        searchStarted.countDown()
+                        check(releaseSearch.await(30, TimeUnit.SECONDS)) {
+                            "Timed out while holding the manual search query"
+                        }
+                    }
+                },
+                Executor { command -> command.run() }
+            )
+            .build()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            runBlocking {
+                val currentRawId = reflectionRepository.captureRawText("Current reflection")
+                val proposal = reflectionRepository.createLocalProposal(currentRawId)
+                val session = reflectionRepository.confirm(proposal.hypothesisId, "Current conclusion")
+                val currentRevisionId = requireNotNull(session.revisionId)
+                reflectionRepository.captureRawText("Needle archive record")
+                reflectionRepository.captureRawText("Other archive record")
+
+                val viewModel = DetailViewModel(
+                    application = context.applicationContext as Application,
+                    entryRepository = EntryRepository(
+                        database,
+                        database.entryDao(),
+                        database.knowledgeDao(),
+                        context
+                    ),
+                    reflectionRepository = reflectionRepository,
+                    knowledgeRepository = knowledgeRepository(database),
+                    audioEncryptionUtil = AudioEncryptionUtil(context)
+                )
+                viewModel.loadEntry(currentRawId)
+                withTimeout(30_000) { viewModel.uiState.first { !it.isLoading } }
+
+                blockNextSelect.set(true)
+                viewModel.searchManualCandidates("Needle")
+                assertTrue(
+                    "Search query must be visible before its result returns",
+                    viewModel.uiState.value.manualQuery == "Needle"
+                )
+                assertTrue(searchStarted.await(30, TimeUnit.SECONDS))
+
+                viewModel.loadMoreManualCandidates()
+                releaseSearch.countDown()
+
+                val settled = withTimeout(30_000) {
+                    viewModel.uiState.first {
+                        it.manualQuery == "Needle" &&
+                            it.manualCandidates.map { candidate -> candidate.sourceText } ==
+                            listOf("Needle archive record")
+                    }
+                }
+                assertEquals(listOf("Needle archive record"), settled.manualCandidates.map { it.sourceText })
+            }
+        } finally {
+            releaseSearch.countDown()
             database.close()
         }
     }

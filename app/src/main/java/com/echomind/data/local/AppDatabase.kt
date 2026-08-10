@@ -16,6 +16,7 @@ import com.echomind.data.local.entity.EntryEntity
 import com.echomind.data.local.entity.EvidenceLinkEntity
 import com.echomind.data.local.entity.OutcomeEntity
 import com.echomind.data.local.entity.RawRecordEntity
+import com.echomind.data.local.entity.normalizeSearchText
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.local.entity.HomeCardDispositionEntity
@@ -37,7 +38,7 @@ import com.echomind.data.local.entity.AudioCleanupEntity
         HomeCardDispositionEntity::class,
         AudioCleanupEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @androidx.room.TypeConverters(Converters::class)
@@ -547,6 +548,25 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `raw_records` ADD COLUMN `original_text_search_key` TEXT NOT NULL DEFAULT ''"
+                )
+                db.query("SELECT `id`, `original_text` FROM `raw_records`").use { cursor ->
+                    val update = db.compileStatement(
+                        "UPDATE `raw_records` SET `original_text_search_key` = ? WHERE `id` = ?"
+                    )
+                    while (cursor.moveToNext()) {
+                        update.clearBindings()
+                        update.bindString(1, normalizeSearchText(cursor.getString(1)))
+                        update.bindLong(2, cursor.getLong(0))
+                        update.executeUpdateDelete()
+                    }
+                }
             }
         }
     }

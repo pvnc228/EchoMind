@@ -235,6 +235,7 @@ fun DetailScreen(
                                 otherEntries = uiState.otherEntries,
                                 manualCandidates = uiState.manualCandidates,
                                 manualCandidatesHasMore = uiState.manualCandidatesHasMore,
+                                isManualLoading = uiState.isManualLoading,
                                 revisionId = reflection.revisionId,
                                 onLinkToTheme = { themeId, revisionId ->
                                     viewModel.linkToTheme(themeId, revisionId)
@@ -343,6 +344,7 @@ fun ConnectionsSection(
     otherEntries: List<RelatedRecord>,
     manualCandidates: List<RelatedRecord>,
     manualCandidatesHasMore: Boolean,
+    isManualLoading: Boolean,
     revisionId: Long,
     onLinkToTheme: (Long, Long) -> Unit,
     onUnlinkFromTheme: (Long, Long) -> Unit,
@@ -566,7 +568,10 @@ fun ConnectionsSection(
                         }
                     }
                     if (manualCandidatesHasMore) {
-                        TextButton(onClick = onLoadMoreManual) {
+                        TextButton(
+                            onClick = onLoadMoreManual,
+                            enabled = !isManualLoading
+                        ) {
                             Text("Load more records")
                         }
                     }

@@ -5,6 +5,11 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.text.Normalizer
+import java.util.Locale
+
+fun normalizeSearchText(value: String): String =
+    Normalizer.normalize(value, Normalizer.Form.NFKC).lowercase(Locale.ROOT)
 
 @Entity(
     tableName = "raw_records",
@@ -22,7 +27,9 @@ data class RawRecordEntity(
     @ColumnInfo(name = "duration_ms")
     val durationMs: Long,
     @ColumnInfo(name = "created_at")
-    val createdAt: Long
+    val createdAt: Long,
+    @ColumnInfo(name = "original_text_search_key", defaultValue = "''")
+    val originalTextSearchKey: String = normalizeSearchText(originalText)
 )
 
 @Entity(

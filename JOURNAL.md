@@ -1445,3 +1445,37 @@ The full completion gate and self-review remain required before declaring the
 broader M2/M3/M4 repair gate closed. CPU/FTS ranking benchmarks, API26/API30
 reruns after this follow-up, and the deferred accessibility/restart UI matrix
 remain explicitly unclaimed.
+
+## 2026-08-10 - review P1/P2 closure for bounded Detail manual search
+
+### Implementation
+
+- Manual Detail search now normalizes both stored raw text and the query with
+  Unicode NFKC plus `Locale.ROOT` lowercase. The normalized key is persisted in
+  `raw_records`; `MIGRATION_7_8` backfills real legacy rows in Kotlin, so the
+  DAO remains server-side and bounded without relying on SQLite ASCII-only
+  `LIKE` folding. Raw text and export manifest semantics are unchanged.
+- `DetailViewModel` publishes the new query and loading state synchronously,
+  clears the old page before searching, captures query/offset/generation at
+  request start, disables Load more while a request is active, and ignores
+  stale success/error paths.
+
+### Evidence
+
+- `manualLinkSearchMatchesCyrillicRegardlessOfCase` and
+  `detailManualSearchCannotBeOvertakenByLoadMore`: passed on
+  `Pixel_8_2` API 35; the latter holds the real Room search query while
+  invoking Load more.
+- Legacy v2 -> v8 migration fixture with `КАРЬЕРА` backfills
+  `original_text_search_key = карьера`; migration/export subset passed **14/14**.
+- Full gate passed: JVM **40/40**, connected Android **68/68** on
+  `Pixel_8_2` API 35, `:app:lintDebug --rerun-tasks`, and `git diff --check`.
+- `code-review-expert` self-review found no P0/P1 in the changed path; raw
+  provenance, LIKE escaping, migration resources, generation guards, and
+  error paths were checked.
+
+### Scope boundary
+
+The broader repair gate remains open. CPU/FTS ranking benchmarks,
+post-change API26/API30 reruns, and the deferred accessibility/restart-export
+UI matrix are not claimed by this artifact.

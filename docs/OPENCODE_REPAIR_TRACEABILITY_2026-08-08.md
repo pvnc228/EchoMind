@@ -149,6 +149,18 @@ accessibility/restart UI matrix.
 | P2-07 | `RecordScreen`, Echo Glass action dock | Dock stationary, API 26–30 opaque fallback, expanded semantics и scroll/IME/TalkBack oracle проходят | pending |
 | P3-01 | lint/build configuration and source baseline | Новые warnings отделены от baseline; completion artifact содержит свежий lint и отсутствие новых локальных quality defects | pending |
 
+## 2026-08-10 review findings: bounded Detail manual search
+
+| Review finding | Production seam | Regression oracle | Status |
+|---|---|---|---|
+| P1: SQLite LIKE did not provide Unicode case-insensitive manual search | `KnowledgeEntities`, `AppDatabase` v8 migration, `KnowledgeDao`, `KnowledgeRepository` | `manualLinkSearchMatchesCyrillicRegardlessOfCase`; migrated v2 fixture asserts `КАРЬЕРА` -> `карьера` | resolved |
+| P2: Search and Load more could issue different queries and discard the new result | `DetailViewModel`, `DetailScreen` | `detailManualSearchCannotBeOvertakenByLoadMore` with a held Room query and synchronous state assertions | resolved |
+
+The full gate for this follow-up passed with JVM 40/40, connected
+68/68 on `Pixel_8_2` API 35, lint, and `git diff --check`. The broader repair
+gate remains open for CPU/FTS ranking benchmarks, post-change API26/API30
+runs, and the deferred accessibility/restart-export UI matrix.
+
 ## Completion artifacts
 
 - Package 1: целевые JVM/Compose тесты и `git diff --check`.
