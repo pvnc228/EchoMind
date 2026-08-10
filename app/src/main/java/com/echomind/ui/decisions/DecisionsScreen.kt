@@ -1,5 +1,11 @@
 package com.echomind.ui.decisions
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -39,10 +45,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.echomind.data.followup.FollowUpRecord
+import com.echomind.data.followup.FollowUpStatus
 import com.echomind.domain.model.Decision
 import com.echomind.domain.model.DecisionSourceOption
 import com.echomind.domain.model.OutcomeImpactReview
@@ -58,6 +68,10 @@ fun DecisionsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showNewDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
 
     Scaffold(
         topBar = {
@@ -91,6 +105,20 @@ fun DecisionsScreen(
             onDeleteOutcome = { decisionId, outcomeId ->
                 viewModel.deleteOutcome(decisionId, outcomeId)
             },
+            onScheduleFollowUp = { decisionId, days ->
+                viewModel.scheduleFollowUp(decisionId, days)
+                if (
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            },
+            onPostponeFollowUp = viewModel::postponeFollowUp,
+            onCancelFollowUp = viewModel::cancelFollowUp,
             onDelete = viewModel::delete
         )
     }
@@ -119,6 +147,9 @@ fun DecisionsScreenContent(
     onReplaceGrounds: (Long, Long) -> Unit = { _, _ -> },
     onReportOutcome: (Long, String) -> Unit = { _, _ -> },
     onDeleteOutcome: (Long, Long) -> Unit = { _, _ -> },
+    onScheduleFollowUp: (Long, Int) -> Unit = { _, _ -> },
+    onPostponeFollowUp: (Long) -> Unit = {},
+    onCancelFollowUp: (Long) -> Unit = {},
     onDelete: (Long) -> Unit = {}
 ) {
     when {
@@ -163,6 +194,11 @@ fun DecisionsScreenContent(
                     DecisionCard(
                         decision = decision,
                         sources = uiState.sources,
+                        followUp = uiState.followUps[decision.id],
+                        followUpLoading = uiState.followUpLoadingDecisionId == decision.id,
+                        followUpError = uiState.followUpError.takeIf {
+                            uiState.followUpErrorDecisionId == decision.id
+                        },
                         impactReview = uiState.impactReview?.takeIf {
                             it.decisionId == decision.id
                         },
@@ -183,6 +219,9 @@ fun DecisionsScreenContent(
                         onDeleteOutcome = { outcomeId ->
                             onDeleteOutcome(decision.id, outcomeId)
                         },
+                        onScheduleFollowUp = { days -> onScheduleFollowUp(decision.id, days) },
+                        onPostponeFollowUp = { onPostponeFollowUp(decision.id) },
+                        onCancelFollowUp = { onCancelFollowUp(decision.id) },
                         onDelete = { onDelete(decision.id) }
                     )
                 }
@@ -196,6 +235,9 @@ fun DecisionsScreenContent(
 private fun DecisionCard(
     decision: Decision,
     sources: List<DecisionSourceOption>,
+    followUp: FollowUpRecord?,
+    followUpLoading: Boolean,
+    followUpError: String?,
     impactReview: OutcomeImpactReview?,
     impactLoading: Boolean,
     impactError: String?,
@@ -207,6 +249,9 @@ private fun DecisionCard(
     onReplaceGrounds: (Long) -> Unit,
     onReportOutcome: (String) -> Unit,
     onDeleteOutcome: (Long) -> Unit,
+    onScheduleFollowUp: (Int) -> Unit,
+    onPostponeFollowUp: () -> Unit,
+    onCancelFollowUp: () -> Unit,
     onDelete: () -> Unit
 ) {
     var showChoiceDialog by remember { mutableStateOf(false) }
@@ -216,6 +261,7 @@ private fun DecisionCard(
     var groundsToReplace by remember { mutableStateOf<Long?>(null) }
     var outcomeToDelete by remember { mutableStateOf<Long?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var showFollowUpDialog by remember { mutableStateOf(false) }
     val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
 
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -300,6 +346,17 @@ private fun DecisionCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            FollowUpSection(
+                decision = decision,
+                followUp = followUp,
+                isLoading = followUpLoading,
+                error = followUpError,
+                onOpenSchedule = { showFollowUpDialog = true },
+                onPostpone = onPostponeFollowUp,
+                onCancel = onCancelFollowUp,
+                onRetry = { showFollowUpDialog = true }
+            )
 
             if (decision.isDecided && decision.hasOutcome) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -441,6 +498,16 @@ private fun DecisionCard(
             }
         )
     }
+    if (showFollowUpDialog) {
+        FollowUpScheduleDialog(
+            isLoading = followUpLoading,
+            onDismiss = { if (!followUpLoading) showFollowUpDialog = false },
+            onSchedule = { days ->
+                showFollowUpDialog = false
+                onScheduleFollowUp(days)
+            }
+        )
+    }
     outcomeToDelete?.let { outcomeId ->
         AlertDialog(
             onDismissRequest = { outcomeToDelete = null },
@@ -480,6 +547,117 @@ private fun DecisionCard(
         )
     }
 }
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun FollowUpSection(
+    decision: Decision,
+    followUp: FollowUpRecord?,
+    isLoading: Boolean,
+    error: String?,
+    onOpenSchedule: () -> Unit,
+    onPostpone: () -> Unit,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit
+) {
+    if (!decision.isDecided) return
+
+    Spacer(modifier = Modifier.height(8.dp))
+    when {
+        isLoading -> {
+            Text(
+                "Scheduling follow-up...",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        followUp?.status == FollowUpStatus.FIRED -> {
+            Text(
+                "Follow-up is ready",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                "The reminder is available here even when notifications are unavailable.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                TextButton(onClick = onPostpone) { Text("Postpone 1 day") }
+                TextButton(onClick = onCancel) { Text("Dismiss follow-up") }
+            }
+        }
+        followUp?.status == FollowUpStatus.SCHEDULED ||
+            followUp?.status == FollowUpStatus.POSTPONED -> {
+            Text(
+                "Follow-up scheduled for ${formatFollowUpDate(followUp.triggerAtMillis)}",
+                style = MaterialTheme.typography.bodySmall
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                TextButton(onClick = onPostpone) { Text("Postpone 1 day") }
+                TextButton(onClick = onCancel) { Text("Cancel follow-up") }
+            }
+        }
+        followUp?.status == FollowUpStatus.FAILED -> {
+            Text(
+                error ?: "Follow-up could not be scheduled.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+            TextButton(onClick = onRetry) { Text("Try again") }
+        }
+        followUp?.status == FollowUpStatus.CANCELED -> Unit
+        else -> {
+            Text("Optional follow-up", style = MaterialTheme.typography.labelLarge)
+            Text(
+                "Choose a local reminder for one to three days. It does not change your conclusion.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            TextButton(onClick = onOpenSchedule) { Text("Set optional follow-up") }
+        }
+    }
+    if (error != null && followUp?.status != FollowUpStatus.FAILED) {
+        Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun FollowUpScheduleDialog(
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onSchedule: (Int) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set optional follow-up") },
+        text = {
+            Text("Choose a local reminder. It will not confirm a proposal or revise a conclusion.")
+        },
+        confirmButton = {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(1, 2, 3).forEach { days ->
+                    TextButton(enabled = !isLoading, onClick = { onSchedule(days) }) {
+                        Text("$days day${if (days == 1) "" else "s"}")
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(enabled = !isLoading, onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+private fun formatFollowUpDate(triggerAtMillis: Long): String =
+    SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(triggerAtMillis))
 
 @Composable
 fun OutcomeImpactReviewCard(

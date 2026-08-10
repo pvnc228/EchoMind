@@ -231,7 +231,7 @@ write; historical revisions and the decision's original grounds remain intact.
 The full Decisions restart/export UI oracle and API26/API30 runtime evidence
 remain open, so M4 and the M2/M3/M4 repair gate are not marked complete.
 
-**Owner decision (2026-08-09):** следующий M4 slice — необязательный локальный
+**Owner decision (2026-08-09, historical planning record):** следующий M4 slice — необязательный локальный
 `Review impact`: outcome сравнивается с исходными grounds/choice, proposal
 показывается как diff, а новая revision появляется только после явного
 подтверждения. После choice приложение может один раз предложить follow-up на
@@ -245,7 +245,7 @@ notification и приложении. Решение зафиксировано 
 
 - [x] Let the user turn a question into an explicit decision record.
 - [x] Store the user's choice separately from EchoMind's suggestion.
-- [ ] Offer an optional, user-controlled follow-up.
+- [x] Offer an optional, user-controlled follow-up.
 - [x] Capture the reported outcome with minimal friction.
 - [x] Compare an outcome with the original expectation and revise relevant conclusions only after review.
 - [x] Show when a theme lacks outcome evidence.
@@ -256,6 +256,16 @@ notification и приложении. Решение зафиксировано 
 - [x] Ignoring follow-up never blocks basic reflection or retrieval.
 - [x] Reminders are opt-in, dismissible, and do not use guilt or streak mechanics.
 - [x] Advice quality is never inferred from entry count alone.
+
+**Status (2026-08-10, optional follow-up implementation slice):** Issue #6 now
+has a local, opt-in follow-up path after an explicit choice. The path persists
+only operational reminder state in a private DataStore, uses unique WorkManager
+work, provides postpone/cancel in the notification and Decisions screen, and
+keeps an in-app `FIRED` fallback when notification permission is unavailable.
+Fresh API 35 public-seam evidence exists for scheduling, duplicate prevention,
+restart persistence, postpone, cancel, and the Decisions UI. The full API 35
+completion gate is green; the broader M4 milestone remains open pending
+separately required API26/API30/accessibility evidence.
 
 ## M5 — Explainable personal guidance
 

@@ -70,9 +70,18 @@ implementation slice; они не должны превращаться в strea
 
 ## Статус реализации
 
-- API26/API30 AVD evidence: **не выполнено**.
-- M4 Review impact: **не реализовано**.
-- Optional follow-up notification: **не реализовано**.
+- API26/API30 AVD evidence: **не повторено для Issue #6**; broader gate remains open.
+- M4 Review impact: **реализовано в отдельном срезе**; broader restart/export evidence remains open.
+- Optional follow-up notification: **реализовано в Issue #6 slice**; API35 full completion gate passed.
 
 Решение снимает product-неопределённость и разрешает следующий implementation
 slice, но само по себе не закрывает roadmap criteria.
+
+## Implementation update (2026-08-10)
+
+Issue #6 implements the confirmed optional follow-up contract: explicit choice is
+required, the local reminder is durable and unique per decision, postpone and
+cancel are available from the notification and Decisions screen, and the
+permission-denied path remains in-app without exposing raw reflection or choice.
+Fresh API 35 public-seam evidence exists; this update does not close the wider
+M4 milestone or claim API26/API30 evidence for this slice.

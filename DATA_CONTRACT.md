@@ -84,6 +84,7 @@ device.
 | Encrypted audio file | recorded audio | Raw | User | Yes, decrypted only in the warned plaintext export |
 | DataStore `settings` | `local_mode` | Operational privacy choice | User | No |
 | DataStore `settings` | `api_endpoint` | Identifying configuration | User | No |
+| DataStore `follow_up` | decision ID, trigger time, reminder status | Operational local follow-up state | User | No |
 | Encrypted preferences | API key | Secret | User | Never |
 | Encrypted preferences | SQLCipher passphrase | Secret | EchoMind | Never |
 | DataStore `onboarding` | completion flag | Operational | EchoMind | No |
