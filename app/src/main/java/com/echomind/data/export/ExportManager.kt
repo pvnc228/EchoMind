@@ -46,6 +46,43 @@ internal const val MAX_RESTORE_ARCHIVE_BYTES = 512L * 1024 * 1024
 private const val MAX_RESTORE_MANIFEST_BYTES = 8L * 1024 * 1024
 private const val MAX_RESTORE_COMPRESSION_RATIO = 100L
 
+sealed interface RestoreScope {
+    data object EmptyProfile : RestoreScope
+    data object All : RestoreScope
+    data class SelectedRawRecords(val rawRecordIds: Set<Long>) : RestoreScope
+}
+
+data class RestoreConflict(
+    val entityType: String,
+    val identifier: String
+)
+
+data class RestoreRootPreview(
+    val rawRecordId: Long,
+    val originalText: String,
+    val createdAt: Long
+)
+
+data class RestorePreview(
+    val rootRawRecordIds: List<Long>,
+    val availableRoots: List<RestoreRootPreview>,
+    val includedRawRecordIds: List<Long>,
+    val rawRecordCount: Int,
+    val entryCount: Int,
+    val hypothesisCount: Int,
+    val conclusionCount: Int,
+    val revisionCount: Int,
+    val evidenceLinkCount: Int,
+    val themeCount: Int,
+    val themeLinkCount: Int,
+    val decisionCount: Int,
+    val outcomeCount: Int,
+    val captureDraftCount: Int,
+    val dispositionCount: Int,
+    val audioFileNames: List<String>,
+    val conflicts: List<RestoreConflict>
+)
+
 @Singleton
 class ExportManager @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -55,22 +92,7 @@ class ExportManager @Inject constructor(
     private val audioEncryptionUtil: AudioEncryptionUtil
 ) {
     suspend fun exportToZip(): Result<File> = runCatching {
-        val snapshot = database.withTransaction {
-            ExportSnapshot(
-                entries = entryDao.getAllEntriesOnce(),
-                rawRecords = knowledgeDao.getAllRawRecords(),
-                hypotheses = knowledgeDao.getAllHypotheses(),
-                conclusions = knowledgeDao.getAllConclusions(),
-                revisions = knowledgeDao.getAllRevisions(),
-                evidenceLinks = knowledgeDao.getAllEvidenceLinks(),
-                themes = knowledgeDao.getAllThemes(),
-                themeLinks = knowledgeDao.getAllThemeLinks(),
-                decisions = knowledgeDao.getAllDecisions(),
-                outcomes = knowledgeDao.getAllOutcomes(),
-                captureDraft = knowledgeDao.getCaptureDraft(),
-                dispositions = knowledgeDao.getAllHomeCardDispositions()
-            )
-        }
+        val snapshot = database.withTransaction { snapshotInTransaction() }
         val audioNames = buildMap {
             snapshot.rawRecords
                 .filter { it.audioPath != null }
@@ -134,40 +156,66 @@ class ExportManager @Inject constructor(
         zipFile
     }
 
-    suspend fun restoreFromZip(archive: File): Result<Unit> = runCatching {
+    suspend fun previewRestore(
+        archive: File,
+        scope: RestoreScope = RestoreScope.All
+    ): Result<RestorePreview> = runCatching {
         require(archive.isFile) { "Restore archive does not exist." }
-        val manifestAndAudio = readAndValidateArchive(archive)
-        require(
-            entryDao.getAllEntriesOnce().isEmpty() &&
-                knowledgeDao.getAllRawRecords().isEmpty() &&
-                knowledgeDao.getAllThemes().isEmpty() &&
-                knowledgeDao.getAllDecisions().isEmpty() &&
-                knowledgeDao.getCaptureDraft() == null &&
-                knowledgeDao.getAllHomeCardDispositions().isEmpty()
-        ) { "Restore requires an empty profile" }
+        val manifest = readAndValidateArchive(archive).manifest
+        buildRestorePlan(manifest, scope, readSnapshot()).preview
+    }
+
+    suspend fun restoreFromZip(archive: File): Result<Unit> =
+        restoreFromZip(archive, RestoreScope.EmptyProfile)
+
+    suspend fun restoreFromZip(archive: File, scope: RestoreScope): Result<Unit> = runCatching {
+        require(archive.isFile) { "Restore archive does not exist." }
+        val manifest = readAndValidateArchive(archive).manifest
+        val initialPlan = buildRestorePlan(manifest, scope, readSnapshot())
+        if (scope == RestoreScope.EmptyProfile) {
+            require(initialPlan.isEmptyTarget) { "Restore requires an empty profile" }
+        }
+        require(initialPlan.preview.conflicts.isEmpty()) {
+            "Restore conflicts with the existing profile: ${
+                initialPlan.preview.conflicts.joinToString { "${it.entityType}:${it.identifier}" }
+            }"
+        }
 
         val sessionDir = File(context.noBackupFilesDir, "restore_${UUID.randomUUID()}")
         val audioDir = File(context.noBackupFilesDir, "restored_audio")
         val stagedAudio = mutableMapOf<String, String>()
         try {
-            sessionDir.mkdirs()
-            audioDir.mkdirs()
-            ZipFile(archive).use { zip ->
-                manifestAndAudio.manifest.files.forEach { fileMetadata ->
-                    val source = requireNotNull(zip.getEntry(fileMetadata.name))
-                    val plaintext = File(sessionDir, "${stagedAudio.size}.wav")
-                    zip.getInputStream(source).use { input -> plaintext.outputStream().use { input.copyTo(it) } }
-                    val encrypted = File(
-                        audioDir,
-                        "restore_${stagedAudio.size}_${fileMetadata.sha256}.enc"
-                    )
-                    audioEncryptionUtil.encryptFile(plaintext, encrypted)
-                    stagedAudio[fileMetadata.name] = encrypted.absolutePath
+            if (initialPlan.audioFileNames.isNotEmpty()) {
+                sessionDir.mkdirs()
+                audioDir.mkdirs()
+                ZipFile(archive).use { zip ->
+                    initialPlan.audioFileNames.forEachIndexed { index, fileName ->
+                        val fileMetadata = manifest.files.single { it.name == fileName }
+                        val source = requireNotNull(zip.getEntry(fileMetadata.name))
+                        val plaintext = File(sessionDir, "$index.wav")
+                        zip.getInputStream(source).use { input ->
+                            plaintext.outputStream().use { input.copyTo(it) }
+                        }
+                        val encrypted = File(
+                            audioDir,
+                            "restore_${index}_${fileMetadata.sha256}.enc"
+                        )
+                        audioEncryptionUtil.encryptFile(plaintext, encrypted)
+                        stagedAudio[fileMetadata.name] = encrypted.absolutePath
+                    }
                 }
             }
-            val manifest = manifestAndAudio.manifest
             database.withTransaction {
-                entryDao.insertEntries(manifest.entries.map { entry ->
+                val plan = buildRestorePlan(manifest, scope, snapshotInTransaction())
+                if (scope == RestoreScope.EmptyProfile) {
+                    require(plan.isEmptyTarget) { "Restore requires an empty profile" }
+                }
+                require(plan.preview.conflicts.isEmpty()) {
+                    "Restore conflicts with the existing profile: ${
+                        plan.preview.conflicts.joinToString { "${it.entityType}:${it.identifier}" }
+                    }"
+                }
+                entryDao.insertEntries(plan.entries.map { entry ->
                     EntryEntity(
                         id = entry.id,
                         transcript = entry.transcript,
@@ -182,7 +230,7 @@ class ExportManager @Inject constructor(
                         emotions = entry.emotions
                     )
                 })
-                knowledgeDao.insertRawRecords(manifest.rawRecords.map { raw ->
+                knowledgeDao.insertRawRecords(plan.rawRecords.map { raw ->
                     RawRecordEntity(
                         id = raw.id,
                         legacyEntryId = raw.legacyEntryId,
@@ -192,19 +240,19 @@ class ExportManager @Inject constructor(
                         createdAt = raw.createdAt
                     )
                 })
-                knowledgeDao.insertHypotheses(manifest.hypotheses.map {
+                knowledgeDao.insertHypotheses(plan.hypotheses.map {
                     AiHypothesisEntity(it.id, it.rawRecordId, it.draftJson, it.counterargument, it.status, it.createdAt)
                 })
-                knowledgeDao.insertConclusions(manifest.conclusions.map {
+                knowledgeDao.insertConclusions(plan.conclusions.map {
                     ConclusionEntity(it.id, it.rawRecordId, it.currentRevisionId, it.createdAt)
                 })
-                knowledgeDao.insertRevisions(manifest.revisions.map {
+                knowledgeDao.insertRevisions(plan.revisions.map {
                     ConclusionRevisionEntity(it.id, it.conclusionId, it.version, it.text, it.author, it.createdAt)
                 })
-                knowledgeDao.insertThemes(manifest.themes.map {
+                knowledgeDao.insertThemes(plan.themes.map {
                     ThemeEntity(it.id, it.name, it.createdAt, it.archivedAt)
                 })
-                knowledgeDao.insertEvidenceLinks(manifest.evidenceLinks.map {
+                knowledgeDao.insertEvidenceLinks(plan.evidenceLinks.map {
                     EvidenceLinkEntity(
                         id = it.id,
                         conclusionRevisionId = it.conclusionRevisionId,
@@ -217,7 +265,7 @@ class ExportManager @Inject constructor(
                         reviewMetadata = it.reviewMetadata
                     )
                 })
-                knowledgeDao.insertThemeLinks(manifest.themeLinks.map {
+                knowledgeDao.insertThemeLinks(plan.themeLinks.map {
                     ThemeLinkEntity(
                         id = it.id,
                         themeId = it.themeId,
@@ -228,7 +276,7 @@ class ExportManager @Inject constructor(
                         reviewRequired = it.reviewRequired
                     )
                 })
-                knowledgeDao.insertDecisions(manifest.decisions.map {
+                knowledgeDao.insertDecisions(plan.decisions.map {
                     DecisionEntity(
                         id = it.id,
                         question = it.question,
@@ -241,10 +289,10 @@ class ExportManager @Inject constructor(
                         suggestionStatus = it.suggestionStatus
                     )
                 })
-                knowledgeDao.insertOutcomes(manifest.outcomes.map {
+                knowledgeDao.insertOutcomes(plan.outcomes.map {
                     OutcomeEntity(it.id, it.decisionId, it.report, it.createdAt)
                 })
-                manifest.captureDraft?.let { draft ->
+                plan.captureDraft?.let { draft ->
                     knowledgeDao.upsertCaptureDraft(
                         CaptureDraftEntity(
                             id = draft.id,
@@ -257,7 +305,7 @@ class ExportManager @Inject constructor(
                         )
                     )
                 }
-                manifest.dispositions.forEach { disposition ->
+                plan.dispositions.forEach { disposition ->
                     knowledgeDao.upsertHomeCardDisposition(
                         HomeCardDispositionEntity(
                             cardKey = disposition.cardKey,
@@ -273,11 +321,215 @@ class ExportManager @Inject constructor(
             }
         } catch (error: Exception) {
             stagedAudio.values.map(::File).forEach { it.delete() }
+            if (audioDir.isDirectory && audioDir.listFiles().isNullOrEmpty()) {
+                audioDir.delete()
+            }
             throw error
         } finally {
             sessionDir.deleteRecursively()
         }
     }
+
+    private suspend fun readSnapshot(): ExportSnapshot =
+        database.withTransaction { snapshotInTransaction() }
+
+    private suspend fun snapshotInTransaction(): ExportSnapshot = ExportSnapshot(
+        entries = entryDao.getAllEntriesOnce(),
+        rawRecords = knowledgeDao.getAllRawRecords(),
+        hypotheses = knowledgeDao.getAllHypotheses(),
+        conclusions = knowledgeDao.getAllConclusions(),
+        revisions = knowledgeDao.getAllRevisions(),
+        evidenceLinks = knowledgeDao.getAllEvidenceLinks(),
+        themes = knowledgeDao.getAllThemes(),
+        themeLinks = knowledgeDao.getAllThemeLinks(),
+        decisions = knowledgeDao.getAllDecisions(),
+        outcomes = knowledgeDao.getAllOutcomes(),
+        captureDraft = knowledgeDao.getCaptureDraft(),
+        dispositions = knowledgeDao.getAllHomeCardDispositions()
+    )
+
+    private fun buildRestorePlan(
+        manifest: ExportManifest,
+        scope: RestoreScope,
+        target: ExportSnapshot
+    ): RestorePlan {
+        val rawById = manifest.rawRecords.associateBy { it.id }
+        val rootIds = when (scope) {
+            RestoreScope.EmptyProfile,
+            RestoreScope.All -> manifest.rawRecords.map { it.id }.sorted()
+            is RestoreScope.SelectedRawRecords -> {
+                require(scope.rawRecordIds.isNotEmpty()) { "Selective restore requires at least one raw record." }
+                require(scope.rawRecordIds.all { it in rawById }) {
+                    "Selective restore references an unknown raw record."
+                }
+                scope.rawRecordIds.sorted()
+            }
+        }
+        val rootIdSet = rootIds.toSet()
+        val fullRestore = scope !is RestoreScope.SelectedRawRecords
+        val includedRawIds = rootIds.toMutableSet()
+        val conclusions = if (fullRestore) {
+            manifest.conclusions
+        } else {
+            manifest.conclusions.filter { it.rawRecordId in rootIdSet }
+        }
+        val conclusionIds = conclusions.map { it.id }.toSet()
+        val revisions = if (fullRestore) {
+            manifest.revisions
+        } else {
+            manifest.revisions.filter { it.conclusionId in conclusionIds }
+        }
+        val revisionIds = revisions.map { it.id }.toSet()
+        val evidenceLinks = if (fullRestore) {
+            manifest.evidenceLinks
+        } else {
+            manifest.evidenceLinks.filter { it.conclusionRevisionId in revisionIds }
+        }
+        includedRawIds += evidenceLinks.map { it.sourceRawRecordId }
+        val includedRawIdSet = includedRawIds.toSet()
+        val rawRecords = if (fullRestore) {
+            manifest.rawRecords
+        } else {
+            manifest.rawRecords.filter { it.id in includedRawIdSet }
+        }
+        val entries = if (fullRestore) {
+            manifest.entries
+        } else {
+            manifest.entries.filter { it.id in rawRecords.mapNotNull { raw -> raw.legacyEntryId }.toSet() }
+        }
+        val hypotheses = if (fullRestore) {
+            manifest.hypotheses
+        } else {
+            manifest.hypotheses.filter { it.rawRecordId in rootIdSet }
+        }
+        val themeLinks = if (fullRestore) {
+            manifest.themeLinks
+        } else {
+            manifest.themeLinks.filter { it.conclusionRevisionId in revisionIds }
+        }
+        val themeIds = themeLinks.map { it.themeId }.toSet()
+        val themes = if (fullRestore) {
+            manifest.themes
+        } else {
+            manifest.themes.filter { it.id in themeIds }
+        }
+        val decisions = if (fullRestore) {
+            manifest.decisions
+        } else {
+            manifest.decisions.filter { it.sourceRevisionId in revisionIds }
+        }
+        val decisionIds = decisions.map { it.id }.toSet()
+        val outcomes = if (fullRestore) {
+            manifest.outcomes
+        } else {
+            manifest.outcomes.filter { it.decisionId in decisionIds }
+        }
+        val captureDraft = when (scope) {
+            RestoreScope.EmptyProfile, RestoreScope.All -> manifest.captureDraft
+            is RestoreScope.SelectedRawRecords -> null
+        }
+        val dispositions = when (scope) {
+            RestoreScope.EmptyProfile, RestoreScope.All -> manifest.dispositions
+            is RestoreScope.SelectedRawRecords -> manifest.dispositions.filter {
+                (it.scopeType == CoverageScopeType.THEME.name && it.scopeId in themeIds) ||
+                    (it.scopeType == CoverageScopeType.UNTHEMED.name && conclusions.isNotEmpty())
+            }
+        }
+        val selectedAudioNames = buildSet {
+            entries.mapNotNullTo(this) { it.audioFileName }
+            rawRecords.mapNotNullTo(this) { it.audioFileName }
+            captureDraft?.encryptedAudioFileName?.let(::add)
+        }.toList().sorted()
+        val selected = RestorePlan(
+            entries = entries,
+            rawRecords = rawRecords,
+            hypotheses = hypotheses,
+            conclusions = conclusions,
+            revisions = revisions,
+            evidenceLinks = evidenceLinks,
+            themes = themes,
+            themeLinks = themeLinks,
+            decisions = decisions,
+            outcomes = outcomes,
+            captureDraft = captureDraft,
+            dispositions = dispositions,
+            audioFileNames = selectedAudioNames,
+            isEmptyTarget = isEmptyTarget(target),
+            preview = RestorePreview(
+                rootRawRecordIds = rootIds,
+                availableRoots = manifest.rawRecords
+                    .sortedBy { it.id }
+                    .map { RestoreRootPreview(it.id, it.originalText, it.createdAt) },
+                includedRawRecordIds = rawRecords.map { it.id }.sorted(),
+                rawRecordCount = rawRecords.size,
+                entryCount = entries.size,
+                hypothesisCount = hypotheses.size,
+                conclusionCount = conclusions.size,
+                revisionCount = revisions.size,
+                evidenceLinkCount = evidenceLinks.size,
+                themeCount = themes.size,
+                themeLinkCount = themeLinks.size,
+                decisionCount = decisions.size,
+                outcomeCount = outcomes.size,
+                captureDraftCount = if (captureDraft == null) 0 else 1,
+                dispositionCount = dispositions.size,
+                audioFileNames = selectedAudioNames,
+                conflicts = emptyList()
+            )
+        )
+        val conflicts = findConflicts(selected, target)
+        return selected.copy(preview = selected.preview.copy(conflicts = conflicts))
+    }
+
+    private fun findConflicts(plan: RestorePlan, target: ExportSnapshot): List<RestoreConflict> = buildList {
+        fun ids(type: String, incoming: List<Long>, existing: List<Long>) {
+            val existingIds = existing.toSet()
+            incoming.filter { it in existingIds }.forEach { add(RestoreConflict(type, it.toString())) }
+        }
+        ids("entry", plan.entries.map { it.id }, target.entries.map { it.id })
+        ids("raw_record", plan.rawRecords.map { it.id }, target.rawRecords.map { it.id })
+        ids("hypothesis", plan.hypotheses.map { it.id }, target.hypotheses.map { it.id })
+        ids("conclusion", plan.conclusions.map { it.id }, target.conclusions.map { it.id })
+        ids("revision", plan.revisions.map { it.id }, target.revisions.map { it.id })
+        ids("evidence_link", plan.evidenceLinks.map { it.id }, target.evidenceLinks.map { it.id })
+        ids("theme", plan.themes.map { it.id }, target.themes.map { it.id })
+        ids("theme_link", plan.themeLinks.map { it.id }, target.themeLinks.map { it.id })
+        ids("decision", plan.decisions.map { it.id }, target.decisions.map { it.id })
+        ids("outcome", plan.outcomes.map { it.id }, target.outcomes.map { it.id })
+        val targetLegacyIds = target.rawRecords.mapNotNull { it.legacyEntryId }.toSet()
+        plan.rawRecords.mapNotNull { it.legacyEntryId }
+            .filter { it in targetLegacyIds }
+            .forEach { add(RestoreConflict("raw_record.legacy_entry_id", it.toString())) }
+        val targetEvidencePairs = target.evidenceLinks.map { it.conclusionRevisionId to it.sourceRawRecordId }.toSet()
+        plan.evidenceLinks.map { it.conclusionRevisionId to it.sourceRawRecordId }
+            .filter { it in targetEvidencePairs }
+            .forEach { add(RestoreConflict("evidence_link.pair", "${it.first}:${it.second}")) }
+        val targetThemePairs = target.themeLinks.map { it.themeId to it.conclusionRevisionId }.toSet()
+        plan.themeLinks.map { it.themeId to it.conclusionRevisionId }
+            .filter { it in targetThemePairs }
+            .forEach { add(RestoreConflict("theme_link.pair", "${it.first}:${it.second}")) }
+        val targetDispositionKeys = target.dispositions.map { it.cardKey }.toSet()
+        plan.dispositions.map { it.cardKey }
+            .filter { it in targetDispositionKeys }
+            .forEach { add(RestoreConflict("home_card_disposition", it)) }
+        if (plan.captureDraft != null && target.captureDraft != null) {
+            add(RestoreConflict("capture_draft", "1"))
+        }
+    }
+
+    private fun isEmptyTarget(snapshot: ExportSnapshot): Boolean =
+        snapshot.entries.isEmpty() &&
+            snapshot.rawRecords.isEmpty() &&
+            snapshot.hypotheses.isEmpty() &&
+            snapshot.conclusions.isEmpty() &&
+            snapshot.revisions.isEmpty() &&
+            snapshot.evidenceLinks.isEmpty() &&
+            snapshot.themes.isEmpty() &&
+            snapshot.themeLinks.isEmpty() &&
+            snapshot.decisions.isEmpty() &&
+            snapshot.outcomes.isEmpty() &&
+            snapshot.captureDraft == null &&
+            snapshot.dispositions.isEmpty()
 
     private fun readAndValidateArchive(archive: File): ValidatedArchive {
         require(archive.length() in 1..MAX_RESTORE_ARCHIVE_BYTES) {
@@ -532,6 +784,24 @@ private data class PreparedAudio(
     val file: File,
     val size: Long,
     val sha256: String
+)
+
+private data class RestorePlan(
+    val entries: List<ExportEntry>,
+    val rawRecords: List<ExportRawRecord>,
+    val hypotheses: List<ExportHypothesis>,
+    val conclusions: List<ExportConclusion>,
+    val revisions: List<ExportConclusionRevision>,
+    val evidenceLinks: List<ExportEvidenceLink>,
+    val themes: List<ExportTheme>,
+    val themeLinks: List<ExportThemeLink>,
+    val decisions: List<ExportDecision>,
+    val outcomes: List<ExportOutcome>,
+    val captureDraft: ExportCaptureDraft?,
+    val dispositions: List<ExportDisposition>,
+    val audioFileNames: List<String>,
+    val isEmptyTarget: Boolean,
+    val preview: RestorePreview
 )
 
 internal fun buildManifest(

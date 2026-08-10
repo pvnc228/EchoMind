@@ -156,13 +156,23 @@ supports/contradicts relationships between confirmed conclusions (reusing
 `evidence_links`), plus export manifest v3 for all new objects.
 16/16 instrumented tests pass on Pixel 8 API 35.
 
-**Status (2026-08-08, repair slice):** dated revision history, graph-wide
-search, immutable/pending revision links, explicit dependency-preview deletion,
-and local candidate detection are implemented. Inherited links remain pending
-until a user reviews them. Manifest v5 empty-profile restore is implemented.
-Remote-assisted candidates, merge/selective restore, and the corrupt/dangling
-import negative suite remain deferred. The full M2 completion gate is therefore
-not marked complete.
+**Historical status (2026-08-08, repair slice):** dated revision history,
+graph-wide search, immutable/pending revision links, explicit
+dependency-preview deletion, local candidate detection, and manifest v5
+empty-profile restore were implemented. Inherited links remain pending until a
+user reviews them. Merge/selective restore was deferred at that point.
+
+**Status (2026-08-10, M2 implementation):** `ExportManager` now exposes a
+validated, read-only restore preview plus additive `All` and
+`SelectedRawRecords` scopes. Stable-ID/natural-key conflicts fail closed before
+staging or the Room transaction; selected evidence-source dependencies and
+legacy full-restore states are preserved. Settings shows the preview and lets
+the user select roots before confirming. Fresh API35 public-seam and Settings
+UI oracles and the selective restore database-reopen/canonical-export oracle
+pass. The adversarial self-review is complete; the full connected gate and
+cross-API matrix remain open because the API35 full suite is currently stopped
+by an instrumentation-process SIGKILL in the existing performance test. This
+milestone is not marked complete.
 
 ## M3 — Relevant resurfacing and visible capability
 

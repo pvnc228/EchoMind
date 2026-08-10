@@ -7,8 +7,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
@@ -16,6 +19,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +43,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -141,6 +147,92 @@ fun SettingsScreen(
         )
     }
 
+    val restorePreview = (uiState.restoreState as? RestoreState.PreviewReady)?.preview
+    if (restorePreview != null) {
+        AlertDialog(
+            onDismissRequest = viewModel::cancelRestorePreview,
+            title = { Text("Review restore scope") },
+            text = {
+                Column {
+                    Text(
+                        "Selected records: ${restorePreview.rootRawRecordIds.size}. " +
+                            "Graph dependencies: ${restorePreview.includedRawRecordIds.size} raw, " +
+                            "${restorePreview.entryCount} entries, " +
+                            "${restorePreview.conclusionCount} conclusions, " +
+                            "${restorePreview.revisionCount} revisions, " +
+                            "${restorePreview.evidenceLinkCount} evidence links, " +
+                            "${restorePreview.themeCount} themes, " +
+                            "${restorePreview.decisionCount} decisions, " +
+                            "${restorePreview.outcomeCount} outcomes, " +
+                            "${restorePreview.audioFileNames.size} audio files."
+                    )
+                    if (restorePreview.conflicts.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Conflicts with existing profile: ${restorePreview.conflicts.size}. " +
+                                "Uncheck conflicting records or cancel.",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    if (restorePreview.availableRoots.isEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("This archive has no raw record roots. Use Merge all to restore its global state.")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
+                        items(
+                            items = restorePreview.availableRoots,
+                            key = { it.rawRecordId }
+                        ) { root ->
+                            val selected = root.rawRecordId in restorePreview.rootRawRecordIds
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = selected,
+                                    modifier = Modifier.semantics {
+                                        contentDescription = root.originalText
+                                    },
+                                    onCheckedChange = { checked ->
+                                        viewModel.toggleRestoreRoot(root.rawRecordId, checked)
+                                    }
+                                )
+                                Text(
+                                    root.originalText,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 2
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = viewModel::restoreSelectedData,
+                    enabled = restorePreview.conflicts.isEmpty() &&
+                        restorePreview.rootRawRecordIds.isNotEmpty()
+                ) {
+                    Text("Restore selected")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = viewModel::mergeAllData,
+                        enabled = restorePreview.conflicts.isEmpty()
+                    ) {
+                        Text("Merge all")
+                    }
+                    TextButton(onClick = viewModel::cancelRestorePreview) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -218,10 +310,11 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = { restoreLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
-                enabled = uiState.restoreState !is RestoreState.InProgress,
+                enabled = uiState.restoreState !is RestoreState.InProgress &&
+                    uiState.restoreState !is RestoreState.PreviewReady,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Restore backup into empty profile")
+                Text("Review restore archive")
             }
             if (uiState.pendingAudioCleanupCount > 0) {
                 Spacer(modifier = Modifier.height(12.dp))

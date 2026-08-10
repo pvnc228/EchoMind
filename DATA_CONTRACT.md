@@ -10,8 +10,31 @@ and pending link metadata, decision guards, durable capture drafts,
 fingerprint-keyed Home-card dispositions, and the Unicode-aware manual-search
 key. It also persists failed audio cleanup attempts for WorkManager retry; this
 queue and the derived search key are operational and are not exported.
-Export manifest version 5 restores only into an empty profile; merge and
-selective import remain deferred.
+Export manifest version 5 supports strict empty-profile restore, additive merge,
+and selective raw-root restore. Merge never overwrites existing graph rows;
+stable-ID or natural-key conflicts fail before staging/Room writes. Selective
+restore shows its graph dependency closure before the user confirms it.
+
+## Import and restore contract
+
+- `previewRestore` fully validates the ZIP, manifest references, hashes, graph
+  IDs, and enum/state invariants before returning a scope preview. It performs
+  no DB or filesystem writes.
+- `RestoreScope.All` adds the complete validated archive to a non-empty profile;
+  `RestoreScope.SelectedRawRecords` imports the chosen raw roots, their legacy
+  entries, hypotheses, conclusions, revisions, evidence links and referenced
+  raw-source dependencies, plus related themes/decisions/outcomes. Pending
+  links and historical revisions retain their original status, IDs, authorship,
+  and provenance.
+- Existing stable IDs, legacy-entry keys, relationship pairs, singleton
+  drafts, and disposition keys are conflicts. The preview exposes them and the
+  restore rejects the whole operation before staging or transaction commit;
+  no overwrite or ID remapping is performed.
+- Selective restore does not implicitly import unrelated legacy decisions,
+  drafts, or operational dispositions. Full restore preserves those legacy
+  states exactly.
+- Only audio referenced by the selected graph is staged and re-encrypted.
+  Plaintext staging and failed encrypted files are removed on every failure.
 
 ## Retrieval performance boundary
 

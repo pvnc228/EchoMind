@@ -207,6 +207,210 @@ class ExportManagerTest {
     }
 
     @Test
+    fun selectiveMergePreviewShowsScopeAndPreservesExistingProfile() {
+        val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var exportFile: File? = null
+        var restoredExport: File? = null
+        try {
+            runBlocking {
+                val sourceReflection = reflectionRepository(source)
+                val firstRawId = sourceReflection.captureRawText("Skip this source")
+                val selectedRawId = sourceReflection.captureRawText("Import this source")
+                val selectedProposal = sourceReflection.createLocalProposal(selectedRawId)
+                sourceReflection.confirm(selectedProposal.hypothesisId, "Imported conclusion")
+                exportFile = exportManager(source).exportToZip().getOrThrow()
+
+                val targetReflection = reflectionRepository(target)
+                targetReflection.captureRawText("Existing target source")
+
+                val restore = exportManager(target)
+                val scope = RestoreScope.SelectedRawRecords(setOf(selectedRawId))
+                val preview = restore.previewRestore(requireNotNull(exportFile), scope).getOrThrow()
+
+                assertEquals(listOf(selectedRawId), preview.rootRawRecordIds)
+                assertEquals(listOf(selectedRawId), preview.includedRawRecordIds)
+                assertEquals(1, preview.rawRecordCount)
+                assertEquals(1, preview.conclusionCount)
+                assertTrue(preview.conflicts.isEmpty())
+
+                restore.restoreFromZip(requireNotNull(exportFile), scope).getOrThrow()
+
+                assertEquals(
+                    listOf("Existing target source", "Import this source"),
+                    target.knowledgeDao().getAllRawRecords().map { it.originalText }.sorted()
+                )
+                assertEquals(
+                    listOf("Imported conclusion"),
+                    target.knowledgeDao().getAllRevisions().map { it.text }
+                )
+                assertTrue(
+                    target.knowledgeDao().getAllRawRecords().none { it.originalText == "Skip this source" }
+                )
+                assertTrue(firstRawId != selectedRawId)
+                restoredExport = exportManager(target).exportToZip().getOrThrow()
+                val restoredManifest = readManifest(requireNotNull(restoredExport))
+                assertTrue(
+                    restoredManifest.rawRecords.any { it.originalText == "Import this source" }
+                )
+                assertTrue(
+                    restoredManifest.rawRecords.none { it.originalText == "Skip this source" }
+                )
+            }
+        } finally {
+            source.close()
+            target.close()
+            exportFile?.delete()
+            restoredExport?.delete()
+        }
+    }
+
+    @Test
+    fun selectiveMergeIncludesEvidenceSourceAsDependencyWithoutImportingItsConclusion() {
+        val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var exportFile: File? = null
+        try {
+            runBlocking {
+                val sourceReflection = reflectionRepository(source)
+                val selectedRawId = sourceReflection.captureRawText("Conclusion source")
+                val supportingRawId = sourceReflection.captureRawText("Supporting source")
+                val proposal = sourceReflection.createLocalProposal(selectedRawId)
+                val confirmed = sourceReflection.confirm(proposal.hypothesisId, "Conclusion with grounds")
+                source.knowledgeDao().insertEvidenceLink(
+                    EvidenceLinkEntity(
+                        conclusionRevisionId = requireNotNull(confirmed.revisionId),
+                        sourceRawRecordId = supportingRawId,
+                        relationship = Relationship.SUPPORTS,
+                        status = "confirmed",
+                        origin = "user_confirmed"
+                    )
+                )
+                exportFile = exportManager(source).exportToZip().getOrThrow()
+
+                val restore = exportManager(target)
+                val preview = restore.previewRestore(
+                    requireNotNull(exportFile),
+                    RestoreScope.SelectedRawRecords(setOf(selectedRawId))
+                ).getOrThrow()
+
+                assertEquals(listOf(selectedRawId, supportingRawId).sorted(), preview.includedRawRecordIds)
+                assertEquals(2, preview.rawRecordCount)
+                assertEquals(1, preview.conclusionCount)
+                assertEquals(2, preview.evidenceLinkCount)
+
+                restore.restoreFromZip(
+                    requireNotNull(exportFile),
+                    RestoreScope.SelectedRawRecords(setOf(selectedRawId))
+                ).getOrThrow()
+
+                assertEquals(2, target.knowledgeDao().getAllRawRecords().size)
+                assertEquals(1, target.knowledgeDao().getAllConclusions().size)
+                assertEquals(2, target.knowledgeDao().getAllEvidenceLinks().size)
+            }
+        } finally {
+            source.close()
+            target.close()
+            exportFile?.delete()
+        }
+    }
+
+    @Test
+    fun selectiveRestoreSurvivesDatabaseReopenAndCanonicalExport() {
+        val databaseName = "selective-restore-${System.nanoTime()}.db"
+        context.deleteDatabase(databaseName)
+        val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var target = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
+            .allowMainThreadQueries()
+            .build()
+        var exportFile: File? = null
+        var restoredExport: File? = null
+        try {
+            runBlocking {
+                val sourceReflection = reflectionRepository(source)
+                val selectedRawId = sourceReflection.captureRawText("Restart-safe selected source")
+                val proposal = sourceReflection.createLocalProposal(selectedRawId)
+                sourceReflection.confirm(proposal.hypothesisId, "Restart-safe conclusion")
+                exportFile = exportManager(source).exportToZip().getOrThrow()
+                val sourceManifest = readManifest(requireNotNull(exportFile))
+
+                exportManager(target).restoreFromZip(
+                    requireNotNull(exportFile),
+                    RestoreScope.SelectedRawRecords(setOf(selectedRawId))
+                ).getOrThrow()
+
+                target.close()
+                target = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
+                    .allowMainThreadQueries()
+                    .build()
+                assertEquals(
+                    listOf("Restart-safe selected source"),
+                    target.knowledgeDao().getAllRawRecords().map { it.originalText }
+                )
+                assertEquals(
+                    listOf("Restart-safe conclusion"),
+                    target.knowledgeDao().getAllRevisions().map { it.text }
+                )
+
+                restoredExport = exportManager(target).exportToZip().getOrThrow()
+                assertEquals(
+                    sourceManifest.copy(exportedAt = 0L),
+                    readManifest(requireNotNull(restoredExport)).copy(exportedAt = 0L)
+                )
+            }
+        } finally {
+            target.close()
+            source.close()
+            exportFile?.delete()
+            restoredExport?.delete()
+            context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
+    fun mergeConflictIsShownBeforeWriteAndLeavesTargetArtifactsUnchanged() {
+        val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var exportFile: File? = null
+        try {
+            runBlocking {
+                val sourceReflection = reflectionRepository(source)
+                sourceReflection.captureRawText("Conflicting source")
+                exportFile = exportManager(source).exportToZip().getOrThrow()
+
+                val restore = exportManager(target)
+                restore.restoreFromZip(requireNotNull(exportFile)).getOrThrow()
+                val preview = restore.previewRestore(requireNotNull(exportFile), RestoreScope.All).getOrThrow()
+                assertTrue(preview.conflicts.isNotEmpty())
+
+                val artifactsBefore = restoreArtifactsSnapshot()
+                val failure = restore.restoreFromZip(requireNotNull(exportFile), RestoreScope.All)
+                assertTrue(failure.isFailure)
+                assertEquals(1, target.knowledgeDao().getAllRawRecords().size)
+                assertEquals(artifactsBefore, restoreArtifactsSnapshot())
+            }
+        } finally {
+            source.close()
+            target.close()
+            exportFile?.delete()
+        }
+    }
+
+    @Test
     fun migratedLegacyProfileRoundTripsThroughCanonicalManifest() {
         val databaseName = "export-migration-${System.nanoTime()}.db"
         context.deleteDatabase(databaseName)
@@ -397,7 +601,8 @@ class ExportManagerTest {
                 )
 
                 exportFile = exportManager(source).exportToZip().getOrThrow()
-                exportManager(target).restoreFromZip(requireNotNull(exportFile)).getOrThrow()
+                val restore = exportManager(target)
+                restore.restoreFromZip(requireNotNull(exportFile)).getOrThrow()
 
                 assertEquals(2, target.knowledgeDao().getAllEvidenceLinks().size)
                 assertEquals(1, target.knowledgeDao().getAllThemeLinks().size)
