@@ -31,6 +31,10 @@ import java.io.File
 
 class SettingsRestartExportUiTest {
 
+    companion object {
+        private const val RESTORE_UI_TIMEOUT_MS = 15_000L
+    }
+
     @get:Rule
     val composeTestRule = createComposeRule()
 
@@ -101,7 +105,7 @@ class SettingsRestartExportUiTest {
         }
         viewModel.restoreData(Uri.fromFile(archive))
 
-        composeTestRule.waitUntil(5_000) {
+        composeTestRule.waitUntil(RESTORE_UI_TIMEOUT_MS) {
             composeTestRule.onAllNodesWithText("Review restore scope")
                 .fetchSemanticsNodes()
                 .isNotEmpty()
@@ -118,13 +122,13 @@ class SettingsRestartExportUiTest {
 
         val initialPreview = viewModel.uiState.value.restoreState as RestoreState.PreviewReady
         viewModel.toggleRestoreRoot(initialPreview.preview.availableRoots.first().rawRecordId, selected = false)
-        composeTestRule.waitUntil(5_000) {
+        composeTestRule.waitUntil(RESTORE_UI_TIMEOUT_MS) {
             composeTestRule.onAllNodesWithText("Selected records: 1.", substring = true)
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
         composeTestRule.onNodeWithText("Restore selected").performClick()
-        composeTestRule.waitUntil(5_000) {
+        composeTestRule.waitUntil(RESTORE_UI_TIMEOUT_MS) {
             runBlocking { target.knowledgeDao().getAllRawRecords().size == 1 }
         }
         runBlocking {

@@ -46,16 +46,15 @@ deferred boundaries recorded in `JOURNAL.md`. The current live mapping is:
 | [#6](https://github.com/pvnc228/EchoMind/issues/6) | `Ready` | `feature` | `P2` | `M4` | Optional local follow-up/reminder |
 | [#2](https://github.com/pvnc228/EchoMind/issues/2) | `Backlog` | `feature` | `P0` | `M0` | Minimized context preview and per-request consent |
 | [#3](https://github.com/pvnc228/EchoMind/issues/3) | `Backlog` | `feature` | `P0` | `M1` | Bounded continue-discussion flow |
-| [#4](https://github.com/pvnc228/EchoMind/issues/4) | `In Progress` | `verification` | `P1` | `M2` | Import integrity and selective restore |
+| [#4](https://github.com/pvnc228/EchoMind/issues/4) | `Done` | `verification` | `P1` | `M2` | Import integrity and selective restore |
 | [#5](https://github.com/pvnc228/EchoMind/issues/5) | `Backlog` | `verification` | `P1` | `M3` | Repeat-use evidence for Home resurfacing |
 | [#7](https://github.com/pvnc228/EchoMind/issues/7) | `Backlog` | `feature` | `P2` | `M5` | Explainable guidance on explicit request |
 | [#8](https://github.com/pvnc228/EchoMind/issues/8) | `Backlog` | `feature` | `P3` | `M6` | Voice capture through the text review flow |
 | [#9](https://github.com/pvnc228/EchoMind/issues/9) | `Backlog` | `verification` | `P3` | `M7` | Private-beta and release evidence |
 
-`Blocked` is intentionally empty. Issue #4 is in `Verify` after the local M2
-implementation and targeted evidence; the full completion gate and fresh
-cross-API evidence remain pending because the API35 full suite currently hits
-an instrumentation-process SIGKILL in the existing performance test.
+`Blocked` is intentionally empty. Issue #4 is in `Done` after the M2
+implementation, fresh API35 full connected artifact, and journal entry. The
+API26/API30 compatibility rerun remains explicitly deferred for this slice.
 
 Issue #1 is a tracking card for the closed scoped repair gate. Its closure
 does not close M4 or the broader M2/M3/M4 product milestones. Issue #6 is the

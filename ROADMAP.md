@@ -167,12 +167,13 @@ validated, read-only restore preview plus additive `All` and
 `SelectedRawRecords` scopes. Stable-ID/natural-key conflicts fail closed before
 staging or the Room transaction; selected evidence-source dependencies and
 legacy full-restore states are preserved. Settings shows the preview and lets
-the user select roots before confirming. Fresh API35 public-seam and Settings
-UI oracles and the selective restore database-reopen/canonical-export oracle
-pass. The adversarial self-review is complete; the full connected gate and
-cross-API matrix remain open because the API35 full suite is currently stopped
-by an instrumentation-process SIGKILL in the existing performance test. This
-milestone is not marked complete.
+the user select roots before confirming. Fresh API35 public-seam, Settings UI,
+selective restore database-reopen/canonical-export, and full connected oracles
+pass. The full `Pixel_8_2` API35 suite is **83/83** after hardening the UI
+oracle's load-sensitive wait; the earlier SIGKILL was not reproduced when the
+emulator was used exclusively. Issue #4's import/restore criteria are met and
+the card is moved to `Done`. API26/API30 were not rerun after this final M2
+change, so the cross-API compatibility matrix remains explicitly deferred.
 
 ## M3 — Relevant resurfacing and visible capability
 

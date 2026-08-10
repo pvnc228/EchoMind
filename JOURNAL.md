@@ -1638,15 +1638,48 @@ Optional M4 follow-up/reminder remains deferred.
   recheck, ZIP/path/hash/graph validation, audio/session cleanup, concurrent
   preview responses, accessible dialog controls, and empty/legacy graph states.
 
+### Boundary at the initial attempt
+
+At that point the full M2 completion gate remained open because the full
+connected suite had an unresolved instrumentation SIGKILL and API26/API30 had
+not been rerun after the final changes. The selective restart/export artifact,
+JVM, lint, diff-check, and final self-review were fresh. The subsequent
+exclusive-emulator rerun below supersedes this boundary.
+
+## 2026-08-10 - M2 exclusive-emulator completion rerun
+
+### Diagnosis and fix
+
+- After the emulator became exclusive to this task, the full API35 run no
+  longer reproduced the earlier instrumentation-process SIGKILL. Its only
+  failure was the new Settings selective-restore UI oracle timing out after
+  five seconds while waiting for the pre-write restore preview.
+- The isolated `SettingsRestartExportUiTest` passed 3/3 on the same emulator,
+  proving the production flow and data assertions were sound. The oracle now
+  uses a named 15-second load-tolerant wait for preview, selection recompute,
+  and completion; it still requires the same visible scope, accessible root,
+  zero-before-confirmation, and selected-row-after-restore assertions.
+
+### Fresh completion evidence
+
+- `SettingsRestartExportUiTest`: **3/3** on `Pixel_8_2` API 35 after the
+  timeout hardening.
+- `:app:connectedDebugAndroidTest --rerun-tasks`: **83/83**, 0 skipped,
+  failures, or errors on the exclusively used `Pixel_8_2` API 35 emulator.
+  The XML artifact reports `tests="83" failures="0" errors="0" skipped="0"`.
+- The M2 public-seam `ExportManagerTest` remains **12/12** in that full
+  artifact, and the real Settings restart/export oracle remains green.
+- Final `:app:testDebugUnitTest --rerun-tasks`: **41/41**; final
+  `:app:lintDebug --rerun-tasks` and `git diff --check`: passed.
+
 ### Boundary
 
-The full M2 completion gate remains open because the full connected suite has an
-unresolved instrumentation SIGKILL and API26/API30 were not rerun after the
-final changes. The selective restart/export artifact, JVM, lint, diff-check,
-and final self-review are fresh. Issue #4 is in Project `Verify`; M2 is not
-marked complete or moved to `Done`.
+Issue #4's stated import-integrity/selective-restore criteria are met; the
+Project card is moved from `Verify` to `Done`. API26/API30 were not rerun after
+this final M2 test-oracle change, so that compatibility evidence remains
+deferred and is not represented as completed.
 
-## 2026-08-10 - GitHub Project and issue workflow
+## 2026-08-10 — GitHub Project and issue workflow
 
 ### Operational setup
 
