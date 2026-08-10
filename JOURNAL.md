@@ -1527,3 +1527,60 @@ UI matrix are not claimed by this artifact.
 The bounded repair gate is **closed** by this fresh artifact. This does not
 mark the optional M4 follow-up/reminder or the broader product milestone as
 complete; those remain deferred product work.
+
+## 2026-08-10 - repair-gate review findings closed
+
+### Implementation
+
+- `KnowledgeRepository.getLinkCandidates` now executes its full candidate
+  operation, including the preliminary DAO reads, projection, mapping, and
+  `LinkCandidateRanker` call, on the injected `DefaultDispatcher`; the public
+  five-suggestion behavior is unchanged.
+- `DATA_CONTRACT.md` records the explicit reference-runtime UX budget: the
+  complete Android repository operation must finish within 2,000 ms for both
+  1k and 10k raw-record fixtures and must not run candidate work on Main.
+- Added `KnowledgeRepositoryPerformanceTest`, an Android public-seam oracle
+  that calls the operation from Main, proves the dispatcher handoff, and
+  measures the complete Room-to-result path at 1k/10k. Removing the handoff
+  makes the test fail on API26/API30/API35.
+- Added real UI/ViewModel restart/export oracles for Decisions and Settings:
+  reopened databases and empty-profile ZIP restores are rendered by
+  `DecisionsScreen`/`DecisionsViewModel` and
+  `SettingsScreen`/`SettingsViewModel`; Settings also exercises the visible
+  Home-card Restore action.
+- Marked the earlier open-status paragraphs in `ROADMAP.md` as historical and
+  synchronized the traceability closure row with the actual UI seams.
+- Stabilized the existing compact/200% Detail Compose oracle with a real
+  controlled `manualQuery` state; its previous harness could reset the field
+  to empty during input on the reference API matrix. The bounded Decision
+  query oracle now excludes Room's internal invalidation-log SELECT from the
+  application mapping count.
+
+### Fresh targeted evidence
+
+- `KnowledgeRepositoryPerformanceTest`: **2/2** on each of API35
+  `Pixel_8_2`, API30 `EchoMind_API30_GoogleApis`, and API26
+  `EchoMind_API26_GoogleApis`.
+- End-to-end benchmark logcat values: API35 **166 ms / 1,256 ms** for 1k/10k,
+  API30 **158 ms / 725 ms**, and API26 **99 ms / 505 ms**; each is below the
+  documented 2,000 ms budget.
+- `DecisionRestartExportUiTest`: **2/2** on each of the same three AVDs.
+- `SettingsRestartExportUiTest`: **2/2** on each of the same three AVDs.
+- Red reproduction: with the handoff removed, the performance oracle failed
+  on all three AVDs with `The candidate dispatcher was not used`.
+
+### Completion gate and self-review
+
+- `:app:testDebugUnitTest --rerun-tasks`: **41/41**, 0 failures/errors/skips.
+- `:app:connectedDebugAndroidTest --rerun-tasks`: **78/78** on each of API35
+  `Pixel_8_2`, API30 `EchoMind_API30_GoogleApis`, and API26
+  `EchoMind_API26_GoogleApis`.
+- `:app:lintDebug --rerun-tasks`: passed.
+- `git diff --check`: passed; only normal Git LF/CRLF conversion warnings.
+- Self-review: dispatcher boundary covers the complete public operation;
+  five-result cap and missing-revision path remain intact; UI tests close DB,
+  archive, and database-name resources; no temporary SQL trace remains; old
+  roadmap status is explicitly historical and the current closure artifact is
+  authoritative.
+
+Optional M4 follow-up/reminder remains deferred.

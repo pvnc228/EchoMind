@@ -666,6 +666,9 @@ class DecisionRepositoryTest {
 
     private fun List<String>.selectStatements(): List<String> =
         synchronized(this) {
-            filter { it.trimStart().startsWith("SELECT", ignoreCase = true) }
+            filter { statement ->
+                statement.trimStart().startsWith("SELECT", ignoreCase = true) &&
+                    !statement.lowercase().contains("room_table_modification_log")
+            }
         }
 }

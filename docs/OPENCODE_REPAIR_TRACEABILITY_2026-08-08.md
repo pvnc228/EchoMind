@@ -8,7 +8,7 @@
 и независимым test oracle. Статус означает состояние текущей repair-сессии, а не
 документированный milestone.
 
-### Текущий статус repair-сессии
+### Current repair-gate status (updated 2026-08-10)
 
 Колонка `Статус` в таблицах ниже — исходный baseline до реализации. Актуальная
 оценка приведена здесь, чтобы отделить реализованный seam от ещё не закрытого
@@ -168,21 +168,40 @@ runs, and the deferred accessibility/restart-export UI matrix.
 | P1: graph refresh was cancelled by manual search | `DetailViewModel` graph/manual generation domains | `detailGraphRefreshIsNotCancelledByManualSearch`; red timeout on the shared counter, green after separate counters | resolved |
 | P2: active data contract declared schema v7 | `DATA_CONTRACT.md`, `MIGRATION_7_8`, `original_text_search_key` | Contract says v8, classifies the derived key as non-exported, and migration/export tests preserve raw/export semantics | resolved |
 | P3: migration statement lifetime | `AppDatabase.MIGRATION_7_8` | Compiled `SupportSQLiteStatement` and cursor are both closed with `use`; full JVM/connected/lint gate passed | resolved |
-| CPU ranking benchmark | `LinkCandidateRanker` | JVM 1k/10k benchmark: 4.87 ms / 22.61 ms, 4.65x growth, 5-result cap | resolved |
-| API fallback reruns | API26/API30 Google APIs AVDs | Full current connected suite **72/72** on each cold-booted API26 and API30 target | resolved |
+| CPU ranking benchmark | `KnowledgeRepository.getLinkCandidates`, injected `DefaultDispatcher` | Android public-seam 1k/10k benchmark measures Room projection, mapping, and ranking together; both sizes stay within the documented 2,000 ms reference-runtime UX budget and keep a 5-result cap | resolved |
+| API fallback reruns | API26/API30 Google APIs AVDs | Full current connected suite **78/78** on each cold-booted API26 and API30 target | resolved |
 | UI accessibility matrix | Detail/Home/Decisions Compose seams plus API35 TalkBack smoke | Compact/200%/landscape/IME semantics passed; API35 tree exposed labeled controls; API26/API30 native semantics fallback passed | resolved |
-| Restart/export UI/data matrix | Decision restart/export tests, Home disposition export oracle | Decisions restart/export and `homeCardDispositionSurvivesExportAndRestore` passed on current API35/26/30 suites | resolved |
+| Restart/export UI/data matrix | `DecisionsScreen`/`DecisionsViewModel`, `SettingsScreen`/`SettingsViewModel`, `ExportManager` | `decisionsScreenRendersChoiceAndOutcomeAfterDatabaseReopen`, `decisionsScreenRendersChoiceAndOutcomeAfterZipRestore`, `settingsScreenManagesDismissedHomeCardAfterDatabaseReopen`, and `settingsScreenManagesDismissedHomeCardAfterZipRestore` exercise real screen/ViewModel seams on current API35/API26/API30 suites | resolved |
 
 ### Final repair-gate evidence
 
 - JVM: **41/41**.
-- Connected: **72/72** on `Pixel_8_2` API35, `EchoMind_API26_GoogleApis`,
+- Connected: **78/78** on `Pixel_8_2` API35, `EchoMind_API26_GoogleApis`,
   and `EchoMind_API30_GoogleApis`.
+- End-to-end public-seam benchmark 1k/10k: API35 **166/1,256 ms**, API30
+  **158/725 ms**, API26 **99/505 ms**.
 - `:app:lintDebug --rerun-tasks`: passed.
 - `git diff --check`: passed.
 
 This closes the bounded repair gate. Optional M4 follow-up/reminder and the
 broader product milestone remain deferred and are not represented as complete.
+
+## 2026-08-10 review findings repair artifact
+
+The prior closure review correctly rejected the desktop-only ranker benchmark
+and repository/DAO-only restart evidence. The production seam now runs the
+complete ranked-candidate projection, mapping, and CPU work on the injected
+`DefaultDispatcher`; the Android benchmark calls that repository method from
+the Main dispatcher with 1k and 10k real Room rows. The same test fails when
+the handoff is removed, proving the oracle is sensitive to the original
+finding.
+
+Restart/export evidence now reaches the UI boundary. `DecisionsScreen` reads
+choice and outcome after a database reopen and after an empty-profile ZIP
+restore through `DecisionsViewModel`. `SettingsScreen` reads the restored
+Home-card disposition through `SettingsViewModel` and exercises the visible
+Restore action in both paths. The data-only checks remain useful as lower-level
+coverage, but they are no longer the claimed UI evidence.
 
 ## Completion artifacts
 

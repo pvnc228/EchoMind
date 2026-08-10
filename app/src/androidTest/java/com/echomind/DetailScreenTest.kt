@@ -5,6 +5,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHasClickAction
@@ -33,6 +37,7 @@ class DetailScreenTest {
         var loadMoreCount = 0
         composeTestRule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, 2f)) {
+                var renderedQuery by remember { mutableStateOf("") }
                 Box(modifier = Modifier.width(320.dp).height(640.dp)) {
                     ConnectionsSection(
                         themes = emptyList(),
@@ -44,7 +49,7 @@ class DetailScreenTest {
                         manualCandidates = listOf(candidate()),
                         manualCandidatesHasMore = true,
                         isManualLoading = false,
-                        manualQuery = "",
+                        manualQuery = renderedQuery,
                         revisionId = 1L,
                         onLinkToTheme = { _, _ -> },
                         onUnlinkFromTheme = { _, _ -> },
@@ -52,7 +57,10 @@ class DetailScreenTest {
                         onUnlinkRelated = { _, _ -> },
                         onReviewPendingTheme = { _, _ -> },
                         onReviewPendingRelated = { _, _ -> },
-                        onSearchManual = { query = it },
+                        onSearchManual = {
+                            query = it
+                            renderedQuery = it
+                        },
                         onLoadMoreManual = { loadMoreCount++ }
                     )
                 }

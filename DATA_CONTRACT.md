@@ -13,6 +13,18 @@ queue and the derived search key are operational and are not exported.
 Export manifest version 5 restores only into an empty profile; merge and
 selective import remain deferred.
 
+## Retrieval performance boundary
+
+The Detail ranked-link operation is a non-blocking suggestion aid, not a
+manual archive browser. Its public repository seam must keep the five-result
+cap and execute candidate projection, mapping, and CPU ranking off the Main
+dispatcher. On the reference `Pixel_8_2` runtime, the end-to-end operation is
+budgeted at **2,000 ms or less for both 1,000 and 10,000 raw records**. The
+Android 1k/10k benchmark measures the complete repository call, including its
+Room projection, rather than timing the pure ranker in isolation. This is a
+UX safety budget for the reference runtime, not a latency guarantee for every
+device.
+
 ## Data classes
 
 - **Raw:** the user's original text or audio. The user owns it. It stays on the

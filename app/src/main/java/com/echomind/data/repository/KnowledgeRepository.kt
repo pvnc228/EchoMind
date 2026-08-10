@@ -9,6 +9,7 @@ import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.local.entity.normalizeSearchText
 import com.echomind.data.settings.SettingsStore
+import com.echomind.di.DefaultDispatcher
 import com.echomind.domain.model.HomeRelevance
 import com.echomind.domain.model.HomeRelevanceBuilder
 import com.echomind.domain.model.HomeCard
@@ -22,6 +23,9 @@ import com.echomind.domain.model.Theme
 import com.echomind.domain.model.ThemeCandidate
 import com.echomind.domain.model.ThemeConclusion
 import com.echomind.domain.model.PendingThemeLink
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,7 +33,8 @@ import javax.inject.Singleton
 class KnowledgeRepository @Inject constructor(
     private val database: AppDatabase,
     private val knowledgeDao: KnowledgeDao,
-    private val settingsStore: SettingsStore
+    private val settingsStore: SettingsStore,
+    @DefaultDispatcher private val candidateDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) {
     companion object {
         const val DEFAULT_MANUAL_LINK_PAGE_SIZE = 100
@@ -222,30 +227,32 @@ class KnowledgeRepository @Inject constructor(
         }
     }
 
-    suspend fun getLinkCandidates(currentRevisionId: Long, limit: Int = 5): List<RelatedRecord> {
-        val currentRevision = knowledgeDao.getRevisionById(currentRevisionId) ?: return emptyList()
-        val currentConclusion = currentRevision.text
-        val currentRaw = knowledgeDao.getConclusionById(currentRevision.conclusionId)
-            ?.rawRecordId
-        val currentThemeNames = knowledgeDao.getConfirmedThemeNamesForRevision(currentRevisionId)
-        val linkedSourceIds = knowledgeDao.getEvidenceLinksForRevision(currentRevisionId)
-            .map { it.sourceRawRecordId }
-            .toSet()
-        return LinkCandidateRanker.rank(
-            currentText = currentConclusion,
-            themeText = currentThemeNames.joinToString(" "),
-            candidates = knowledgeDao.getRawRecordsForLinkCandidates(currentRaw).map { raw ->
-                LinkCandidateInput(
-                    rawRecordId = raw.rawRecordId,
-                    text = raw.originalText,
-                    recordedAt = raw.recordedAt
-                )
-            },
-            currentRawRecordId = currentRaw,
-            linkedRawRecordIds = linkedSourceIds,
-            limit = limit
-        )
-    }
+    suspend fun getLinkCandidates(currentRevisionId: Long, limit: Int = 5): List<RelatedRecord> =
+        withContext(candidateDispatcher) {
+            val currentRevision = knowledgeDao.getRevisionById(currentRevisionId)
+                ?: return@withContext emptyList()
+            val currentConclusion = currentRevision.text
+            val currentRaw = knowledgeDao.getConclusionById(currentRevision.conclusionId)
+                ?.rawRecordId
+            val currentThemeNames = knowledgeDao.getConfirmedThemeNamesForRevision(currentRevisionId)
+            val linkedSourceIds = knowledgeDao.getEvidenceLinksForRevision(currentRevisionId)
+                .map { it.sourceRawRecordId }
+                .toSet()
+            LinkCandidateRanker.rank(
+                currentText = currentConclusion,
+                themeText = currentThemeNames.joinToString(" "),
+                candidates = knowledgeDao.getRawRecordsForLinkCandidates(currentRaw).map { raw ->
+                    LinkCandidateInput(
+                        rawRecordId = raw.rawRecordId,
+                        text = raw.originalText,
+                        recordedAt = raw.recordedAt
+                    )
+                },
+                currentRawRecordId = currentRaw,
+                linkedRawRecordIds = linkedSourceIds,
+                limit = limit
+            )
+        }
 
     suspend fun getManualLinkCandidates(
         currentRevisionId: Long,

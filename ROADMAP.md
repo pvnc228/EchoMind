@@ -343,7 +343,8 @@ enqueue uses race-safe replacement. This does not close the M2/M3/M4
 completion gate or its remaining migration/import, accessibility, and restart
 oracles.
 
-The next technical follow-up is advanced but not closed (2026-08-09): restore
+**Historical snapshot (superseded by the 2026-08-10 closure artifact below):**
+The next technical follow-up was advanced but not closed (2026-08-09): restore
 now has connected negative coverage for graph/archive integrity failures, Home
 relevant-card actions have a fresh compact-width/fontScale-2 Compose oracle,
 and Decisions actions use adaptive wrapping. The Decisions gate now has
@@ -374,25 +375,32 @@ in one Room transaction, and the migrated v2 → export → empty restore → ex
 path compares canonical manifests. The active data contract now records Room
 schema v8 and classifies the derived Unicode search key as non-exported.
 
-The scoped repair gate is closed by the 2026-08-10 artifact: local ranking has
-a 1k/10k CPU benchmark, API26/API30 have fresh full-suite reruns, Detail/Home/
-Decisions accessibility oracles cover compact/200%/landscape/IME semantics,
-the API35 TalkBack tree smoke passed, and restart/export coverage includes
-Decisions and Home dispositions. This closes the repair gate only; the optional
-M4 follow-up/reminder and the broader product milestone remain deferred. See
+The scoped repair gate is closed by the 2026-08-10 artifact: the Android
+public `KnowledgeRepository.getLinkCandidates` seam measures the complete
+Room projection, mapping, and ranking operation at 1k/10k within its explicit
+2,000 ms reference-runtime UX budget and proves candidate work is off Main;
+API26/API30 have fresh full-suite reruns; Detail/Home/Decisions accessibility
+oracles cover compact/200%/landscape/IME semantics; the API35 TalkBack tree
+smoke passed; and real Decisions/Settings screen+ViewModel restart/export
+oracles cover database reopen and empty-profile ZIP restore. This closes the
+repair gate only; the optional M4 follow-up/reminder and the broader product
+milestone remain deferred. See
 the matching entries in `JOURNAL.md` and
 `docs/OPENCODE_REPAIR_TRACEABILITY_2026-08-08.md`.
 
-The 2026-08-10 review follow-up closes the Unicode manual-search regression and
+**Historical snapshot (superseded by the 2026-08-10 closure artifact above):**
+The 2026-08-10 review follow-up closed the Unicode manual-search regression and
 the Search/Load more race. Manual Detail search uses a persisted NFKC plus
 `Locale.ROOT` lowercase key with a v7 -> v8 legacy backfill; the raw text and
 export contract remain unchanged. `DetailViewModel` publishes query/loading
 state before launching the request, captures the query and offset, disables
 pagination during an active request, and rejects stale success/error paths.
-Fresh evidence is recorded in `JOURNAL.md`: JVM 40/40, connected 68/68 on
+Fresh evidence was recorded in `JOURNAL.md`: JVM 40/40, connected 68/68 on
 Pixel_8_2 API 35, lint, and diff-check. This does not close the broader repair
-gate; CPU/FTS ranking, post-change API26/API30 runs, and the deferred
-accessibility/restart-export UI matrix remain open.
+gate; that sentence is historical and is superseded by the closure artifact
+above, which records the Android public-seam CPU benchmark and real
+restart/export screen/ViewModel oracles. Optional M4 follow-up/reminder and the
+broader product milestone remain deferred.
 
 ## UX/UI audit and approved implementation checkpoint
 
