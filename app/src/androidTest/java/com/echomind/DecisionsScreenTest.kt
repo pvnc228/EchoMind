@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -18,6 +19,8 @@ import androidx.compose.ui.test.performClick
 import com.echomind.domain.model.Decision
 import com.echomind.domain.model.DecisionOutcome
 import com.echomind.domain.model.OutcomeImpactReview
+import com.echomind.data.followup.FollowUpRecord
+import com.echomind.data.followup.FollowUpStatus
 import com.echomind.ui.decisions.OutcomeImpactReviewCard
 import com.echomind.ui.decisions.DecisionsScreenContent
 import com.echomind.ui.decisions.DecisionsUiState
@@ -170,5 +173,65 @@ class DecisionsScreenTest {
             .performScrollTo()
             .assertIsDisplayed()
             .assertHasClickAction()
+    }
+
+    @Test
+    fun optionalFollowUpAppearsOnlyAfterChoiceAndKeepsAnInAppFallback() {
+        composeTestRule.setContent {
+            DecisionsScreenContent(
+                uiState = DecisionsUiState(
+                    isLoading = false,
+                    decisions = listOf(
+                        Decision(
+                            id = 1L,
+                            question = "Decision without choice",
+                            createdAt = 1L
+                        ),
+                        Decision(
+                            id = 2L,
+                            question = "Decision with choice",
+                            choice = "Continue",
+                            createdAt = 2L
+                        ),
+                        Decision(
+                            id = 3L,
+                            question = "Decision with due follow-up",
+                            choice = "Review",
+                            createdAt = 3L
+                        )
+                    ),
+                    followUps = mapOf(
+                        3L to FollowUpRecord(
+                            decisionId = 3L,
+                            triggerAtMillis = 3_000L,
+                            status = FollowUpStatus.FIRED
+                        )
+                    )
+                ),
+                modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                onCancelFollowUp = {}
+            )
+        }
+
+        composeTestRule.onNodeWithText("Set optional follow-up")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertHasClickAction()
+        composeTestRule.onNodeWithText("Follow-up is ready")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeTestRule.onNodeWithText("Dismiss follow-up")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertHasClickAction()
+        composeTestRule.onNodeWithText("Decision without choice")
+            .performScrollTo()
+            .assertIsDisplayed()
+        assertEquals(
+            1,
+            composeTestRule.onAllNodesWithText("Set optional follow-up")
+                .fetchSemanticsNodes()
+                .size
+        )
     }
 }

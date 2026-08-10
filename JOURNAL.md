@@ -1636,3 +1636,60 @@ This Project setup is operational tracking metadata. It does not replace
 runtime evidence, the completion gate, or the current repair-gate artifact;
 the optional M4 follow-up/reminder and broader product milestones remain
 deferred as documented above.
+
+## 2026-08-10 - Issue #6 optional local follow-up implementation
+
+### Implementation
+
+- Moved Issue #6 from `Ready` to `In Progress` and isolated the work on
+  `dev/issue-6-m4-follow-up` in a dedicated worktree so the parallel M2 Issue #4
+  session does not share a checkout.
+- Added a durable local follow-up state store with explicit statuses, one
+  unique WorkManager item per decision, one-to-three-day validation, retryable
+  scheduling failure state, and idempotent postpone/cancel transitions.
+- Added notification actions for postpone/cancel. Notification content contains
+  no raw reflection or choice; when notification permission is denied, the
+  Decisions screen retains the `FIRED` in-app fallback.
+- Kept the offer behind an explicit user choice and made the reminder optional;
+  no import, worker, restart, or notification action confirms a decision.
+- Added native Compose controls with wrapped action rows and labeled buttons;
+  the flow remains usable without notification permission.
+- Updated `DATA_CONTRACT.md`, `ROADMAP.md`, and the owner decision record with
+  the local operational storage boundary and the current implementation status.
+
+### Finding to artifact
+
+- Finding: M4 allowed an optional one-to-three-day local follow-up after an
+  explicit choice, with postpone/cancel and an in-app permission-denied fallback.
+- Production seam: `FollowUpCoordinator`, `FollowUpStore`, WorkManager worker,
+  notification receiver, and `DecisionsViewModel`/`DecisionsScreen`.
+- Red oracle: `FollowUpSchedulerTest` initially failed to compile because the
+  production scheduler seam did not exist.
+- Green oracle: scheduler policy, duplicate prevention, restart persistence,
+  terminal transitions, FIRED postpone/cancel, and UI visibility tests pass.
+- Reliability review: coordinator mutations are serialized with a mutex and
+  UI failure paths reload durable `FAILED` state so retry remains visible.
+
+### Validation
+
+- `:app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --rerun-tasks`:
+  passed on Android Studio JDK 21.
+- `:app:testDebugUnitTest --tests com.echomind.data.followup.FollowUpSchedulerTest
+  --rerun-tasks`: passed.
+- `:app:testDebugUnitTest --rerun-tasks`: passed after the final production
+  change.
+- `:app:lintDebug --rerun-tasks`: passed after the explicit
+  `SecurityException` notification fallback.
+- Fresh M4 connected subset: **3/3** on cold-booted `Pixel_8_2` API 35,
+  covering store reopen/terminal transitions, coordinator scheduling plus
+  FIRED postpone/cancel, and the Decisions in-app fallback.
+- Full `:app:connectedDebugAndroidTest --rerun-tasks`: **81/81** on the
+  now-exclusive `Pixel_8_2` API 35 runtime after the final production change.
+- `git diff --check`: passed.
+
+### Scope boundary
+
+This slice does not mark the broader M4 milestone or the M2/M3/M4 repair gate
+complete. API26/API30 reruns and wider accessibility/restart-export matrices
+remain separate evidence requirements. Issue #6 is ready for `Verify`; the
+broader M4 milestone remains open.
