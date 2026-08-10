@@ -5,16 +5,20 @@
 Источник решений: `OPENCODE_REPAIR_DECISIONS_2026-08-08.md`.
 
 Этот документ связывает замечание аудита с production seam, изменяемыми файлами
-и независимым test oracle. Статус означает состояние текущей repair-сессии, а не
-документированный milestone.
+и независимым test oracle. Он сохраняет исходный baseline repair-сессии и
+отдельно фиксирует актуальный closure artifact; это не документированный
+milestone.
 
-### Current repair-gate status (updated 2026-08-10)
+### Historical baseline before the 2026-08-10 closure
 
-Колонка `Статус` в таблицах ниже — исходный baseline до реализации. Актуальная
-оценка приведена здесь, чтобы отделить реализованный seam от ещё не закрытого
-oracle:
+The table below records the pre-closure baseline from the original repair
+session. Its `pending` and `partially verified` labels are historical and do
+not represent the current gate verdict. The authoritative current status is
+the resolved closure artifact in
+[`2026-08-10 full repair-gate closure artifact`](#2026-08-10-full-repair-gate-closure-artifact)
+below.
 
-| Finding | Текущее состояние и доказательство |
+| Finding | Baseline status and evidence |
 |---|---|
 | P1-01 | implemented; `OnboardingScreenTest` проверяет text-first copy и отсутствие Voice Diary/automatic transcription |
 | P1-02 | implemented Room draft and encrypted completed-audio path; connected repository coverage exists, but a fresh device process-death/interrupted-recording oracle remains pending |
