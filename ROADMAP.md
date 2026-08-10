@@ -1,10 +1,12 @@
 # EchoMind — Product Roadmap
 
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-10
 
 **Product direction:** [VISION.md](VISION.md)
 
 **Data/privacy contract:** [DATA_CONTRACT.md](DATA_CONTRACT.md)
+
+**GitHub workflow:** [docs/GITHUB_WORKFLOW.md](docs/GITHUB_WORKFLOW.md)
 
 This roadmap replaces the former feature checklist for a "voice diary with AI." Existing code is treated as a technical prototype. A capability is complete only when it supports the product loop in `VISION.md` and satisfies its evidence, privacy, and verification criteria.
 
@@ -329,19 +331,20 @@ per-request approval flow exists.
 Do not begin personalization, prediction, 3D visualization, or broad UI polish
 before this product proof is complete.
 
-The next product milestone remains the repair completion gate for **M2/M3/M4**:
-fresh migration/import/deletion evidence, accessibility validation, and the
-remaining negative tests must be captured before those milestones are marked
-complete. The implemented slice already includes user-owned themes,
-immutable/pending links, dated revisions, graph-wide search, typed Home
-coverage, guarded decisions, and empty-profile restore (2026-08-08).
+The scoped repair completion gate for **M2/M3/M4** is closed by the fresh
+2026-08-10 artifact below. This closes the repair gate only; the broader
+M2/M3/M4 product milestones remain unclosed where their own completion
+criteria are still deferred. The implemented slice includes user-owned
+themes, immutable/pending links, dated revisions, graph-wide search, typed
+Home coverage, guarded decisions, bounded Detail browsing, and empty-profile
+restore.
 
 The non-blocking audio-cleanup follow-up from the 2026-08-08 review is also
 implemented and verified (2026-08-09): terminal retry rows no longer starve
 later eligible rows, terminal attempts do not grow, and concurrent cleanup
-enqueue uses race-safe replacement. This does not close the M2/M3/M4
-completion gate or its remaining migration/import, accessibility, and restart
-oracles.
+enqueue uses race-safe replacement. This does not independently close the
+broader M2/M3/M4 product milestones; their remaining product criteria are
+tracked separately from the repair gate.
 
 **Historical snapshot (superseded by the 2026-08-10 closure artifact below):**
 The next technical follow-up was advanced but not closed (2026-08-09): restore

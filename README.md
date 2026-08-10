@@ -12,6 +12,7 @@ EchoMind is a private Android thinking environment that turns short reflections 
 - [Product roadmap](ROADMAP.md)
 - [Data and privacy contract](DATA_CONTRACT.md)
 - [Development journal](JOURNAL.md)
+- [GitHub Project and issue workflow](docs/GITHUB_WORKFLOW.md)
 
 ## Current Prototype
 
@@ -23,18 +24,20 @@ EchoMind is a private Android thinking environment that turns short reflections 
 - Confirmed conclusion stored as revision 1 with its raw source
 - OpenAI-compatible text analysis, transcription client, and Q&A
 - Entry timeline, search, filters, details, and export
-- Room v7 provenance storage for raw records, hypotheses, conclusions, revisions,
+- Room v8 provenance storage for raw records, hypotheses, conclusions, revisions,
   immutable/pending evidence and theme links, decisions, drafts, and Home
-  dispositions, plus persisted audio-cleanup retries
+  dispositions, the derived Unicode-aware search key, and persisted
+  audio-cleanup retries
 - Biometric release gate and screenshot protection
 
 Automatic transcription is not yet connected to the main recording flow.
-Archive/detail, deletion, decisions, Home coverage, and empty-profile restore
-now expose the implemented provenance boundaries. Merge/selective restore,
-pending-link review UI, and outcome-driven conclusion revision remain deferred.
-`localMode` now blocks repository network calls, but disabling it still exposes
-the prototype's raw-entry requests; minimized context preview and per-request
-consent remain tracked in the roadmap.
+Archive/detail, deletion, Decisions, Home coverage, bounded Detail browsing,
+and empty-profile restore now expose the implemented provenance boundaries.
+The scoped repair gate is closed by the 2026-08-10 artifact; merge/selective
+restore, pending-link review UI, the optional M4 follow-up/reminder, and the
+broader product milestones remain deferred. `localMode` blocks repository
+network calls; minimized context preview and per-request consent remain
+tracked in the roadmap.
 
 ## Tech Stack
 

@@ -122,3 +122,19 @@ desktop-only ranker benchmark вместо production public-seam benchmark,
 repository/DAO data tests вместо restart/export UI-flow и противоречивый
 текущий статус ROADMAP. Исполнитель обязан рассматривать эти случаи как
 регрессионные примеры для всех будущих repair-gate задач.
+
+## GitHub issue workflow
+
+- Каждое production-изменение должно быть связано с GitHub Issue; текущая
+  доска и команды описаны в `docs/GITHUB_WORKFLOW.md`.
+- Перед началом работы прочитать Issue и связанные документы проекта.
+- Одна Issue должна описывать один проверяемый результат.
+- Pull Request обязан содержать `Closes #N`, если merge должен закрыть Issue.
+- Issue нельзя переводить в `Done` без тестов, runtime evidence и записи
+  результата в `JOURNAL.md`.
+- Если работа заблокирована, обновить Status на `Blocked` и описать конкретную
+  причину в Issue.
+- Статус Project, поля и зелёные карточки не заменяют свежий artifact и не
+  закрывают product milestone.
+- Не помещать raw reflections, raw audio, secrets или персональные export
+  contents в GitHub Issue, Pull Request или Project fields.

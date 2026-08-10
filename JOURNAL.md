@@ -1584,3 +1584,33 @@ complete; those remain deferred product work.
   authoritative.
 
 Optional M4 follow-up/reminder remains deferred.
+
+## 2026-08-10 - GitHub Project and issue workflow
+
+### Operational setup
+
+- Created and linked the private `EchoMind Work` Project for
+  `pvnc228/EchoMind`.
+- Configured the `Board` view with the status order `Backlog → Ready → In
+  Progress → Blocked → Verify → Done`.
+- Configured the `Backlog` table view with the `-status:done` filter. The
+  owner set its sort to `Priority` ascending, then `Status` ascending.
+- Added only the custom `Type` and `Priority` fields; the built-in `Milestone`
+  field uses repository milestones `M0` through `M7`.
+- Created [Issue #1](https://github.com/pvnc228/EchoMind/issues/1) as the first
+  verification ticket and set it to `Ready`, `verification`, `P1`, and `M4`.
+
+### Validation
+
+- `:app:testDebugUnitTest --rerun-tasks`: passed.
+- `:app:connectedDebugAndroidTest --rerun-tasks`: **78/78** on cold-booted
+  `Pixel_8_2` API 35.
+- `:app:lintDebug --rerun-tasks`: passed.
+- Markdown local-link validation and `git diff --check`: passed.
+
+### Boundary
+
+This Project setup is operational tracking metadata. It does not replace
+runtime evidence, the completion gate, or the current repair-gate artifact;
+the optional M4 follow-up/reminder and broader product milestones remain
+deferred as documented above.
