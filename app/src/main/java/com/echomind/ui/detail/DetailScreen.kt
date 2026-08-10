@@ -236,6 +236,7 @@ fun DetailScreen(
                                 manualCandidates = uiState.manualCandidates,
                                 manualCandidatesHasMore = uiState.manualCandidatesHasMore,
                                 isManualLoading = uiState.isManualLoading,
+                                manualQuery = uiState.manualQuery,
                                 revisionId = reflection.revisionId,
                                 onLinkToTheme = { themeId, revisionId ->
                                     viewModel.linkToTheme(themeId, revisionId)
@@ -345,6 +346,7 @@ fun ConnectionsSection(
     manualCandidates: List<RelatedRecord>,
     manualCandidatesHasMore: Boolean,
     isManualLoading: Boolean,
+    manualQuery: String,
     revisionId: Long,
     onLinkToTheme: (Long, Long) -> Unit,
     onUnlinkFromTheme: (Long, Long) -> Unit,
@@ -358,7 +360,6 @@ fun ConnectionsSection(
     var showThemePicker by remember { mutableStateOf(false) }
     var relateTarget by remember { mutableStateOf<RelatedRecord?>(null) }
     var showManualPicker by remember { mutableStateOf(false) }
-    var manualQuery by remember { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionHeader("Connections")
@@ -479,7 +480,6 @@ fun ConnectionsSection(
         TextButton(
             onClick = {
                 showManualPicker = true
-                manualQuery = ""
                 onSearchManual("")
             },
             enabled = otherEntries.isNotEmpty() || manualCandidates.isNotEmpty()
@@ -534,7 +534,6 @@ fun ConnectionsSection(
         AlertDialog(
             onDismissRequest = {
                 showManualPicker = false
-                manualQuery = ""
                 onSearchManual("")
             },
             title = { Text("Choose a record to review") },
@@ -543,7 +542,6 @@ fun ConnectionsSection(
                     OutlinedTextField(
                         value = manualQuery,
                         onValueChange = {
-                            manualQuery = it
                             onSearchManual(it)
                         },
                         label = { Text("Filter records") },
@@ -554,7 +552,6 @@ fun ConnectionsSection(
                             TextButton(
                                 onClick = {
                                     showManualPicker = false
-                                    manualQuery = ""
                                     onSearchManual("")
                                     relateTarget = candidate
                                 },
@@ -581,7 +578,6 @@ fun ConnectionsSection(
                 TextButton(
                     onClick = {
                         showManualPicker = false
-                        manualQuery = ""
                         onSearchManual("")
                     }
                 ) { Text("Cancel") }

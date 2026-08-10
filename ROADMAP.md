@@ -364,16 +364,23 @@ control runtime. The API26/API30 images do not provide a TalkBack package, so
 their accessibility fallback is covered by the Compose semantics oracle while
 the actual TalkBack tree smoke runs on API35.
 
-The 2026-08-09 repair-gate artifact and the 2026-08-10 bounded repair follow-up
+The 2026-08-09 repair-gate artifact and the 2026-08-10 bounded repair follow-ups
 cover Search projections, Decisions JOIN mapping, ranking payload projections,
 and the real Detail manual-candidate path. Detail now uses `NOT EXISTS`, a
-bounded projection page, server-side search, and explicit page loading; the
-1k/10k public seams reject N+1 growth, caller-sized bind lists, and full raw
-record payloads. Decisions mapping is read in one Room transaction, and the
-migrated v2 → export → empty restore → export path compares canonical manifests.
-This does not close the broader repair gate: local ranking still has no CPU/FTS
-benchmark, and the remaining accessibility/restart evidence stays open. See the
-matching entries in `JOURNAL.md` and
+bounded projection page, server-side search, explicit page loading, and separate
+graph/manual concurrency domains; the 1k/10k public seams reject N+1 growth,
+caller-sized bind lists, and full raw-record payloads. Decisions mapping is read
+in one Room transaction, and the migrated v2 → export → empty restore → export
+path compares canonical manifests. The active data contract now records Room
+schema v8 and classifies the derived Unicode search key as non-exported.
+
+The scoped repair gate is closed by the 2026-08-10 artifact: local ranking has
+a 1k/10k CPU benchmark, API26/API30 have fresh full-suite reruns, Detail/Home/
+Decisions accessibility oracles cover compact/200%/landscape/IME semantics,
+the API35 TalkBack tree smoke passed, and restart/export coverage includes
+Decisions and Home dispositions. This closes the repair gate only; the optional
+M4 follow-up/reminder and the broader product milestone remain deferred. See
+the matching entries in `JOURNAL.md` and
 `docs/OPENCODE_REPAIR_TRACEABILITY_2026-08-08.md`.
 
 The 2026-08-10 review follow-up closes the Unicode manual-search regression and

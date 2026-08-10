@@ -20,6 +20,7 @@ import com.echomind.domain.model.CoverageScopeType
 import com.echomind.domain.model.HomeCard
 import com.echomind.domain.model.HomeCardType
 import com.echomind.domain.model.Capability
+import com.echomind.domain.model.RelatedRecord
 import com.echomind.domain.model.Relationship
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
@@ -628,6 +629,82 @@ class KnowledgeRepositoryTest {
             }
         } finally {
             releaseSearch.countDown()
+            database.close()
+        }
+    }
+
+    @Test
+    fun detailGraphRefreshIsNotCancelledByManualSearch() {
+        val graphRefreshStarted = CountDownLatch(1)
+        val releaseGraphRefresh = CountDownLatch(1)
+        val blockGraphRelatedQuery = AtomicBoolean(false)
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .setQueryCallback(
+                { sql, _ ->
+                    if (blockGraphRelatedQuery.get() &&
+                        sql.lowercase().contains("from evidence_links") &&
+                        blockGraphRelatedQuery.compareAndSet(true, false)
+                    ) {
+                        graphRefreshStarted.countDown()
+                        check(releaseGraphRefresh.await(30, TimeUnit.SECONDS)) {
+                            "Timed out while holding the graph refresh query"
+                        }
+                    }
+                },
+                Executor { command -> command.run() }
+            )
+            .build()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val knowledgeRepository = knowledgeRepository(database)
+            runBlocking {
+                val currentRawId = reflectionRepository.captureRawText("Current reflection")
+                val proposal = reflectionRepository.createLocalProposal(currentRawId)
+                val session = reflectionRepository.confirm(proposal.hypothesisId, "Current conclusion")
+                val currentRevisionId = requireNotNull(session.revisionId)
+                val candidateId = reflectionRepository.captureRawText("Needle linked record")
+
+                val viewModel = DetailViewModel(
+                    application = context.applicationContext as Application,
+                    entryRepository = EntryRepository(
+                        database,
+                        database.entryDao(),
+                        database.knowledgeDao(),
+                        context
+                    ),
+                    reflectionRepository = reflectionRepository,
+                    knowledgeRepository = knowledgeRepository,
+                    audioEncryptionUtil = AudioEncryptionUtil(context)
+                )
+                viewModel.loadEntry(currentRawId)
+                withTimeout(30_000) { viewModel.uiState.first { !it.isLoading } }
+
+                blockGraphRelatedQuery.set(true)
+                viewModel.linkRelatedRecord(
+                    revisionId = currentRevisionId,
+                    candidate = RelatedRecord(
+                        rawRecordId = candidateId,
+                        relationship = "",
+                        sourceText = "Needle linked record",
+                        recordedAt = 1L
+                    ),
+                    relationship = Relationship.SUPPORTS
+                )
+                assertTrue(graphRefreshStarted.await(30, TimeUnit.SECONDS))
+
+                viewModel.searchManualCandidates("Needle")
+                releaseGraphRefresh.countDown()
+
+                val refreshed = withTimeout(30_000) {
+                    viewModel.uiState.first {
+                        it.relatedRecords.any { related -> related.rawRecordId == candidateId }
+                    }
+                }
+                assertEquals(listOf(candidateId), refreshed.relatedRecords.map { it.rawRecordId })
+            }
+        } finally {
+            releaseGraphRefresh.countDown()
             database.close()
         }
     }

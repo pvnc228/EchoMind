@@ -556,15 +556,16 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "ALTER TABLE `raw_records` ADD COLUMN `original_text_search_key` TEXT NOT NULL DEFAULT ''"
                 )
-                db.query("SELECT `id`, `original_text` FROM `raw_records`").use { cursor ->
-                    val update = db.compileStatement(
+                db.compileStatement(
                         "UPDATE `raw_records` SET `original_text_search_key` = ? WHERE `id` = ?"
-                    )
-                    while (cursor.moveToNext()) {
-                        update.clearBindings()
-                        update.bindString(1, normalizeSearchText(cursor.getString(1)))
-                        update.bindLong(2, cursor.getLong(0))
-                        update.executeUpdateDelete()
+                ).use { update ->
+                    db.query("SELECT `id`, `original_text` FROM `raw_records`").use { cursor ->
+                        while (cursor.moveToNext()) {
+                            update.clearBindings()
+                            update.bindString(1, normalizeSearchText(cursor.getString(1)))
+                            update.bindLong(2, cursor.getLong(0))
+                            update.executeUpdateDelete()
+                        }
                     }
                 }
             }

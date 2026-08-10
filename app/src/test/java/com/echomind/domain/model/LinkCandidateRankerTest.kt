@@ -3,6 +3,7 @@ package com.echomind.domain.model
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.system.measureNanoTime
 
 class LinkCandidateRankerTest {
 
@@ -83,4 +84,67 @@ class LinkCandidateRankerTest {
 
         assertEquals(listOf(3L), ranked.map { it.rawRecordId })
     }
+
+    @Test
+    fun `local ranking benchmark remains bounded at one and ten thousand candidates`() {
+        val currentText = "career project evidence decision"
+        val themeText = "work planning"
+        val oneThousand = rankingCorpus(1_000)
+        val tenThousand = rankingCorpus(10_000)
+
+        repeat(2) {
+            LinkCandidateRanker.rank(currentText, themeText, oneThousand, null, emptySet())
+            LinkCandidateRanker.rank(currentText, themeText, tenThousand, null, emptySet())
+        }
+
+        fun benchmark(candidates: List<LinkCandidateInput>): Long {
+            val samples = List(4) {
+                measureNanoTime {
+                    LinkCandidateRanker.rank(
+                        currentText = currentText,
+                        themeText = themeText,
+                        candidates = candidates,
+                        currentRawRecordId = null,
+                        linkedRawRecordIds = emptySet()
+                    )
+                }
+            }
+            return samples.drop(1).minOrNull() ?: error("No benchmark samples")
+        }
+
+        val oneThousandNanos = benchmark(oneThousand)
+        val tenThousandNanos = benchmark(tenThousand)
+        println(
+            "RANKING_BENCHMARK nanos: 1k=$oneThousandNanos 10k=$tenThousandNanos " +
+                "growth=${tenThousandNanos.toDouble() / oneThousandNanos.coerceAtLeast(1)}"
+        )
+
+        assertTrue(
+            "10k local ranking exceeded the 5 second CPU budget: ${tenThousandNanos / 1_000_000}ms",
+            tenThousandNanos < 5_000_000_000L
+        )
+        assertTrue(
+            "10k ranking grew beyond the expected bounded 40x envelope",
+            tenThousandNanos < oneThousandNanos * 40L + 50_000_000L
+        )
+        assertTrue(
+            "Ranker must keep the suggestion result bounded",
+            LinkCandidateRanker.rank(
+                currentText,
+                themeText,
+                tenThousand,
+                null,
+                emptySet()
+            ).size <= 5
+        )
+    }
+
+    private fun rankingCorpus(size: Int): List<LinkCandidateInput> =
+        (1..size).map { id ->
+            LinkCandidateInput(
+                rawRecordId = id.toLong(),
+                text = "career project evidence decision archive $id",
+                recordedAt = id.toLong()
+            )
+        }
 }

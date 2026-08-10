@@ -2,13 +2,14 @@
 
 **Status:** active implementation contract
 
-**Last updated:** 2026-08-08
+**Last updated:** 2026-08-10
 
 This document turns the promises in [VISION.md](VISION.md) into storage and
-network rules. Room schema version 7 includes the provenance graph, immutable
-and pending link metadata, decision guards, durable capture drafts, and
-fingerprint-keyed Home-card dispositions. It also persists failed audio cleanup
-attempts for WorkManager retry; this queue is operational and is not exported.
+network rules. Room schema version 8 includes the provenance graph, immutable
+and pending link metadata, decision guards, durable capture drafts,
+fingerprint-keyed Home-card dispositions, and the Unicode-aware manual-search
+key. It also persists failed audio cleanup attempts for WorkManager retry; this
+queue and the derived search key are operational and are not exported.
 Export manifest version 5 restores only into an empty profile; merge and
 selective import remain deferred.
 
@@ -34,6 +35,7 @@ selective import remain deferred.
 | Room `entries` | `transcript`, `audio_path` content | Raw | User | Yes |
 | Room `entries` | `summary`, `tasks`, `ideas`, `emotions`, `category`, `tags` | Derived proposal; legacy code does not record confirmation | User | Yes, labelled `legacy_unconfirmed` |
 | Room `raw_records` | original text, encrypted audio reference, duration, creation time | Raw + operational | User | Yes |
+| Room `raw_records` | `original_text_search_key` (NFKC + `Locale.ROOT` lowercase) | Derived operational search index; rebuilt from `original_text` | EchoMind | No |
 | Room `ai_hypotheses` | draft JSON, counterargument, status, source and creation metadata | Derived proposal + operational | User | Yes |
 | Room `conclusions` | raw source, current revision pointer, creation time | Confirmed + operational | User | Yes |
 | Room `conclusion_revisions` | versioned text, author, creation time | Confirmed + operational | User | Yes |
@@ -60,7 +62,12 @@ must not be logged.
 Schema version 3 implemented the first five objects; schema version 4 added
 themes and theme links (M2); schema version 5 added decisions and outcomes
 (M4); schema version 6 adds graph-review metadata, durable drafts, and Home
-dispositions; schema version 7 adds the bounded audio-cleanup retry state.
+dispositions; schema version 7 adds the bounded audio-cleanup retry state;
+schema version 8 adds `raw_records.original_text_search_key`, a derived,
+non-exported key used for bounded Unicode-aware manual search. `MIGRATION_7_8`
+backfills that key from every legacy row using the same NFKC/ROOT-lowercase
+normalization used for new records. Export manifests continue to carry the raw
+original text, never this derived search key.
 `MIGRATION_5_6` preserves rows and deterministically deduplicates
 conflicting link pairs; it does not use destructive fallback. Historical links
 are never moved to a new revision; inherited links are pending until reviewed.

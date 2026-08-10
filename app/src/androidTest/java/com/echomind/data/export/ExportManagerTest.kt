@@ -10,6 +10,7 @@ import com.echomind.data.local.AppDatabase
 import com.echomind.data.local.security.AudioEncryptionUtil
 import com.echomind.data.local.entity.DecisionEntity
 import com.echomind.data.local.entity.EvidenceLinkEntity
+import com.echomind.data.local.entity.HomeCardDispositionEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.repository.DecisionRepository
@@ -401,6 +402,53 @@ class ExportManagerTest {
                 assertEquals(2, target.knowledgeDao().getAllEvidenceLinks().size)
                 assertEquals(1, target.knowledgeDao().getAllThemeLinks().size)
                 assertEquals(1, target.knowledgeDao().getAllDecisions().size)
+            }
+        } finally {
+            source.close()
+            target.close()
+            exportFile?.delete()
+        }
+    }
+
+    @Test
+    fun homeCardDispositionSurvivesExportAndRestore() {
+        val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var exportFile: File? = null
+        try {
+            runBlocking {
+                source.knowledgeDao().upsertHomeCardDisposition(
+                    HomeCardDispositionEntity(
+                        cardKey = "theme:42:contradiction:v1",
+                        cardType = "CONTRADICTION",
+                        scopeType = "THEME",
+                        scopeId = 42L,
+                        dismissedAt = 100L,
+                        postponedUntil = null,
+                        createdAt = 50L
+                    )
+                )
+                exportFile = exportManager(source).exportToZip().getOrThrow()
+                exportManager(target).restoreFromZip(requireNotNull(exportFile)).getOrThrow()
+
+                assertEquals(
+                    listOf(
+                        HomeCardDispositionEntity(
+                            cardKey = "theme:42:contradiction:v1",
+                            cardType = "CONTRADICTION",
+                            scopeType = "THEME",
+                            scopeId = 42L,
+                            dismissedAt = 100L,
+                            postponedUntil = null,
+                            createdAt = 50L
+                        )
+                    ),
+                    target.knowledgeDao().getAllHomeCardDispositions()
+                )
             }
         } finally {
             source.close()

@@ -1479,3 +1479,51 @@ remain explicitly unclaimed.
 The broader repair gate remains open. CPU/FTS ranking benchmarks,
 post-change API26/API30 reruns, and the deferred accessibility/restart-export
 UI matrix are not claimed by this artifact.
+
+## 2026-08-10 - full repair-gate closure after review race
+
+### Implementation
+
+- Split `DetailViewModel` cancellation domains: graph refreshes now use their
+  own generation, while manual pages use a separate generation and revision
+  identity. A newer manual query is preserved when a graph snapshot publishes;
+  a refresh cannot be discarded merely because search started concurrently.
+- Bound the manual Dialog filter to `DetailUiState.manualQuery`, removing the
+  second local query source so graph refreshes, search, and Load more render the
+  same state.
+- Added `detailGraphRefreshIsNotCancelledByManualSearch`, a deterministic red
+  oracle on the real Room-backed link → refresh path. It failed on the shared
+  generation with a timeout and passed after the domain split.
+- Updated the active `DATA_CONTRACT.md` to Room schema v8. The persisted
+  `original_text_search_key` is documented as a derived operational field,
+  rebuilt by `MIGRATION_7_8`, and excluded from export; raw original text stays
+  exported. The migration's compiled update statement is now closed with
+  `use`.
+- Added a local ranking CPU oracle at 1k/10k candidates and a Home-card
+  disposition export/restore oracle. Added Detail accessibility oracles for
+  200% text + compact width, landscape, labeled IME input, and Load more
+  semantics.
+
+### Fresh evidence
+
+- JVM `:app:testDebugUnitTest --rerun-tasks`: **41/41**, failures/errors 0.
+  The ranking benchmark recorded 1k **4.87 ms**, 10k **22.61 ms**, growth
+  **4.65x**, and a result bounded to five suggestions.
+- `:app:connectedDebugAndroidTest --rerun-tasks`: **72/72** on the API35
+  `Pixel_8_2` control, **72/72** on cold-booted `EchoMind_API26_GoogleApis`
+  (Android 8.0), and **72/72** on cold-booted `EchoMind_API30_GoogleApis`
+  (Android 11). The current reruns include migration, negative restore,
+  restart, export, graph concurrency, Detail manual search, and the new UI/
+  disposition oracles.
+- A real API35 accessibility-tree smoke with TalkBack exposed the running
+  `com.echomind` Compose surface and labeled `Text-first reflection`, `Next`,
+  and `Skip` nodes; TalkBack was disabled and the emulator returned to its
+  prior state afterward. API26/API30 use the native Compose semantics fallback
+  because their Google APIs images do not contain TalkBack.
+- `:app:lintDebug --rerun-tasks` and `git diff --check`: passed.
+
+### Gate status
+
+The bounded repair gate is **closed** by this fresh artifact. This does not
+mark the optional M4 follow-up/reminder or the broader product milestone as
+complete; those remain deferred product work.

@@ -63,7 +63,9 @@ class DetailViewModel @Inject constructor(
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()
 
     private var player: ExoPlayer? = null
+    private var graphRequestGeneration = 0L
     private var manualRequestGeneration = 0L
+    private var manualRevisionId: Long? = null
 
     fun loadEntry(id: Long) {
         viewModelScope.launch {
@@ -72,6 +74,11 @@ class DetailViewModel @Inject constructor(
                 val entry = entryRepository.getEntryById(id)
                 val deletionPlan = entryRepository.getDeletionPlan(id)
                 val reflection = reflectionRepository.loadReflectionForEntry(id)
+                _uiState.value = _uiState.value.copy(
+                    entry = entry,
+                    reflection = reflection,
+                    deletionPlan = deletionPlan
+                )
                 loadLinked(reflection)
                 val revisions = if (reflection != null) {
                     reflectionRepository.getRevisionHistory(reflection.hypothesisId)
@@ -79,10 +86,7 @@ class DetailViewModel @Inject constructor(
                     emptyList()
                 }
                 _uiState.value = _uiState.value.copy(
-                    entry = entry,
-                    reflection = reflection,
                     revisions = revisions,
-                    deletionPlan = deletionPlan,
                     isLoading = false
                 )
             } catch (e: Exception) {
@@ -92,8 +96,16 @@ class DetailViewModel @Inject constructor(
     }
 
     private suspend fun loadLinked(reflection: ReflectionSession?) {
-        val requestGeneration = ++manualRequestGeneration
+        val requestGeneration = ++graphRequestGeneration
+        val manualGenerationAtStart = ++manualRequestGeneration
         val revisionId = reflection?.revisionId
+        manualRevisionId = revisionId
+        _uiState.value = _uiState.value.copy(
+            manualCandidates = emptyList(),
+            manualCandidatesHasMore = false,
+            manualQuery = "",
+            isManualLoading = false
+        )
         if (revisionId == null) {
             _uiState.value = _uiState.value.copy(
                 themes = emptyList(),
@@ -101,11 +113,7 @@ class DetailViewModel @Inject constructor(
                 pendingThemes = emptyList(),
                 relatedRecords = emptyList(),
                 pendingRelatedRecords = emptyList(),
-                otherEntries = emptyList(),
-                manualCandidates = emptyList(),
-                manualCandidatesHasMore = false,
-                manualQuery = "",
-                isManualLoading = false
+                otherEntries = emptyList()
             )
             return
         }
@@ -120,25 +128,41 @@ class DetailViewModel @Inject constructor(
             currentRevisionId = revisionId,
             limit = KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE + 1
         )
-        if (requestGeneration != manualRequestGeneration) return
+        if (requestGeneration != graphRequestGeneration) return
+        val preserveManualState =
+            manualGenerationAtStart != manualRequestGeneration && manualRevisionId == revisionId
+        val currentState = _uiState.value
         val manualCandidates = manualPage.take(KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE)
-        _uiState.value = _uiState.value.copy(
+        _uiState.value = currentState.copy(
             themes = themes,
             availableThemes = availableThemes,
             pendingThemes = pendingThemes,
             relatedRecords = relatedRecords,
             pendingRelatedRecords = pendingRelatedRecords,
             otherEntries = suggestions.values.toList(),
-            manualCandidates = manualCandidates,
-            manualCandidatesHasMore = manualPage.size > KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE,
-            manualQuery = "",
-            isManualLoading = false
+            manualCandidates = if (preserveManualState) {
+                currentState.manualCandidates
+            } else {
+                manualCandidates
+            },
+            manualCandidatesHasMore = if (preserveManualState) {
+                currentState.manualCandidatesHasMore
+            } else {
+                manualPage.size > KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE
+            },
+            manualQuery = if (preserveManualState) currentState.manualQuery else "",
+            isManualLoading = if (preserveManualState) {
+                currentState.isManualLoading
+            } else {
+                false
+            }
         )
     }
 
     fun searchManualCandidates(query: String) {
         val revisionId = _uiState.value.reflection?.revisionId ?: return
         val requestGeneration = ++manualRequestGeneration
+        manualRevisionId = revisionId
         _uiState.value = _uiState.value.copy(
             manualCandidates = emptyList(),
             manualCandidatesHasMore = false,
@@ -185,7 +209,10 @@ class DetailViewModel @Inject constructor(
                     offset = offset
                 )
                 val visiblePage = page.take(KnowledgeRepository.DEFAULT_MANUAL_LINK_PAGE_SIZE)
-                if (requestGeneration != manualRequestGeneration) return@launch
+                val isCurrentRequest = requestGeneration == manualRequestGeneration &&
+                    manualRevisionId == revisionId &&
+                    _uiState.value.reflection?.revisionId == revisionId
+                if (!isCurrentRequest) return@launch
                 val candidates = if (append) {
                     _uiState.value.manualCandidates + visiblePage
                 } else {
@@ -198,7 +225,11 @@ class DetailViewModel @Inject constructor(
                     isManualLoading = false
                 )
             }.onFailure { error ->
-                if (requestGeneration == manualRequestGeneration) {
+                if (
+                    requestGeneration == manualRequestGeneration &&
+                    manualRevisionId == revisionId &&
+                    _uiState.value.reflection?.revisionId == revisionId
+                ) {
                     _uiState.value = _uiState.value.copy(
                         isManualLoading = false,
                         error = error.message
@@ -281,10 +312,10 @@ class DetailViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isRevising = true, error = null)
             runCatching {
                 val revised = reflectionRepository.revise(reflection.hypothesisId, newWording)
+                _uiState.value = _uiState.value.copy(reflection = revised)
                 loadLinked(revised)
                 val revisions = reflectionRepository.getRevisionHistory(reflection.hypothesisId)
                 _uiState.value = _uiState.value.copy(
-                    reflection = revised,
                     revisions = revisions,
                     isRevising = false
                 )

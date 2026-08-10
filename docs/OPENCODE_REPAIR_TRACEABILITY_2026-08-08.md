@@ -161,6 +161,29 @@ The full gate for this follow-up passed with JVM 40/40, connected
 gate remains open for CPU/FTS ranking benchmarks, post-change API26/API30
 runs, and the deferred accessibility/restart-export UI matrix.
 
+## 2026-08-10 full repair-gate closure artifact
+
+| Finding / gate item | Production seam / artifact | Fresh oracle or runtime evidence | Status |
+|---|---|---|---|
+| P1: graph refresh was cancelled by manual search | `DetailViewModel` graph/manual generation domains | `detailGraphRefreshIsNotCancelledByManualSearch`; red timeout on the shared counter, green after separate counters | resolved |
+| P2: active data contract declared schema v7 | `DATA_CONTRACT.md`, `MIGRATION_7_8`, `original_text_search_key` | Contract says v8, classifies the derived key as non-exported, and migration/export tests preserve raw/export semantics | resolved |
+| P3: migration statement lifetime | `AppDatabase.MIGRATION_7_8` | Compiled `SupportSQLiteStatement` and cursor are both closed with `use`; full JVM/connected/lint gate passed | resolved |
+| CPU ranking benchmark | `LinkCandidateRanker` | JVM 1k/10k benchmark: 4.87 ms / 22.61 ms, 4.65x growth, 5-result cap | resolved |
+| API fallback reruns | API26/API30 Google APIs AVDs | Full current connected suite **72/72** on each cold-booted API26 and API30 target | resolved |
+| UI accessibility matrix | Detail/Home/Decisions Compose seams plus API35 TalkBack smoke | Compact/200%/landscape/IME semantics passed; API35 tree exposed labeled controls; API26/API30 native semantics fallback passed | resolved |
+| Restart/export UI/data matrix | Decision restart/export tests, Home disposition export oracle | Decisions restart/export and `homeCardDispositionSurvivesExportAndRestore` passed on current API35/26/30 suites | resolved |
+
+### Final repair-gate evidence
+
+- JVM: **41/41**.
+- Connected: **72/72** on `Pixel_8_2` API35, `EchoMind_API26_GoogleApis`,
+  and `EchoMind_API30_GoogleApis`.
+- `:app:lintDebug --rerun-tasks`: passed.
+- `git diff --check`: passed.
+
+This closes the bounded repair gate. Optional M4 follow-up/reminder and the
+broader product milestone remain deferred and are not represented as complete.
+
 ## Completion artifacts
 
 - Package 1: целевые JVM/Compose тесты и `git diff --check`.
