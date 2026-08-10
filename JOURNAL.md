@@ -1643,7 +1643,8 @@ Optional M4 follow-up/reminder remains deferred.
 The full M2 completion gate remains open because the full connected suite has an
 unresolved instrumentation SIGKILL and API26/API30 were not rerun after the
 final changes. The selective restart/export artifact, JVM, lint, diff-check,
-and final self-review are fresh; M2 is not marked complete or moved to `Verify`.
+and final self-review are fresh. Issue #4 is in Project `Verify`; M2 is not
+marked complete or moved to `Done`.
 
 ## 2026-08-10 - GitHub Project and issue workflow
 

@@ -52,9 +52,10 @@ deferred boundaries recorded in `JOURNAL.md`. The current live mapping is:
 | [#8](https://github.com/pvnc228/EchoMind/issues/8) | `Backlog` | `feature` | `P3` | `M6` | Voice capture through the text review flow |
 | [#9](https://github.com/pvnc228/EchoMind/issues/9) | `Backlog` | `verification` | `P3` | `M7` | Private-beta and release evidence |
 
-`Blocked` and `Verify` are intentionally empty. Issue #4 is active in
-`In Progress`; it is not yet in `Verify` because the full completion gate and
-fresh cross-API evidence are still pending.
+`Blocked` is intentionally empty. Issue #4 is in `Verify` after the local M2
+implementation and targeted evidence; the full completion gate and fresh
+cross-API evidence remain pending because the API35 full suite currently hits
+an instrumentation-process SIGKILL in the existing performance test.
 
 Issue #1 is a tracking card for the closed scoped repair gate. Its closure
 does not close M4 or the broader M2/M3/M4 product milestones. Issue #6 is the
