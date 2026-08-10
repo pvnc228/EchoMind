@@ -87,3 +87,38 @@ revision или передачу raw data.
 
 Общий M4 и broader M2/M3/M4 repair gate не считать закрытыми без свежего
 артефакта, даже если отдельные Decisions/API26/API30 проверки уже зелёные.
+
+## Правило против преждевременного закрытия gate
+
+Зелёные тесты сами по себе не доказывают закрытие замечания. Для каждого
+finding перед реализацией зафиксируй цепочку:
+
+`finding -> production seam -> red oracle -> green oracle -> runtime evidence -> artifact`.
+
+Обязательные проверки:
+
+1. Oracle должен проходить через production public seam. Тест чистого ranker,
+   mapper, DAO или заранее созданного списка не доказывает end-to-end путь
+   repository/UI; benchmark обязан включать заявленный Room/IO/CPU путь.
+2. Для UI persistence-тесты DAO/repository не заменяют экран и ViewModel.
+   После reopen/restore нужно проверить реальные пользовательские semantics,
+   отображение и действие, относящиеся к finding.
+3. Red oracle должен ломаться при удалении именно исправления либо при
+   возврате старого механизма. Если oracle проходит без production fix, он не
+   подтверждает исправление и должен быть усилен.
+4. Полный completion gate запускай после последнего изменения кода, тестов и
+   документации. Не переноси старые counts, benchmark values или status из
+   предыдущего artifact без повторной проверки.
+5. Перед verdict выполняй отдельный adversarial self-review: что тест обходит,
+   какая работа всё ещё выполняется на Main, покрыт ли error/resource path,
+   не заменена ли UI-проверка data-only проверкой и нет ли противоречивых
+   current/historical абзацев в документах.
+6. Если критерий не проверен реальным runtime evidence, он остаётся open или
+   явно deferred. Нельзя превращать план, намерение или косвенный proxy в
+   resolved только потому, что общий test count зелёный.
+
+Этот protocol появился после review, который обнаружил три такие ошибки:
+desktop-only ranker benchmark вместо production public-seam benchmark,
+repository/DAO data tests вместо restart/export UI-flow и противоречивый
+текущий статус ROADMAP. Исполнитель обязан рассматривать эти случаи как
+регрессионные примеры для всех будущих repair-gate задач.
