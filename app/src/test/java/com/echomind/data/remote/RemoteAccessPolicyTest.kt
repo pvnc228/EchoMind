@@ -35,6 +35,7 @@ class RemoteAccessPolicyTest {
             policy.startApprovedRequest(
                 call = call,
                 expectedDestination = policy.effectiveUrl(QUESTION_API_PATH),
+                actualDestination = policy.effectiveUrl(QUESTION_API_PATH),
                 apiPath = QUESTION_API_PATH,
                 beforeNetworkStart = {
                     observed.countDown()
@@ -62,6 +63,7 @@ class RemoteAccessPolicyTest {
             policy.startApprovedRequest(
                 call = call,
                 expectedDestination = policy.effectiveUrl(QUESTION_API_PATH),
+                actualDestination = policy.effectiveUrl(QUESTION_API_PATH),
                 apiPath = QUESTION_API_PATH
             ) {
                 started.countDown()
@@ -103,16 +105,36 @@ class RemoteAccessPolicyTest {
     }
 
     @Test
-    fun `stale persisted load cannot overwrite a newer endpoint edit`() {
+    fun `stale persisted load under endpoint override does not cancel an active call`() {
         val policy = RemoteAccessPolicy()
 
         policy.hydratePersisted(StoredSettings("https://provider-a.example/api", localMode = false))
         policy.updateEndpoint("https://provider-b.example/api")
+        val call = mockk<Call>(relaxed = true)
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val request = thread {
+            policy.startApprovedRequest(
+                call = call,
+                expectedDestination = policy.effectiveUrl(QUESTION_API_PATH),
+                actualDestination = policy.effectiveUrl(QUESTION_API_PATH),
+                apiPath = QUESTION_API_PATH
+            ) {
+                started.countDown()
+                release.await()
+                Unit
+            }
+        }
+
+        started.await()
         policy.hydratePersisted(StoredSettings("https://provider-a.example/api", localMode = false))
 
         assertEquals(
             "https://provider-b.example/api/v1/chat/completions",
             policy.effectiveUrl(QUESTION_API_PATH)
         )
+        verify(exactly = 0) { call.cancel() }
+        release.countDown()
+        request.join()
     }
 }

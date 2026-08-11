@@ -17,6 +17,7 @@ class EndpointInterceptor @Inject constructor(
             return remoteAccessPolicy.startApprovedRequest(
                 call = chain.call(),
                 expectedDestination = approvedDestination,
+                actualDestination = original.url.toString(),
                 apiPath = QUESTION_API_PATH
             ) {
                 chain.proceed(

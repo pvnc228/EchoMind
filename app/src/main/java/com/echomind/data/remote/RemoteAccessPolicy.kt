@@ -27,12 +27,14 @@ class RemoteAccessPolicy @Inject constructor() {
     fun hydratePersisted(settings: StoredSettings) {
         lock.withLock {
             val normalizedEndpoint = normalizeEndpoint(settings.apiEndpoint)
-            val endpointChanged = endpoint != normalizedEndpoint
-            val localModeChanged = persistedLocalMode != settings.localMode && localModeOverride == null
+            val previousEndpoint = endpoint
+            val previousLocalMode = localModeLocked()
             if (endpointOverride == null) {
                 endpoint = normalizedEndpoint
             }
             persistedLocalMode = settings.localMode
+            val endpointChanged = endpoint != previousEndpoint
+            val localModeChanged = localModeLocked() != previousLocalMode
             if (endpointChanged || localModeChanged) {
                 revision++
                 cancelActiveCallsLocked()
@@ -86,12 +88,16 @@ class RemoteAccessPolicy @Inject constructor() {
     fun <T> startApprovedRequest(
         call: Call,
         expectedDestination: String,
+        actualDestination: String,
         apiPath: String,
         beforeNetworkStart: (() -> Unit)? = null,
         block: () -> T
     ): T {
         val permit = lock.withLock {
             if (localModeLocked()) throw RemoteLocalModeChangedException()
+            if (actualDestination != expectedDestination) {
+                throw RemoteDestinationChangedException()
+            }
             if (effectiveUrlLocked(apiPath) != expectedDestination) {
                 throw RemoteDestinationChangedException()
             }

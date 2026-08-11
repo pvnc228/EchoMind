@@ -35,6 +35,28 @@ class EndpointInterceptorTest {
     }
 
     @Test
+    fun `approved header cannot authorize a different actual request URL`() {
+        val policy = RemoteAccessPolicy()
+        val provider = BaseUrlProvider(policy)
+        provider.updateUrl("https://provider-b.example/api")
+        policy.updateLocalMode(false)
+        val approvedDestination = "https://provider-b.example/api/v1/chat/completions"
+        val request = Request.Builder()
+            .url("https://provider-c.example/api/v1/chat/completions")
+            .header(APPROVED_DESTINATION_HEADER, approvedDestination)
+            .build()
+        val chain = mockk<okhttp3.Interceptor.Chain>()
+        every { chain.request() } returns request
+        every { chain.call() } returns mockk(relaxed = true)
+        val interceptor = EndpointInterceptor(provider, policy)
+
+        assertThrows(RemoteDestinationChangedException::class.java) {
+            interceptor.intercept(chain)
+        }
+        verify(exactly = 0) { chain.proceed(any()) }
+    }
+
+    @Test
     fun `approved destination uses the configured path prefix`() {
         val policy = RemoteAccessPolicy()
         val provider = BaseUrlProvider(policy)
