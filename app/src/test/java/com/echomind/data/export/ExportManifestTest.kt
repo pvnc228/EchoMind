@@ -32,7 +32,24 @@ class ExportManifestTest {
                 RawRecordEntity(7, 7, "Original", "entry_7.m4a.enc", 10, 20)
             ),
             hypotheses = listOf(
-                AiHypothesisEntity(8, 7, """{"thesis":"Draft"}""", "Alternative", "proposed", 21)
+                AiHypothesisEntity(
+                    id = 8,
+                    rawRecordId = 7,
+                    draftJson = """{"thesis":"Draft"}""",
+                    counterargument = "Alternative",
+                    status = "proposed",
+                    createdAt = 21
+                ),
+                AiHypothesisEntity(
+                    id = 16,
+                    rawRecordId = 7,
+                    draftJson = """{"thesis":"Follow-up draft"}""",
+                    counterargument = "Follow-up alternative",
+                    status = "proposed",
+                    parentHypothesisId = 8,
+                    followUpQuestion = "What would change this?",
+                    createdAt = 28
+                )
             ),
             conclusions = listOf(
                 ConclusionEntity(9, 7, 10, 22)
@@ -73,7 +90,9 @@ class ExportManifestTest {
         assertEquals(99L, manifest.exportedAt)
         assertEquals("legacy_unconfirmed", manifest.entries.single().analysisStatus)
         assertEquals("entry_7.m4a.wav", manifest.rawRecords.single().audioFileName)
-        assertEquals(7L, manifest.hypotheses.single().rawRecordId)
+        assertEquals(7L, manifest.hypotheses.first().rawRecordId)
+        assertEquals(8L, manifest.hypotheses[1].parentHypothesisId)
+        assertEquals("What would change this?", manifest.hypotheses[1].followUpQuestion)
         assertEquals(10L, manifest.conclusions.single().currentRevisionId)
         assertEquals(9L, manifest.revisions.single().conclusionId)
         assertEquals(7L, manifest.evidenceLinks.single().sourceRawRecordId)

@@ -43,8 +43,10 @@ class ReflectionScreenTest {
                 onStartRecording = {},
                 onStopRecording = {},
                 onConfirmationChange = {},
+                onFollowUpQuestionChange = {},
                 onConfirm = {},
                 onReject = {},
+                onContinueDiscussion = {},
                 onRetry = {},
                 onDone = {},
                 onStartNew = {}
@@ -93,5 +95,45 @@ class ReflectionScreenTest {
         composeTestRule.onNodeWithText("EchoMind · confirmed proposal").assertIsDisplayed()
         composeTestRule.onNodeWithText("Your conclusion · revision 1").assertIsDisplayed()
         composeTestRule.onNodeWithText("Source link · supports · confirmed").assertIsDisplayed()
+    }
+
+    @Test
+    fun focusedFollowUpReviewKeepsQuestionAndProposalDistinct() {
+        composeTestRule.setContent {
+            RecordScreenContent(
+                uiState = RecordUiState(
+                    stage = ReflectionStage.REVIEW,
+                    thoughtText = "Исходный текст",
+                    rawRecordId = 1,
+                    hypothesisId = 3,
+                    draft = ReflectionDraft(
+                        tentativeThesis = "Локальное предложение",
+                        observations = emptyList(),
+                        interpretations = emptyList(),
+                        assumptions = emptyList(),
+                        openQuestions = emptyList()
+                    ),
+                    counterargument = "Другая проверяемая трактовка",
+                    confirmationText = "Моя формулировка",
+                    followUpQuestion = "Какие данные изменят вывод?"
+                ),
+                onThoughtChange = {},
+                onSubmit = {},
+                onStartRecording = {},
+                onStopRecording = {},
+                onConfirmationChange = {},
+                onFollowUpQuestionChange = {},
+                onConfirm = {},
+                onReject = {},
+                onContinueDiscussion = {},
+                onRetry = {},
+                onDone = {},
+                onStartNew = {}
+            )
+        }
+
+        composeTestRule.onNodeWithText("Your focused question").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Какие данные изменят вывод?").assertIsDisplayed()
+        composeTestRule.onNodeWithText("EchoMind's focused follow-up proposal").assertIsDisplayed()
     }
 }

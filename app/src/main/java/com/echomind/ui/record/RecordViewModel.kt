@@ -36,6 +36,8 @@ data class RecordUiState(
     val draft: ReflectionDraft? = null,
     val counterargument: String = "",
     val confirmationText: String = "",
+    val followUpQuestionDraft: String = "",
+    val followUpQuestion: String? = null,
     val confirmedConclusion: String? = null,
     val durationMs: Long = 0,
     val audioPath: String? = null,
@@ -130,6 +132,13 @@ class RecordViewModel @Inject constructor(
         }
     }
 
+    fun updateFollowUpQuestion(text: String) {
+        val state = _uiState.value
+        if (state.stage == ReflectionStage.REVIEW && state.followUpQuestion == null) {
+            _uiState.value = state.copy(followUpQuestionDraft = text)
+        }
+    }
+
     fun submitThought() {
         val state = _uiState.value
         if (state.stage != ReflectionStage.CAPTURE || state.thoughtText.isBlank()) return
@@ -203,6 +212,32 @@ class RecordViewModel @Inject constructor(
                     _uiState.value = state.copy(
                         stage = ReflectionStage.ERROR,
                         error = error.message ?: "Could not reject the proposal."
+                    )
+                }
+        }
+    }
+
+    fun continueDiscussion() {
+        val state = _uiState.value
+        val hypothesisId = state.hypothesisId ?: return
+        if (
+            state.stage != ReflectionStage.REVIEW ||
+            state.followUpQuestion != null ||
+            state.followUpQuestionDraft.isBlank()
+        ) return
+
+        viewModelScope.launch {
+            _uiState.value = state.copy(stage = ReflectionStage.PROCESSING, error = null)
+            runCatching {
+                reflectionRepository.continueDiscussion(
+                    hypothesisId = hypothesisId,
+                    question = state.followUpQuestionDraft
+                )
+            }.onSuccess(::showSession)
+                .onFailure { error ->
+                    _uiState.value = state.copy(
+                        stage = ReflectionStage.ERROR,
+                        error = error.message ?: "Could not continue the reflection."
                     )
                 }
         }
@@ -408,6 +443,7 @@ class RecordViewModel @Inject constructor(
             counterargument = session.counterargument,
             confirmationText = session.confirmedConclusion
                 ?: session.draft.suggestedConclusion(),
+            followUpQuestion = session.followUpQuestion,
             confirmedConclusion = session.confirmedConclusion
         )
     }

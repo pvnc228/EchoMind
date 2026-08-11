@@ -240,8 +240,17 @@ class ExportManager @Inject constructor(
                         createdAt = raw.createdAt
                     )
                 })
-                knowledgeDao.insertHypotheses(plan.hypotheses.map {
-                    AiHypothesisEntity(it.id, it.rawRecordId, it.draftJson, it.counterargument, it.status, it.createdAt)
+                knowledgeDao.insertHypotheses(plan.hypotheses.sortedBy { it.parentHypothesisId != null }.map {
+                    AiHypothesisEntity(
+                        id = it.id,
+                        rawRecordId = it.rawRecordId,
+                        draftJson = it.draftJson,
+                        counterargument = it.counterargument,
+                        status = it.status,
+                        parentHypothesisId = it.parentHypothesisId,
+                        followUpQuestion = it.followUpQuestion,
+                        createdAt = it.createdAt
+                    )
                 })
                 knowledgeDao.insertConclusions(plan.conclusions.map {
                     ConclusionEntity(it.id, it.rawRecordId, it.currentRevisionId, it.createdAt)
@@ -631,6 +640,23 @@ class ExportManager @Inject constructor(
         val revisionById = manifest.revisions.associateBy { it.id }
         require(manifest.rawRecords.all { it.legacyEntryId == null || it.legacyEntryId in entries })
         require(manifest.hypotheses.all { it.rawRecordId in raws })
+        require(manifest.hypotheses.all { hypothesis ->
+            val parentId = hypothesis.parentHypothesisId
+            val question = hypothesis.followUpQuestion
+            if (parentId == null) {
+                question == null
+            } else {
+                parentId != hypothesis.id &&
+                    parentId in hypotheses &&
+                    manifest.hypotheses.first { it.id == parentId }.rawRecordId == hypothesis.rawRecordId &&
+                    !question.isNullOrBlank() &&
+                    question.length <= com.echomind.data.repository.MAX_FOLLOW_UP_QUESTION_LENGTH
+            }
+        }) { "Hypothesis follow-up provenance is invalid." }
+        require(
+            manifest.hypotheses.mapNotNull { it.parentHypothesisId }.distinct().size ==
+                manifest.hypotheses.count { it.parentHypothesisId != null }
+        ) { "A hypothesis can have only one focused follow-up." }
         require(manifest.conclusions.all { it.rawRecordId in raws })
         require(manifest.revisions.all { it.conclusionId in conclusions })
         require(manifest.conclusions.all { conclusion ->
@@ -846,6 +872,8 @@ internal fun buildManifest(
                 draftJson = it.draftJson,
                 counterargument = it.counterargument,
                 status = it.status,
+                parentHypothesisId = it.parentHypothesisId,
+                followUpQuestion = it.followUpQuestion,
                 createdAt = it.createdAt
             )
         },
@@ -1021,6 +1049,8 @@ data class ExportHypothesis(
     val draftJson: String,
     val counterargument: String,
     val status: String,
+    val parentHypothesisId: Long? = null,
+    val followUpQuestion: String? = null,
     val createdAt: Long
 )
 

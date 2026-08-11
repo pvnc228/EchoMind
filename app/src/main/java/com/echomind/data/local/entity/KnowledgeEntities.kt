@@ -40,9 +40,18 @@ data class RawRecordEntity(
             parentColumns = ["id"],
             childColumns = ["raw_record_id"],
             onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = AiHypothesisEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["parent_hypothesis_id"],
+            onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("raw_record_id")]
+    indices = [
+        Index("raw_record_id"),
+        Index(value = ["parent_hypothesis_id"], unique = true)
+    ]
 )
 data class AiHypothesisEntity(
     @PrimaryKey(autoGenerate = true)
@@ -55,6 +64,10 @@ data class AiHypothesisEntity(
     val counterargument: String,
     @ColumnInfo(name = "status")
     val status: String,
+    @ColumnInfo(name = "parent_hypothesis_id")
+    val parentHypothesisId: Long? = null,
+    @ColumnInfo(name = "follow_up_question")
+    val followUpQuestion: String? = null,
     @ColumnInfo(name = "created_at")
     val createdAt: Long
 )

@@ -12,6 +12,10 @@ import com.echomind.domain.model.ReflectionStatus
 import com.echomind.domain.model.EntryDeletionChoice
 import com.echomind.data.repository.DeletionDependenciesRequireExplicitChoiceException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
 import java.io.File
 import org.junit.After
@@ -71,6 +75,176 @@ class ReflectionRepositoryTest {
                 assertEquals(ReflectionStatus.REJECTED, rejected.status)
                 assertTrue(database.knowledgeDao().getAllConclusions().isEmpty())
                 assertTrue(database.knowledgeDao().getAllRevisions().isEmpty())
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun focusedFollowUpCreatesOneDurableProposalLinkedToTheOriginalSource() {
+        val database = inMemoryDatabase()
+
+        try {
+            val repository = repository(database)
+            runBlocking {
+                val rawRecordId = repository.captureRawText(
+                    "Я думаю, что один короткий ответ всё доказывает."
+                )
+                val initial = repository.createLocalProposal(rawRecordId)
+
+                val followUp = repository.continueDiscussion(
+                    hypothesisId = initial.hypothesisId,
+                    question = "Какие наблюдения могли бы изменить этот вывод?"
+                )
+
+                assertEquals(rawRecordId, followUp.rawRecordId)
+                assertEquals(initial.hypothesisId, followUp.parentHypothesisId)
+                assertEquals(
+                    "Какие наблюдения могли бы изменить этот вывод?",
+                    followUp.followUpQuestion
+                )
+                assertEquals(ReflectionStatus.PROPOSED, followUp.status)
+                assertTrue(followUp.confirmedConclusion == null)
+                assertTrue(database.knowledgeDao().getAllConclusions().isEmpty())
+                assertEquals(
+                    followUp.followUpQuestion,
+                    repository.loadReflection(followUp.hypothesisId).followUpQuestion
+                )
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun focusedFollowUpRejectsExtraStepsAndStaleParentActions() {
+        val database = inMemoryDatabase()
+
+        try {
+            val repository = repository(database)
+            runBlocking {
+                val rawRecordId = repository.captureRawText("I think this needs more evidence.")
+                val initial = repository.createLocalProposal(rawRecordId)
+                val followUp = repository.continueDiscussion(initial.hypothesisId, "What would change it?")
+
+                assertThrows(IllegalStateException::class.java) {
+                    runBlocking {
+                        repository.continueDiscussion(followUp.hypothesisId, "One more question?")
+                    }
+                }
+                assertThrows(IllegalStateException::class.java) {
+                    runBlocking { repository.continueDiscussion(initial.hypothesisId, "A second question?") }
+                }
+                assertThrows(IllegalStateException::class.java) {
+                    runBlocking { repository.confirm(initial.hypothesisId, "Stale confirmation") }
+                }
+                assertThrows(IllegalArgumentException::class.java) {
+                    runBlocking { repository.continueDiscussion(999_999L, "Unknown parent") }
+                }
+                assertEquals(2, database.knowledgeDao().getAllHypotheses().size)
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun concurrentContinueRequestsCreateAtMostOneFollowUp() {
+        val database = inMemoryDatabase()
+
+        try {
+            val repository = repository(database)
+            runBlocking {
+                val rawRecordId = repository.captureRawText("I think the evidence is incomplete.")
+                val initial = repository.createLocalProposal(rawRecordId)
+
+                val results = coroutineScope {
+                    listOf(
+                        async(Dispatchers.Default) {
+                            runCatching {
+                                repository.continueDiscussion(initial.hypothesisId, "Question A?")
+                            }
+                        },
+                        async(Dispatchers.Default) {
+                            runCatching {
+                                repository.continueDiscussion(initial.hypothesisId, "Question B?")
+                            }
+                        }
+                    ).awaitAll()
+                }
+
+                assertEquals(1, results.count { it.isSuccess })
+                assertEquals(1, results.count { it.isFailure })
+                assertEquals(2, database.knowledgeDao().getAllHypotheses().size)
+                assertNotNull(database.knowledgeDao().getFollowUpHypothesis(initial.hypothesisId))
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun deletingTheRawSourceRemovesItsBoundedFollowUpGraph() {
+        val database = inMemoryDatabase()
+
+        try {
+            val reflectionRepository = repository(database)
+            val entryRepository = EntryRepository(
+                database,
+                database.entryDao(),
+                database.knowledgeDao(),
+                context
+            )
+            runBlocking {
+                val rawRecordId = reflectionRepository.captureRawText("Delete this source")
+                val initial = reflectionRepository.createLocalProposal(rawRecordId)
+                reflectionRepository.continueDiscussion(initial.hypothesisId, "What next?")
+                val entryId = requireNotNull(
+                    database.knowledgeDao().getRawRecordById(rawRecordId)?.legacyEntryId
+                )
+
+                entryRepository.deleteEntry(entryId)
+
+                assertTrue(database.knowledgeDao().getAllRawRecords().isEmpty())
+                assertTrue(database.knowledgeDao().getAllHypotheses().isEmpty())
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun focusedFollowUpCanBeEditedAndAcceptedOrRejectedExplicitly() {
+        val database = inMemoryDatabase()
+
+        try {
+            val repository = repository(database)
+            runBlocking {
+                val acceptedRawId = repository.captureRawText("Accepted follow-up source")
+                val acceptedInitial = repository.createLocalProposal(acceptedRawId)
+                val acceptedFollowUp = repository.continueDiscussion(
+                    acceptedInitial.hypothesisId,
+                    "What evidence matters?"
+                )
+                val confirmed = repository.confirm(
+                    acceptedFollowUp.hypothesisId,
+                    "My edited follow-up conclusion"
+                )
+                assertEquals(ReflectionStatus.CONFIRMED, confirmed.status)
+                assertEquals("My edited follow-up conclusion", confirmed.confirmedConclusion)
+                assertEquals(acceptedRawId, database.knowledgeDao().getAllEvidenceLinks().single().sourceRawRecordId)
+                assertEquals("user", database.knowledgeDao().getAllRevisions().single().author)
+
+                val rejectedRawId = repository.captureRawText("Rejected follow-up source")
+                val rejectedInitial = repository.createLocalProposal(rejectedRawId)
+                val rejectedFollowUp = repository.continueDiscussion(
+                    rejectedInitial.hypothesisId,
+                    "Should I keep this proposal?"
+                )
+                val rejected = repository.reject(rejectedFollowUp.hypothesisId)
+                assertEquals(ReflectionStatus.REJECTED, rejected.status)
+                assertEquals(1, database.knowledgeDao().getAllConclusions().size)
             }
         } finally {
             database.close()
@@ -148,6 +322,39 @@ class ReflectionRepositoryTest {
             assertNotNull(restored)
             assertEquals(ReflectionStatus.PROPOSED, restored?.status)
             assertEquals("I think I need more evidence.", restored?.originalText)
+        } finally {
+            reopenedDatabase.close()
+        }
+    }
+
+    @Test
+    fun focusedFollowUpProposalCanBeRestoredAfterReopenWithoutChangingTheRawSource() {
+        val firstDatabase = fileDatabase()
+        var rawRecordId = 0L
+        try {
+            runBlocking {
+                val repository = repository(firstDatabase)
+                rawRecordId = repository.captureRawText("Original source remains immutable.")
+                val initial = repository.createLocalProposal(rawRecordId)
+                repository.continueDiscussion(initial.hypothesisId, "What should I check next?")
+            }
+        } finally {
+            firstDatabase.close()
+        }
+
+        val reopenedDatabase = fileDatabase()
+        try {
+            val restored = runBlocking {
+                repository(reopenedDatabase).loadLatestProposedReflection()
+            }
+            assertNotNull(restored)
+            assertEquals(rawRecordId, restored?.rawRecordId)
+            assertEquals("Original source remains immutable.", restored?.originalText)
+            assertEquals("What should I check next?", restored?.followUpQuestion)
+            assertEquals(
+                1,
+                runBlocking { reopenedDatabase.knowledgeDao().getAllRawRecords().size }
+            )
         } finally {
             reopenedDatabase.close()
         }

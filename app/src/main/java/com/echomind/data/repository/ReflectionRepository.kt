@@ -22,6 +22,8 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+const val MAX_FOLLOW_UP_QUESTION_LENGTH = 500
+
 @Singleton
 class ReflectionRepository @Inject constructor(
     private val database: AppDatabase,
@@ -129,6 +131,65 @@ class ReflectionRepository @Inject constructor(
         return loadReflection(hypothesisId)
     }
 
+    suspend fun continueDiscussion(
+        hypothesisId: Long,
+        question: String
+    ): ReflectionSession {
+        val normalizedQuestion = question.trim()
+        require(normalizedQuestion.isNotBlank()) {
+            "A focused follow-up question cannot be blank."
+        }
+        require(normalizedQuestion.length <= MAX_FOLLOW_UP_QUESTION_LENGTH) {
+            "A focused follow-up question is too long."
+        }
+
+        val proposal = database.withTransaction {
+            val parent = requireNotNull(knowledgeDao.getHypothesisById(hypothesisId)) {
+                "Reflection proposal $hypothesisId does not exist."
+            }
+            check(parent.status == ReflectionStatus.PROPOSED) {
+                "Only a proposed reflection can be continued."
+            }
+            check(parent.parentHypothesisId == null) {
+                "A focused follow-up cannot be continued again."
+            }
+            check(knowledgeDao.getFollowUpHypothesis(hypothesisId) == null) {
+                "This reflection already has its one focused follow-up."
+            }
+            val rawRecord = requireNotNull(knowledgeDao.getRawRecordById(parent.rawRecordId)) {
+                "Raw reflection ${parent.rawRecordId} does not exist."
+            }
+            analyzer.analyze("${rawRecord.originalText}\n$normalizedQuestion")
+        }
+
+        val followUpHypothesisId = database.withTransaction {
+            val parent = requireNotNull(knowledgeDao.getHypothesisById(hypothesisId)) {
+                "Reflection proposal $hypothesisId does not exist."
+            }
+            check(parent.status == ReflectionStatus.PROPOSED) {
+                "Only a proposed reflection can be continued."
+            }
+            check(parent.parentHypothesisId == null) {
+                "A focused follow-up cannot be continued again."
+            }
+            check(knowledgeDao.getFollowUpHypothesis(hypothesisId) == null) {
+                "This reflection already has its one focused follow-up."
+            }
+            knowledgeDao.insertHypothesis(
+                AiHypothesisEntity(
+                    rawRecordId = parent.rawRecordId,
+                    draftJson = json.encodeToString(proposal.draft),
+                    counterargument = proposal.counterargument,
+                    status = ReflectionStatus.PROPOSED,
+                    parentHypothesisId = hypothesisId,
+                    followUpQuestion = normalizedQuestion,
+                    createdAt = System.currentTimeMillis()
+                )
+            )
+        }
+        return loadReflection(followUpHypothesisId)
+    }
+
     suspend fun loadLatestProposedReflection(): ReflectionSession? =
         knowledgeDao.getLatestProposedHypothesis()?.let { loadReflection(it.id) }
 
@@ -141,6 +202,9 @@ class ReflectionRepository @Inject constructor(
     suspend fun loadReflection(hypothesisId: Long): ReflectionSession {
         val hypothesis = requireNotNull(knowledgeDao.getHypothesisById(hypothesisId)) {
             "Reflection proposal $hypothesisId does not exist."
+        }
+        knowledgeDao.getFollowUpHypothesis(hypothesisId)?.let { followUp ->
+            return loadReflection(followUp.id)
         }
         val rawRecord = requireNotNull(knowledgeDao.getRawRecordById(hypothesis.rawRecordId)) {
             "Raw reflection ${hypothesis.rawRecordId} does not exist."
@@ -164,7 +228,9 @@ class ReflectionRepository @Inject constructor(
             revisionVersion = revision?.version,
             revisionId = revision?.id,
             sourceRelationship = sourceLink?.relationship,
-            sourceLinkStatus = sourceLink?.status
+            sourceLinkStatus = sourceLink?.status,
+            parentHypothesisId = hypothesis.parentHypothesisId,
+            followUpQuestion = hypothesis.followUpQuestion
         )
     }
 
@@ -177,6 +243,9 @@ class ReflectionRepository @Inject constructor(
             }
             check(hypothesis.status == ReflectionStatus.PROPOSED) {
                 "Only a proposed reflection can be confirmed."
+            }
+            check(knowledgeDao.getFollowUpHypothesis(hypothesisId) == null) {
+                "Review the focused follow-up proposal before confirming."
             }
             check(
                 knowledgeDao.updateProposedHypothesisStatus(
@@ -345,13 +414,24 @@ class ReflectionRepository @Inject constructor(
     }
 
     suspend fun reject(hypothesisId: Long): ReflectionSession {
-        check(
-            knowledgeDao.updateProposedHypothesisStatus(
-                hypothesisId,
-                ReflectionStatus.REJECTED
-            ) == 1
-        ) {
-            "Only a proposed reflection can be rejected."
+        database.withTransaction {
+            val hypothesis = requireNotNull(knowledgeDao.getHypothesisById(hypothesisId)) {
+                "Reflection proposal $hypothesisId does not exist."
+            }
+            check(hypothesis.status == ReflectionStatus.PROPOSED) {
+                "Only a proposed reflection can be rejected."
+            }
+            check(knowledgeDao.getFollowUpHypothesis(hypothesisId) == null) {
+                "Review the focused follow-up proposal before rejecting this proposal."
+            }
+            check(
+                knowledgeDao.updateProposedHypothesisStatus(
+                    hypothesisId,
+                    ReflectionStatus.REJECTED
+                ) == 1
+            ) {
+                "The reflection proposal changed before rejection."
+            }
         }
         return loadReflection(hypothesisId)
     }

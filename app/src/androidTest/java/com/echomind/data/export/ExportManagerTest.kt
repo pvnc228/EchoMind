@@ -84,6 +84,66 @@ class ExportManagerTest {
     }
 
     @Test
+    fun zipRoundTripPreservesFocusedFollowUpQuestionAndParentProvenance() {
+        val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var exportFile: File? = null
+
+        try {
+            val sourceRepository = ReflectionRepository(
+                database = source,
+                entryDao = source.entryDao(),
+                knowledgeDao = source.knowledgeDao(),
+                analyzer = LocalReflectionAnalyzer(),
+                json = Json { ignoreUnknownKeys = true }
+            )
+            runBlocking {
+                val rawId = sourceRepository.captureRawText("Source with a bounded discussion.")
+                val initial = sourceRepository.createLocalProposal(rawId)
+                sourceRepository.continueDiscussion(initial.hypothesisId, "What evidence would change this?")
+                exportFile = ExportManager(
+                    context,
+                    source,
+                    source.entryDao(),
+                    source.knowledgeDao(),
+                    AudioEncryptionUtil(context)
+                ).exportToZip().getOrThrow()
+
+                val manifest = ZipFile(requireNotNull(exportFile)).use { zip ->
+                    val entry = requireNotNull(zip.getEntry("manifest.json"))
+                    Json.decodeFromString<ExportManifest>(
+                        zip.getInputStream(entry).bufferedReader().use { it.readText() }
+                    )
+                }
+                val followUp = manifest.hypotheses.single { it.parentHypothesisId != null }
+                assertEquals(initial.hypothesisId, followUp.parentHypothesisId)
+                assertEquals("What evidence would change this?", followUp.followUpQuestion)
+
+                ExportManager(
+                    context,
+                    target,
+                    target.entryDao(),
+                    target.knowledgeDao(),
+                    AudioEncryptionUtil(context)
+                ).restoreFromZip(requireNotNull(exportFile)).getOrThrow()
+
+                val restoredFollowUp = target.knowledgeDao()
+                    .getFollowUpHypothesis(initial.hypothesisId)
+                assertEquals(followUp.followUpQuestion, restoredFollowUp?.followUpQuestion)
+                assertEquals(rawId, restoredFollowUp?.rawRecordId)
+            }
+        } finally {
+            source.close()
+            target.close()
+            exportFile?.delete()
+        }
+    }
+
+    @Test
     fun emptyProfileRestoreRoundTripsStableGraphAndRejectsNonEmptyTarget() {
         val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
@@ -422,7 +482,8 @@ class ExportManagerTest {
                 AppDatabase.MIGRATION_4_5,
                 AppDatabase.MIGRATION_5_6,
                 AppDatabase.MIGRATION_6_7,
-                AppDatabase.MIGRATION_7_8
+                AppDatabase.MIGRATION_7_8,
+                AppDatabase.MIGRATION_8_9
             )
             .allowMainThreadQueries()
             .build()

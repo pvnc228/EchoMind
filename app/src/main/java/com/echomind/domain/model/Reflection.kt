@@ -25,7 +25,9 @@ data class ReflectionSession(
     val revisionVersion: Int? = null,
     val revisionId: Long? = null,
     val sourceRelationship: String? = null,
-    val sourceLinkStatus: String? = null
+    val sourceLinkStatus: String? = null,
+    val parentHypothesisId: Long? = null,
+    val followUpQuestion: String? = null
 )
 
 data class CaptureDraft(

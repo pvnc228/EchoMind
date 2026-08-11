@@ -38,7 +38,7 @@ import com.echomind.data.local.entity.AudioCleanupEntity
         HomeCardDispositionEntity::class,
         AudioCleanupEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 @androidx.room.TypeConverters(Converters::class)
@@ -566,6 +566,58 @@ abstract class AppDatabase : RoomDatabase() {
                             update.bindLong(2, cursor.getLong(0))
                             update.executeUpdateDelete()
                         }
+                    }
+                }
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("PRAGMA foreign_keys=OFF")
+                db.execSQL(
+                    """
+                    CREATE TABLE `ai_hypotheses_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `raw_record_id` INTEGER NOT NULL,
+                        `draft_json` TEXT NOT NULL,
+                        `counterargument` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `parent_hypothesis_id` INTEGER,
+                        `follow_up_question` TEXT,
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`raw_record_id`) REFERENCES `raw_records`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(`parent_hypothesis_id`) REFERENCES `ai_hypotheses_new`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `ai_hypotheses_new` (
+                        `id`, `raw_record_id`, `draft_json`, `counterargument`, `status`,
+                        `parent_hypothesis_id`, `follow_up_question`, `created_at`
+                    )
+                    SELECT
+                        `id`, `raw_record_id`, `draft_json`, `counterargument`, `status`,
+                        NULL, NULL, `created_at`
+                    FROM `ai_hypotheses`
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE `ai_hypotheses`")
+                db.execSQL("ALTER TABLE `ai_hypotheses_new` RENAME TO `ai_hypotheses`")
+                db.execSQL(
+                    "CREATE INDEX `index_ai_hypotheses_raw_record_id` " +
+                        "ON `ai_hypotheses` (`raw_record_id`)"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX `index_ai_hypotheses_parent_hypothesis_id` " +
+                        "ON `ai_hypotheses` (`parent_hypothesis_id`)"
+                )
+                db.execSQL("PRAGMA foreign_keys=ON")
+                db.query("PRAGMA foreign_key_check").use { cursor ->
+                    check(!cursor.moveToFirst()) {
+                        "MIGRATION_8_9 produced a foreign-key violation."
                     }
                 }
             }

@@ -157,8 +157,10 @@ fun RecordScreen(
             onStartRecording = requestRecording,
             onStopRecording = viewModel::stopRecording,
             onConfirmationChange = viewModel::updateConfirmation,
+            onFollowUpQuestionChange = viewModel::updateFollowUpQuestion,
             onConfirm = viewModel::confirmProposal,
             onReject = viewModel::rejectProposal,
+            onContinueDiscussion = viewModel::continueDiscussion,
             onRetry = viewModel::retry,
             onDone = onNavigateBack,
             onStartNew = viewModel::startNewReflection,
@@ -175,8 +177,10 @@ fun RecordScreenContent(
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit,
     onConfirmationChange: (String) -> Unit,
+    onFollowUpQuestionChange: (String) -> Unit,
     onConfirm: () -> Unit,
     onReject: () -> Unit,
+    onContinueDiscussion: () -> Unit,
     onRetry: () -> Unit,
     onDone: () -> Unit,
     onStartNew: () -> Unit,
@@ -212,9 +216,13 @@ fun RecordScreenContent(
                 draft = requireNotNull(uiState.draft),
                 counterargument = uiState.counterargument,
                 confirmationText = uiState.confirmationText,
+                followUpQuestion = uiState.followUpQuestion,
+                followUpQuestionDraft = uiState.followUpQuestionDraft,
                 onConfirmationChange = onConfirmationChange,
+                onFollowUpQuestionChange = onFollowUpQuestionChange,
                 onConfirm = onConfirm,
-                onReject = onReject
+                onReject = onReject,
+                onContinueDiscussion = onContinueDiscussion
             )
             ReflectionStage.CONFIRMED -> ConfirmedContent(
                 originalText = uiState.thoughtText,
@@ -372,9 +380,13 @@ private fun ReviewContent(
     draft: ReflectionDraft,
     counterargument: String,
     confirmationText: String,
+    followUpQuestion: String?,
+    followUpQuestionDraft: String,
     onConfirmationChange: (String) -> Unit,
+    onFollowUpQuestionChange: (String) -> Unit,
     onConfirm: () -> Unit,
-    onReject: () -> Unit
+    onReject: () -> Unit,
+    onContinueDiscussion: () -> Unit
 ) {
     var showAnalysis by rememberSaveable { mutableStateOf(false) }
 
@@ -387,7 +399,11 @@ private fun ReviewContent(
     ) {
         LabeledCard("Your words · immutable source", originalText)
         Text(
-            "EchoMind's proposal",
+            if (followUpQuestion == null) {
+                "EchoMind's proposal"
+            } else {
+                "EchoMind's focused follow-up proposal"
+            },
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
@@ -402,6 +418,33 @@ private fun ReviewContent(
             container = MaterialTheme.colorScheme.secondaryContainer
         )
         LabeledCard("Local alternative", counterargument)
+        if (followUpQuestion != null) {
+            LabeledCard(
+                "Your focused question",
+                followUpQuestion,
+                container = MaterialTheme.colorScheme.surfaceVariant
+            )
+        } else {
+            Text(
+                "Continue once with a focused question. The new local response remains a proposal until you review it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedTextField(
+                value = followUpQuestionDraft,
+                onValueChange = onFollowUpQuestionChange,
+                label = { Text("Focused follow-up question") },
+                minLines = 2,
+                modifier = Modifier.fillMaxWidth()
+            )
+            TextButton(
+                onClick = onContinueDiscussion,
+                enabled = followUpQuestionDraft.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Ask one focused follow-up")
+            }
+        }
         TextButton(
             onClick = { showAnalysis = !showAnalysis },
             modifier = Modifier.fillMaxWidth()

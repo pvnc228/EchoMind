@@ -149,7 +149,16 @@ interface KnowledgeDao {
     suspend fun getHypothesesForRawRecord(rawRecordId: Long): List<AiHypothesisEntity>
 
     @Query(
-        "SELECT * FROM ai_hypotheses WHERE status = 'proposed' " +
+        "SELECT * FROM ai_hypotheses WHERE parent_hypothesis_id = :parentHypothesisId LIMIT 1"
+    )
+    suspend fun getFollowUpHypothesis(parentHypothesisId: Long): AiHypothesisEntity?
+
+    @Query(
+        "SELECT * FROM ai_hypotheses AS hypothesis WHERE status = 'proposed' " +
+            "AND NOT EXISTS (" +
+            "SELECT 1 FROM ai_hypotheses AS follow_up " +
+            "WHERE follow_up.parent_hypothesis_id = hypothesis.id" +
+            ") " +
             "ORDER BY created_at DESC, id DESC LIMIT 1"
     )
     suspend fun getLatestProposedHypothesis(): AiHypothesisEntity?
