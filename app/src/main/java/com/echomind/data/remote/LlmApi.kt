@@ -23,7 +23,7 @@ interface LlmApi {
         @Part("response_format") responseFormat: okhttp3.RequestBody
     ): TranscriptionResponse
 
-    @POST(QUESTION_API_PATH)
+    @POST
     suspend fun analyzeText(
         @Url url: String,
         @Header(APPROVED_DESTINATION_HEADER) approvedDestination: String,
