@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.echomind.data.remote.RemoteAccessPolicy
 import kotlinx.coroutines.flow.first
 import java.io.IOException
 import javax.inject.Inject
@@ -21,21 +22,28 @@ data class StoredSettings(
 
 @Singleton
 class SettingsStore @Inject constructor(
-    @ApplicationContext context: Context
+    @ApplicationContext context: Context,
+    private val remoteAccessPolicy: RemoteAccessPolicy
 ) {
+    constructor(context: Context) : this(context, RemoteAccessPolicy())
     private val dataStore = context.settingsDataStore
-    @Volatile
-    private var localModeOverride: Boolean? = null
-
     suspend fun load(): StoredSettings {
         val preferences = try {
             dataStore.data.first()
         } catch (_: IOException) {
-            return StoredSettings(localMode = localModeOverride ?: true)
+            return StoredSettings(
+                apiEndpoint = remoteAccessPolicy.endpoint(),
+                localMode = remoteAccessPolicy.isLocalMode()
+            )
         }
-        return StoredSettings(
+        val settings = StoredSettings(
             apiEndpoint = preferences[KEY_API_ENDPOINT] ?: DEFAULT_API_ENDPOINT,
-            localMode = localModeOverride ?: preferences[KEY_LOCAL_MODE] ?: true
+            localMode = preferences[KEY_LOCAL_MODE] ?: true
+        )
+        remoteAccessPolicy.hydratePersisted(settings)
+        return settings.copy(
+            apiEndpoint = remoteAccessPolicy.endpoint(),
+            localMode = remoteAccessPolicy.isLocalMode()
         )
     }
 
@@ -82,14 +90,15 @@ class SettingsStore @Inject constructor(
         return reset
     }
 
-    suspend fun isLocalMode(): Boolean = localModeOverride ?: load().localMode
+    suspend fun isLocalMode(): Boolean = remoteAccessPolicy.isLocalMode()
 
     suspend fun setApiEndpoint(endpoint: String) {
+        remoteAccessPolicy.updateEndpoint(endpoint)
         dataStore.edit { it[KEY_API_ENDPOINT] = endpoint }
     }
 
     fun updateLocalMode(enabled: Boolean) {
-        localModeOverride = enabled
+        remoteAccessPolicy.updateLocalMode(enabled)
     }
 
     suspend fun persistLocalMode(enabled: Boolean) {

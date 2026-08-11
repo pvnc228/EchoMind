@@ -52,7 +52,8 @@ class LlmRepository @Inject constructor(
     suspend fun previewQuestion(question: String): Result<RemoteQuestionPreview> = runCatching {
         val generation = previewGeneration.incrementAndGet()
         consentLock.withLock { pendingQuestionPreview = null }
-        if (settingsStore.isLocalMode()) throw AiNetworkDisabledException()
+        val settings = settingsStore.load()
+        if (settings.localMode) throw AiNetworkDisabledException()
         val trimmedQuestion = question.trim()
         require(trimmedQuestion.isNotBlank()) { "A remote question cannot be blank." }
 

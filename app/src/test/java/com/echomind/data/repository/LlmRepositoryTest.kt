@@ -4,10 +4,12 @@ import com.echomind.data.analysis.SimpleTextAnalyzer
 import com.echomind.data.remote.BaseUrlProvider
 import com.echomind.data.remote.LlmApi
 import com.echomind.data.remote.RemoteDestinationChangedException
+import com.echomind.data.remote.RemoteAccessPolicy
 import com.echomind.data.remote.dto.AnalysisResponse
 import com.echomind.data.remote.dto.Choice
 import com.echomind.data.remote.dto.Message
 import com.echomind.data.settings.SettingsStore
+import com.echomind.data.settings.StoredSettings
 import com.echomind.domain.model.KnowledgeSearchResult
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.EntryCategory
@@ -28,12 +30,17 @@ class LlmRepositoryTest {
     private val llmApi: LlmApi = mockk()
     private val settingsStore: SettingsStore = mockk()
     private val knowledgeRepository: KnowledgeRepository = mockk()
-    private val baseUrlProvider = BaseUrlProvider()
+    private val remoteAccessPolicy = RemoteAccessPolicy()
+    private val baseUrlProvider = BaseUrlProvider(remoteAccessPolicy)
     private lateinit var repository: LlmRepository
 
     @Before
     fun setup() {
         coEvery { settingsStore.isLocalMode() } returns true
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider.example",
+            localMode = false
+        )
         baseUrlProvider.updateUrl("https://provider.example")
         repository = LlmRepository(llmApi, SimpleTextAnalyzer(), settingsStore, knowledgeRepository, baseUrlProvider)
     }
@@ -127,6 +134,44 @@ class LlmRepositoryTest {
     }
 
     @Test
+    fun `fresh provider bootstraps from persisted endpoint before preview and approval`() = runTest {
+        val freshPolicy = RemoteAccessPolicy()
+        val freshProvider = BaseUrlProvider(freshPolicy)
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { settingsStore.load() } coAnswers {
+            val persisted = StoredSettings("https://provider-b.example/api", localMode = false)
+            freshPolicy.hydratePersisted(persisted)
+            persisted
+        }
+        coEvery { knowledgeRepository.search("planning") } returns listOf(
+            KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
+        )
+        coEvery { llmApi.analyzeText(any(), any(), any()) } returns AnalysisResponse(
+            choices = listOf(Choice(Message("assistant", "answer")))
+        )
+
+        val freshRepository = LlmRepository(
+            llmApi,
+            SimpleTextAnalyzer(),
+            settingsStore,
+            knowledgeRepository,
+            freshProvider
+        )
+
+        val preview = freshRepository.previewQuestion("planning").getOrThrow()
+        freshRepository.sendApprovedQuestion(preview.requestId).getOrThrow()
+
+        assertEquals("https://provider-b.example/api/v1/chat/completions", preview.destination)
+        coVerify {
+            llmApi.analyzeText(
+                preview.destination,
+                preview.destination,
+                any()
+            )
+        }
+    }
+
+    @Test
     fun `approval is one shot and stale approval cannot resend`() = runTest {
         coEvery { settingsStore.isLocalMode() } returns false
         coEvery { knowledgeRepository.search("planning") } returns listOf(
@@ -149,7 +194,7 @@ class LlmRepositoryTest {
 
     @Test
     fun `local mode blocks an approved preview before the api and consumes it`() = runTest {
-        coEvery { settingsStore.isLocalMode() } returnsMany listOf(false, true)
+        coEvery { settingsStore.isLocalMode() } returns true
         coEvery { knowledgeRepository.search("planning") } returns listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
         )
@@ -183,13 +228,17 @@ class LlmRepositoryTest {
     @Test
     fun `endpoint change after preview rejects approval without an api call and consumes it`() = runTest {
         coEvery { settingsStore.isLocalMode() } returns false
-        baseUrlProvider.updateUrl("https://provider-a.example/api")
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider-a.example/api",
+            localMode = false
+        )
+        remoteAccessPolicy.updateEndpoint("https://provider-a.example/api")
         coEvery { knowledgeRepository.search("planning") } returns listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
         )
 
         val preview = repository.previewQuestion("planning").getOrThrow()
-        baseUrlProvider.updateUrl("https://provider-b.example/api")
+        remoteAccessPolicy.updateEndpoint("https://provider-b.example/api")
 
         val result = repository.sendApprovedQuestion(preview.requestId)
         val replay = repository.sendApprovedQuestion(preview.requestId)
