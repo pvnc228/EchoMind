@@ -16,8 +16,12 @@ import com.echomind.domain.model.ReflectionSession
 import com.echomind.domain.model.ReflectionStatus
 import com.echomind.domain.model.Revision
 import com.echomind.domain.model.CaptureDraft
+import com.echomind.di.DefaultDispatcher
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -30,7 +34,8 @@ class ReflectionRepository @Inject constructor(
     private val entryDao: EntryDao,
     private val knowledgeDao: KnowledgeDao,
     private val analyzer: LocalReflectionAnalyzer,
-    private val json: Json
+    private val json: Json,
+    @DefaultDispatcher private val analysisDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) {
     suspend fun captureRawText(
         originalText: String,
@@ -143,7 +148,7 @@ class ReflectionRepository @Inject constructor(
             "A focused follow-up question is too long."
         }
 
-        val proposal = database.withTransaction {
+        val input = database.withTransaction {
             val parent = requireNotNull(knowledgeDao.getHypothesisById(hypothesisId)) {
                 "Reflection proposal $hypothesisId does not exist."
             }
@@ -159,7 +164,14 @@ class ReflectionRepository @Inject constructor(
             val rawRecord = requireNotNull(knowledgeDao.getRawRecordById(parent.rawRecordId)) {
                 "Raw reflection ${parent.rawRecordId} does not exist."
             }
-            analyzer.analyze("${rawRecord.originalText}\n$normalizedQuestion")
+            FollowUpAnalysisInput(
+                hypothesisId = parent.id,
+                rawRecordId = parent.rawRecordId,
+                originalText = rawRecord.originalText
+            )
+        }
+        val proposal = withContext(analysisDispatcher) {
+            analyzer.analyze("${input.originalText}\n$normalizedQuestion")
         }
 
         val followUpHypothesisId = database.withTransaction {
@@ -174,6 +186,15 @@ class ReflectionRepository @Inject constructor(
             }
             check(knowledgeDao.getFollowUpHypothesis(hypothesisId) == null) {
                 "This reflection already has its one focused follow-up."
+            }
+            check(parent.id == input.hypothesisId && parent.rawRecordId == input.rawRecordId) {
+                "The reflection source changed before the follow-up was saved."
+            }
+            val rawRecord = requireNotNull(knowledgeDao.getRawRecordById(parent.rawRecordId)) {
+                "Raw reflection ${parent.rawRecordId} does not exist."
+            }
+            check(rawRecord.originalText == input.originalText) {
+                "The reflection source changed before the follow-up was saved."
             }
             knowledgeDao.insertHypothesis(
                 AiHypothesisEntity(
@@ -460,4 +481,10 @@ class ReflectionRepository @Inject constructor(
             )
         )
     }
+
+    private data class FollowUpAnalysisInput(
+        val hypothesisId: Long,
+        val rawRecordId: Long,
+        val originalText: String
+    )
 }

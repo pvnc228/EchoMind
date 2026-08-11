@@ -67,6 +67,80 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
+    fun migration8To9PreservesLegacyHypothesesAndCreatesBoundedFollowUpSchema() {
+        createVersion4DatabaseWithProvenance()
+        val upgradeHelper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(TEST_DATABASE)
+                .callback(object : SupportSQLiteOpenHelper.Callback(8) {
+                    override fun onCreate(db: SupportSQLiteDatabase) = Unit
+
+                    override fun onUpgrade(
+                        db: SupportSQLiteDatabase,
+                        oldVersion: Int,
+                        newVersion: Int
+                    ) {
+                        AppDatabase.MIGRATION_4_5.migrate(db)
+                        AppDatabase.MIGRATION_5_6.migrate(db)
+                        AppDatabase.MIGRATION_6_7.migrate(db)
+                        AppDatabase.MIGRATION_7_8.migrate(db)
+                    }
+                })
+                .build()
+        )
+        upgradeHelper.writableDatabase.execSQL(
+            "INSERT INTO raw_records " +
+                "(id, legacy_entry_id, original_text, audio_path, duration_ms, created_at) " +
+                "VALUES (501, 501, 'Legacy source', NULL, 0, 1)"
+        )
+        upgradeHelper.writableDatabase.execSQL(
+            "INSERT INTO ai_hypotheses " +
+                "(id, raw_record_id, draft_json, counterargument, status, created_at) " +
+                "VALUES (601, 501, '{}', 'Alternative', 'proposed', 2)"
+        )
+        upgradeHelper.close()
+
+        val migrated = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DATABASE)
+            .addMigrations(AppDatabase.MIGRATION_8_9)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val sqlite = migrated.openHelper.writableDatabase
+            assertColumnExists(sqlite, "ai_hypotheses", "parent_hypothesis_id")
+            assertColumnExists(sqlite, "ai_hypotheses", "follow_up_question")
+            assertIndexExists(sqlite, "ai_hypotheses", "index_ai_hypotheses_parent_hypothesis_id")
+            var referencesSelf = false
+            sqlite.query("PRAGMA foreign_key_list(`ai_hypotheses`)").use { cursor ->
+                val tableColumn = cursor.getColumnIndexOrThrow("table")
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(tableColumn) == "ai_hypotheses") referencesSelf = true
+                }
+            }
+            assertTrue("Follow-up self-FK is missing", referencesSelf)
+
+            runBlocking {
+                val childId = migrated.knowledgeDao().insertHypothesis(
+                    AiHypothesisEntity(
+                        rawRecordId = 501,
+                        draftJson = "{}",
+                        counterargument = "Alternative child",
+                        status = "proposed",
+                        parentHypothesisId = 601,
+                        followUpQuestion = "What changed?",
+                        createdAt = 3
+                    )
+                )
+                assertEquals(2, migrated.knowledgeDao().getAllHypotheses().size)
+                assertEquals(601L, migrated.knowledgeDao().getHypothesisById(childId)?.parentHypothesisId)
+                migrated.knowledgeDao().deleteRawRecordByLegacyEntryId(501)
+                assertTrue(migrated.knowledgeDao().getAllHypotheses().isEmpty())
+            }
+        } finally {
+            migrated.close()
+        }
+    }
+
+    @Test
     fun graphDeletionKeepsRawSourceUntilConclusionIsRemoved() {
         val database = inMemoryDatabase()
 

@@ -19,6 +19,7 @@ import com.echomind.domain.model.KnowledgeSearchResult
 import com.echomind.domain.model.CoverageScopeType
 import com.echomind.domain.model.HomeCard
 import com.echomind.domain.model.HomeCardType
+import com.echomind.domain.model.HomeNavigationTarget
 import com.echomind.domain.model.Capability
 import com.echomind.domain.model.RelatedRecord
 import com.echomind.domain.model.Relationship
@@ -77,6 +78,70 @@ class KnowledgeRepositoryTest {
 
                 knowledgeRepository.unlinkConclusionFromTheme(themeId, revisionId)
                 assertTrue(knowledgeRepository.getThemeConclusions(themeId).isEmpty())
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun homeOnlySurfacesTheActiveFollowUpLeafAcrossProposalStates() {
+        val database = inMemoryDatabase()
+        try {
+            val reflectionRepository = reflectionRepository(database)
+            val knowledgeRepository = knowledgeRepository(database)
+            runBlocking {
+                val rawId = reflectionRepository.captureRawText("Home must show one active leaf.")
+                val initial = reflectionRepository.createLocalProposal(rawId)
+                database.openHelper.writableDatabase.execSQL(
+                    "UPDATE ai_hypotheses SET created_at = 0 WHERE id = ${initial.hypothesisId}"
+                )
+
+                val initialHome = knowledgeRepository.getHomeRelevance()
+                assertEquals(HomeCardType.UNFINISHED, initialHome.card?.type)
+                assertEquals(
+                    HomeNavigationTarget.ReflectionProposal(initial.hypothesisId),
+                    initialHome.card?.navigationTarget
+                )
+
+                val followUp = reflectionRepository.continueDiscussion(
+                    initial.hypothesisId,
+                    "Which evidence should I check?"
+                )
+                database.openHelper.writableDatabase.execSQL(
+                    "UPDATE ai_hypotheses SET created_at = 0 WHERE id = ${followUp.hypothesisId}"
+                )
+                val proposedFollowUpHome = knowledgeRepository.getHomeRelevance()
+                assertEquals(HomeCardType.UNFINISHED, proposedFollowUpHome.card?.type)
+                assertEquals(
+                    HomeNavigationTarget.ReflectionProposal(followUp.hypothesisId),
+                    proposedFollowUpHome.card?.navigationTarget
+                )
+
+                reflectionRepository.confirm(followUp.hypothesisId, "Reviewed conclusion")
+                val confirmedFollowUpHome = knowledgeRepository.getHomeRelevance()
+                assertTrue(confirmedFollowUpHome.card?.type != HomeCardType.UNFINISHED)
+                assertTrue(
+                    confirmedFollowUpHome.card?.navigationTarget !is
+                        HomeNavigationTarget.ReflectionProposal
+                )
+
+                val rejectedRawId = reflectionRepository.captureRawText("Rejected leaf source.")
+                val rejectedInitial = reflectionRepository.createLocalProposal(rejectedRawId)
+                val rejectedFollowUp = reflectionRepository.continueDiscussion(
+                    rejectedInitial.hypothesisId,
+                    "What should be rejected?"
+                )
+                database.openHelper.writableDatabase.execSQL(
+                    "UPDATE ai_hypotheses SET created_at = 0 WHERE id = ${rejectedFollowUp.hypothesisId}"
+                )
+                reflectionRepository.reject(rejectedFollowUp.hypothesisId)
+                val rejectedFollowUpHome = knowledgeRepository.getHomeRelevance()
+                assertTrue(rejectedFollowUpHome.card?.type != HomeCardType.UNFINISHED)
+                assertTrue(
+                    rejectedFollowUpHome.card?.navigationTarget !is
+                        HomeNavigationTarget.ReflectionProposal
+                )
             }
         } finally {
             database.close()

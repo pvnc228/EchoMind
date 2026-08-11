@@ -100,7 +100,12 @@ interface KnowledgeDao {
     suspend fun getAllHypotheses(): List<AiHypothesisEntity>
 
     @Query(
-        "SELECT * FROM ai_hypotheses WHERE status = 'proposed' COLLATE NOCASE " +
+        "SELECT * FROM ai_hypotheses AS hypothesis " +
+            "WHERE hypothesis.status = 'proposed' COLLATE NOCASE " +
+            "AND NOT EXISTS (" +
+            "SELECT 1 FROM ai_hypotheses AS follow_up " +
+            "WHERE follow_up.parent_hypothesis_id = hypothesis.id" +
+            ") " +
             "ORDER BY created_at, id"
     )
     suspend fun getProposedHypotheses(): List<AiHypothesisEntity>

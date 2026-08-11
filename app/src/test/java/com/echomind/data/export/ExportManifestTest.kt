@@ -11,6 +11,7 @@ import com.echomind.data.local.entity.RawRecordEntity
 import com.echomind.data.local.entity.ThemeEntity
 import com.echomind.data.local.entity.ThemeLinkEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class ExportManifestTest {
@@ -104,4 +105,42 @@ class ExportManifestTest {
         assertEquals(14L, manifest.outcomes.single().decisionId)
         assertEquals("It worked out", manifest.outcomes.single().report)
     }
+
+    @Test
+    fun `hypothesis graph rejects chains and cycles before restore planning`() {
+        val root = hypothesis(8)
+        val child = hypothesis(16, parentId = root.id)
+        val grandchild = hypothesis(24, parentId = child.id)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            validateHypothesisGraph(listOf(root, child, grandchild))
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            validateHypothesisGraph(
+                listOf(
+                    root.copy(parentHypothesisId = child.id, followUpQuestion = "Cycle A"),
+                    child.copy(parentHypothesisId = root.id, followUpQuestion = "Cycle B")
+                )
+            )
+        }
+
+        validateHypothesisGraph(listOf(root, child.copy(status = "confirmed")))
+        validateHypothesisGraph(listOf(root, child.copy(status = "rejected")))
+    }
+
+    private fun hypothesis(
+        id: Long,
+        parentId: Long? = null,
+        status: String = "proposed"
+    ) = ExportHypothesis(
+        id = id,
+        rawRecordId = 7,
+        draftJson = "{}",
+        counterargument = "Alternative",
+        status = status,
+        parentHypothesisId = parentId,
+        followUpQuestion = parentId?.let { "Question $id" },
+        createdAt = id
+    )
 }

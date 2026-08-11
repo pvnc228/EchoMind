@@ -640,23 +640,7 @@ class ExportManager @Inject constructor(
         val revisionById = manifest.revisions.associateBy { it.id }
         require(manifest.rawRecords.all { it.legacyEntryId == null || it.legacyEntryId in entries })
         require(manifest.hypotheses.all { it.rawRecordId in raws })
-        require(manifest.hypotheses.all { hypothesis ->
-            val parentId = hypothesis.parentHypothesisId
-            val question = hypothesis.followUpQuestion
-            if (parentId == null) {
-                question == null
-            } else {
-                parentId != hypothesis.id &&
-                    parentId in hypotheses &&
-                    manifest.hypotheses.first { it.id == parentId }.rawRecordId == hypothesis.rawRecordId &&
-                    !question.isNullOrBlank() &&
-                    question.length <= com.echomind.data.repository.MAX_FOLLOW_UP_QUESTION_LENGTH
-            }
-        }) { "Hypothesis follow-up provenance is invalid." }
-        require(
-            manifest.hypotheses.mapNotNull { it.parentHypothesisId }.distinct().size ==
-                manifest.hypotheses.count { it.parentHypothesisId != null }
-        ) { "A hypothesis can have only one focused follow-up." }
+        validateHypothesisGraph(manifest.hypotheses)
         require(manifest.conclusions.all { it.rawRecordId in raws })
         require(manifest.revisions.all { it.conclusionId in conclusions })
         require(manifest.conclusions.all { conclusion ->
@@ -787,6 +771,43 @@ class ExportManager @Inject constructor(
         const val MAX_ARCHIVE_ENTRIES = 2_000
         const val MAX_AUDIO_BYTES = 256L * 1024 * 1024
         const val MAX_TOTAL_AUDIO_BYTES = 512L * 1024 * 1024
+    }
+}
+
+internal fun validateHypothesisGraph(hypotheses: List<ExportHypothesis>) {
+    val byId = hypotheses.associateBy { it.id }
+    require(byId.size == hypotheses.size) { "Duplicate hypothesis IDs." }
+    hypotheses.forEach { hypothesis ->
+        val parentId = hypothesis.parentHypothesisId
+        val question = hypothesis.followUpQuestion
+        if (parentId == null) {
+            require(question == null) { "A root hypothesis cannot have a follow-up question." }
+            return@forEach
+        }
+
+        val parent = requireNotNull(byId[parentId]) {
+            "Hypothesis follow-up parent does not exist."
+        }
+        require(parent.id != hypothesis.id) { "A hypothesis cannot parent itself." }
+        require(parent.parentHypothesisId == null) {
+            "Focused follow-up graph depth must be one."
+        }
+        require(parent.rawRecordId == hypothesis.rawRecordId) {
+            "Focused follow-up must preserve the raw source."
+        }
+        require(parent.status == ReflectionStatus.PROPOSED) {
+            "A follow-up parent must remain a proposal until its leaf is reviewed."
+        }
+        require(!question.isNullOrBlank()) {
+            "A focused follow-up question cannot be blank."
+        }
+        require(question.length <= com.echomind.data.repository.MAX_FOLLOW_UP_QUESTION_LENGTH) {
+            "A focused follow-up question is too long."
+        }
+    }
+    require(hypotheses.mapNotNull { it.parentHypothesisId }.distinct().size ==
+        hypotheses.count { it.parentHypothesisId != null }) {
+        "A hypothesis can have only one focused follow-up."
     }
 }
 

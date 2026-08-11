@@ -16,8 +16,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.CoroutineContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -180,6 +184,47 @@ class ReflectionRepositoryTest {
                 assertNotNull(database.knowledgeDao().getFollowUpHypothesis(initial.hypothesisId))
             }
         } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun followUpUsesInjectedDispatcherAndRevalidatesStaleParentBeforeInsert() {
+        val database = inMemoryDatabase()
+        val analysisStarted = CountDownLatch(1)
+        val releaseAnalysis = CountDownLatch(1)
+        val analysisDispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                Dispatchers.Default.dispatch(context) {
+                    analysisStarted.countDown()
+                    releaseAnalysis.await(5, TimeUnit.SECONDS)
+                    block.run()
+                }
+            }
+        }
+
+        try {
+            val repository = repository(database, analysisDispatcher)
+            runBlocking {
+                val rawRecordId = repository.captureRawText("Source must be rechecked.")
+                val initial = repository.createLocalProposal(rawRecordId)
+                val followUpRequest = async(Dispatchers.Default) {
+                    runCatching {
+                        repository.continueDiscussion(initial.hypothesisId, "What changed?")
+                    }
+                }
+
+                assertTrue("analysis must use the injected dispatcher", analysisStarted.await(5, TimeUnit.SECONDS))
+                val rejected = repository.reject(initial.hypothesisId)
+                assertEquals(ReflectionStatus.REJECTED, rejected.status)
+                releaseAnalysis.countDown()
+
+                assertTrue(followUpRequest.await().isFailure)
+                assertEquals(1, database.knowledgeDao().getAllHypotheses().size)
+                assertEquals(rawRecordId, database.knowledgeDao().getAllRawRecords().single().id)
+            }
+        } finally {
+            releaseAnalysis.countDown()
             database.close()
         }
     }
@@ -824,12 +869,16 @@ class ReflectionRepositoryTest {
         }
     }
 
-    private fun repository(database: AppDatabase) = ReflectionRepository(
+    private fun repository(
+        database: AppDatabase,
+        analysisDispatcher: CoroutineDispatcher = Dispatchers.Default
+    ) = ReflectionRepository(
         database = database,
         entryDao = database.entryDao(),
         knowledgeDao = database.knowledgeDao(),
         analyzer = LocalReflectionAnalyzer(),
-        json = Json { ignoreUnknownKeys = true }
+        json = Json { ignoreUnknownKeys = true },
+        analysisDispatcher = analysisDispatcher
     )
 
     private fun inMemoryDatabase(): AppDatabase =

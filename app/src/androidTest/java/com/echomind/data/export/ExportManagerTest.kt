@@ -858,6 +858,85 @@ class ExportManagerTest {
         }
     }
 
+    @Test
+    fun previewRejectsFollowUpChainsAndCyclesBeforeWritingOrStaging() {
+        val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        var exportFile: File? = null
+        val invalidArchives = mutableListOf<File>()
+        val targets = mutableListOf<AppDatabase>()
+        try {
+            val sourceRepository = reflectionRepository(source)
+            val manifest = runBlocking {
+                val rawId = sourceRepository.captureRawText("Corrupt graph source.")
+                val initial = sourceRepository.createLocalProposal(rawId)
+                val followUp = sourceRepository.continueDiscussion(
+                    initial.hypothesisId,
+                    "Which evidence matters?"
+                )
+                exportFile = exportManager(source).exportToZip().getOrThrow()
+                val exported = readManifest(requireNotNull(exportFile))
+                assertEquals(initial.hypothesisId, followUp.parentHypothesisId)
+                exported
+            }
+            val initial = manifest.hypotheses.single { it.parentHypothesisId == null }
+            val followUp = manifest.hypotheses.single { it.parentHypothesisId != null }
+            val grandchild = followUp.copy(
+                id = manifest.hypotheses.maxOf { it.id } + 1,
+                parentHypothesisId = followUp.id,
+                followUpQuestion = "A forbidden third step"
+            )
+            val invalidManifests = listOf(
+                manifest.copy(
+                    hypotheses = manifest.hypotheses + grandchild,
+                    counts = manifest.counts.copy(hypotheses = manifest.hypotheses.size + 1)
+                ),
+                manifest.copy(
+                    hypotheses = manifest.hypotheses.map { hypothesis ->
+                        when (hypothesis.id) {
+                            initial.id -> hypothesis.copy(
+                                parentHypothesisId = followUp.id,
+                                followUpQuestion = "Cycle A"
+                            )
+                            else -> hypothesis.copy(
+                                parentHypothesisId = initial.id,
+                                followUpQuestion = "Cycle B"
+                            )
+                        }
+                    }
+                )
+            )
+
+            invalidManifests.forEachIndexed { index, invalidManifest ->
+                val archive = File(context.cacheDir, "echomind-invalid-follow-up-$index.zip")
+                invalidArchives += archive
+                rewriteArchive(requireNotNull(exportFile), archive, invalidManifest, emptyMap())
+                val artifactsBefore = restoreArtifactsSnapshot()
+                val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+                    .allowMainThreadQueries()
+                    .build()
+                targets += target
+                val manager = exportManager(target)
+                val previewFailure = runBlocking { manager.previewRestore(archive) }
+                assertTrue("case $index preview should fail", previewFailure.isFailure)
+                val restoreFailure = runBlocking { manager.restoreFromZip(archive) }
+                assertTrue("case $index restore should fail", restoreFailure.isFailure)
+                runBlocking {
+                    assertTrue(target.entryDao().getAllEntriesOnce().isEmpty())
+                    assertTrue(target.knowledgeDao().getAllRawRecords().isEmpty())
+                    assertTrue(target.knowledgeDao().getAllHypotheses().isEmpty())
+                }
+                assertEquals(artifactsBefore, restoreArtifactsSnapshot())
+            }
+        } finally {
+            targets.forEach { it.close() }
+            source.close()
+            exportFile?.delete()
+            invalidArchives.forEach { it.delete() }
+        }
+    }
+
     private fun rewriteArchive(
         source: java.io.File,
         target: java.io.File,
