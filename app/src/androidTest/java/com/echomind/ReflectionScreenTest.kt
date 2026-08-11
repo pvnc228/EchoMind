@@ -1,5 +1,10 @@
 package com.echomind
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -58,6 +63,7 @@ class ReflectionScreenTest {
         composeTestRule.onNodeWithText("Local alternative").assertIsDisplayed()
         composeTestRule
             .onNodeWithText("My edited conclusion")
+            .performScrollTo()
             .assertIsDisplayed()
         composeTestRule
             .onNodeWithText("Confirm my conclusion")
@@ -72,32 +78,50 @@ class ReflectionScreenTest {
     @Test
     fun savedConclusionShowsItsSourceProposalRevisionAndLink() {
         composeTestRule.setContent {
-            SavedReflectionProvenance(
-                ReflectionSession(
-                    rawRecordId = 1,
-                    hypothesisId = 2,
-                    originalText = "My original words",
-                    draft = ReflectionDraft(
-                        tentativeThesis = "Tentative thesis",
-                        observations = emptyList(),
-                        interpretations = emptyList(),
-                        assumptions = emptyList(),
-                        openQuestions = emptyList()
-                    ),
-                    counterargument = "Alternative interpretation",
-                    status = ReflectionStatus.CONFIRMED,
-                    confirmedConclusion = "My edited conclusion",
-                    revisionVersion = 1,
-                    sourceRelationship = "supports",
-                    sourceLinkStatus = ReflectionStatus.CONFIRMED
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                SavedReflectionProvenance(
+                    ReflectionSession(
+                        rawRecordId = 1,
+                        hypothesisId = 2,
+                        originalText = "My original words",
+                        draft = ReflectionDraft(
+                            tentativeThesis = "Tentative thesis",
+                            observations = emptyList(),
+                            interpretations = emptyList(),
+                            assumptions = emptyList(),
+                            openQuestions = emptyList()
+                        ),
+                        counterargument = "Alternative interpretation",
+                        status = ReflectionStatus.CONFIRMED,
+                        confirmedConclusion = "My edited conclusion",
+                        revisionVersion = 1,
+                        sourceRelationship = "supports",
+                        sourceLinkStatus = ReflectionStatus.CONFIRMED
+                    )
                 )
-            )
+            }
         }
 
-        composeTestRule.onNodeWithText("Your words · raw source").assertIsDisplayed()
-        composeTestRule.onNodeWithText("EchoMind · confirmed proposal").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Your conclusion · revision 1").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Source link · supports · confirmed").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithText("Your words · raw source")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeTestRule
+            .onNodeWithText("EchoMind · confirmed proposal")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeTestRule
+            .onNodeWithText("Your conclusion · revision 1")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeTestRule
+            .onNodeWithText("Source link · supports · confirmed")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test
@@ -135,8 +159,17 @@ class ReflectionScreenTest {
             )
         }
 
-        composeTestRule.onNodeWithText("Your focused question").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Какие данные изменят вывод?").assertIsDisplayed()
-        composeTestRule.onNodeWithText("EchoMind's focused follow-up proposal").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithText("Your focused question")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeTestRule
+            .onNodeWithText("Какие данные изменят вывод?")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeTestRule
+            .onNodeWithText("EchoMind's focused follow-up proposal")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 }
