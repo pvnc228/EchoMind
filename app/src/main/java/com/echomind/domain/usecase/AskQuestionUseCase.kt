@@ -30,4 +30,6 @@ class AskQuestionUseCase @Inject constructor(
 
     suspend fun cancel(previewId: String) = llmRepository.cancelQuestionPreview(previewId)
 
+    fun cancelNow(previewId: String) = llmRepository.cancelQuestionPreviewNow(previewId)
+
 }

@@ -30,3 +30,11 @@ data class RemoteQuestionAnswer(
     val answer: String,
     val sourceEntryIds: List<Long>
 )
+
+class RemoteDestinationChangedException : IllegalStateException(
+    "The configured remote destination changed after approval. Review the request again."
+)
+
+class RemoteLocalModeChangedException : IllegalStateException(
+    "Local mode was enabled before the approved remote request crossed the network boundary."
+)

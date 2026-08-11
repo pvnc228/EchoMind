@@ -1,19 +1,23 @@
 package com.echomind.data.repository
 
 import com.echomind.data.analysis.SimpleTextAnalyzer
+import com.echomind.data.remote.BaseUrlProvider
 import com.echomind.data.remote.LlmApi
+import com.echomind.data.remote.QUESTION_API_PATH
 import com.echomind.data.remote.ConfirmedContextItem
 import com.echomind.data.remote.RemoteQuestionAnswer
 import com.echomind.data.remote.RemoteQuestionPreview
+import com.echomind.data.remote.RemoteDestinationChangedException
+import com.echomind.data.remote.RemoteLocalModeChangedException
 import com.echomind.data.remote.dto.AnalysisRequest
 import com.echomind.data.remote.dto.Message
 import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.KnowledgeSearchResult
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import java.net.URI
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.ReentrantLock
 import java.util.UUID
+import kotlin.concurrent.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,9 +26,11 @@ class LlmRepository @Inject constructor(
     private val llmApi: LlmApi,
     private val offlineAnalyzer: SimpleTextAnalyzer,
     private val settingsStore: SettingsStore,
-    private val knowledgeRepository: KnowledgeRepository
+    private val knowledgeRepository: KnowledgeRepository,
+    private val baseUrlProvider: BaseUrlProvider
 ) {
-    private val consentMutex = Mutex()
+    private val consentLock = ReentrantLock()
+    private val previewGeneration = AtomicLong(0)
     private var pendingQuestionPreview: RemoteQuestionPreview? = null
 
     suspend fun transcribeAudio(audioFile: java.io.File): Result<String> {
@@ -44,6 +50,8 @@ class LlmRepository @Inject constructor(
      * consent token, so a preview cannot be replayed for another request or purpose.
      */
     suspend fun previewQuestion(question: String): Result<RemoteQuestionPreview> = runCatching {
+        val generation = previewGeneration.incrementAndGet()
+        consentLock.withLock { pendingQuestionPreview = null }
         if (settingsStore.isLocalMode()) throw AiNetworkDisabledException()
         val trimmedQuestion = question.trim()
         require(trimmedQuestion.isNotBlank()) { "A remote question cannot be blank." }
@@ -70,17 +78,19 @@ class LlmRepository @Inject constructor(
         if (boundedContext.isEmpty()) throw NoConfirmedContextException()
 
         val messages = buildQuestionMessages(trimmedQuestion, boundedContext)
-        val settings = settingsStore.load()
         val preview = RemoteQuestionPreview(
             requestId = UUID.randomUUID().toString(),
             purpose = QUESTION_PURPOSE,
-            destination = displayDestination(settings.apiEndpoint),
+            destination = baseUrlProvider.effectiveUrl(QUESTION_API_PATH),
             question = trimmedQuestion,
             context = boundedContext,
             messages = messages,
             sourceEntryIds = boundedContext.mapNotNull { it.entryId }.distinct()
         )
-        consentMutex.withLock {
+        consentLock.withLock {
+            if (generation != previewGeneration.get()) {
+                throw StaleRemoteConsentException()
+            }
             pendingQuestionPreview = preview
         }
         preview
@@ -88,17 +98,27 @@ class LlmRepository @Inject constructor(
 
     /** Consumes approval before the network call; failures never leave a reusable approval. */
     suspend fun sendApprovedQuestion(requestId: String): Result<RemoteQuestionAnswer> {
-        val preview = consentMutex.withLock {
+        val preview = consentLock.withLock {
             pendingQuestionPreview
                 ?.takeIf { it.requestId == requestId }
                 .also { pendingQuestionPreview = null }
         } ?: return Result.failure(StaleRemoteConsentException())
 
         return runCatching {
-            if (settingsStore.isLocalMode()) throw AiNetworkDisabledException()
             // Re-check immediately before crossing the network boundary.
             if (settingsStore.isLocalMode()) throw AiNetworkDisabledException()
-            val response = llmApi.analyzeText(AnalysisRequest(messages = preview.messages))
+            if (baseUrlProvider.effectiveUrl(QUESTION_API_PATH) != preview.destination) {
+                throw RemoteDestinationChangedException()
+            }
+            val response = try {
+                llmApi.analyzeText(
+                    url = preview.destination,
+                    approvedDestination = preview.destination,
+                    request = AnalysisRequest(messages = preview.messages)
+                )
+            } catch (_: RemoteLocalModeChangedException) {
+                throw AiNetworkDisabledException()
+            }
             val answer = response.choices.firstOrNull()?.message?.content?.trim()
                 .orEmpty()
             require(answer.isNotBlank()) { "The remote provider returned an empty answer." }
@@ -107,10 +127,12 @@ class LlmRepository @Inject constructor(
     }
 
     suspend fun cancelQuestionPreview(requestId: String) {
-        consentMutex.withLock {
-            if (pendingQuestionPreview?.requestId == requestId) {
-                pendingQuestionPreview = null
-            }
+        cancelQuestionPreviewNow(requestId)
+    }
+
+    fun cancelQuestionPreviewNow(requestId: String) {
+        consentLock.withLock {
+            if (pendingQuestionPreview?.requestId == requestId) pendingQuestionPreview = null
         }
     }
 
@@ -135,17 +157,6 @@ class LlmRepository @Inject constructor(
         }
         return listOf(Message(role = "system", content = system), Message(role = "user", content = question))
     }
-
-    private fun displayDestination(endpoint: String): String = runCatching {
-        val uri = URI(endpoint)
-        buildString {
-            append(uri.scheme ?: "")
-            if (uri.scheme != null) append("://")
-            append(uri.host ?: uri.path.orEmpty())
-            if (uri.port != -1) append(":${uri.port}")
-            if (!uri.path.isNullOrBlank() && uri.host != null) append(uri.path)
-        }
-    }.getOrElse { endpoint.substringBefore('?').substringBefore('#') }
 
     private fun <T> networkDisabled(): Result<T> =
         Result.failure(AiNetworkDisabledException())

@@ -109,6 +109,11 @@ class QaViewModel @Inject constructor(
         }
     }
 
+    override fun onCleared() {
+        _uiState.value.pendingPreview?.requestId?.let(askQuestionUseCase::cancelNow)
+        super.onCleared()
+    }
+
     private fun userFacingError(error: Throwable): String = when (error) {
         is AiNetworkDisabledException -> "Remote access is disabled while local mode is on."
         is NoConfirmedContextException -> "No confirmed conclusions match this question. Nothing was sent."
