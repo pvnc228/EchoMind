@@ -587,7 +587,7 @@ abstract class AppDatabase : RoomDatabase() {
                         `created_at` INTEGER NOT NULL,
                         FOREIGN KEY(`raw_record_id`) REFERENCES `raw_records`(`id`)
                             ON UPDATE NO ACTION ON DELETE CASCADE,
-                        FOREIGN KEY(`parent_hypothesis_id`) REFERENCES `ai_hypotheses_new`(`id`)
+                        FOREIGN KEY(`parent_hypothesis_id`) REFERENCES `ai_hypotheses`(`id`)
                             ON UPDATE NO ACTION ON DELETE CASCADE
                     )
                     """.trimIndent()

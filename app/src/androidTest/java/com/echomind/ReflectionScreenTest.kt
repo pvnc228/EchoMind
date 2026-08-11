@@ -59,7 +59,10 @@ class ReflectionScreenTest {
         composeTestRule
             .onNodeWithText("My edited conclusion")
             .assertIsDisplayed()
-        composeTestRule.onNodeWithText("Confirm my conclusion").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithText("Confirm my conclusion")
+            .performScrollTo()
+            .assertIsDisplayed()
         composeTestRule
             .onNodeWithText("Reject EchoMind's proposal")
             .performScrollTo()
