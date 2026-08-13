@@ -1829,3 +1829,36 @@ remain open evidence requirements; the broader M4 milestone remains open.
 
 - `ROADMAP.md` and `docs/GITHUB_WORKFLOW.md` now reflect the live `Done`
   status without claiming that the broader M4 milestone is complete.
+
+## 2026-08-13 - M0 consent and M1 bounded discussion integrated
+
+### Result
+
+- Integrated Issues #2 and #3 into `master` as one cascade-delivery batch.
+- M0 now uses an exact minimized-context preview, explicit purpose and
+  destination, and one-shot per-request transmission approval. Cancel,
+  `localMode`, stale state, endpoint changes, and restart do not reuse consent.
+- M1 now supports exactly one focused user-authored follow-up question. Its
+  answer remains an AI proposal linked to the confirmed parent and raw source;
+  schema v9 preserves this graph through migration, export, restore, and
+  deletion.
+- Corrected the Retrofit dynamic-destination call so the Q&A request reaches
+  the approved endpoint through the production transport seam.
+
+### Evidence captured before publication
+
+- JVM suite: `65/65`.
+- Cold-boot integrated connected suite: `99/99` on API 26, API 30, and API 35.
+- API 35 manual pass: exact preview and consent actions, 200% text, compact
+  layout, IME, TalkBack service/tree focus, real landscape, and proposal state
+  after restart.
+- Android lint and `git diff --check`: passed for the integrated implementation.
+
+### Owner process decision
+
+- The owner ended repeated incremental gate closure during feature
+  implementation and accepted cascade delivery of the completed logic.
+- Issues #2 and #3 move to `Done` when this batch is published to `master`.
+- Repeated whole-product regression, debugging, and stabilization are a
+  separate subsequent stage. No fresh post-documentation full completion gate
+  is claimed by this entry.

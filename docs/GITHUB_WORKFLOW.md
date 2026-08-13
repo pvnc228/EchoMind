@@ -1,7 +1,7 @@
 # GitHub workflow EchoMind
 
 **Status:** current operational workflow
-**Last updated:** 2026-08-10
+**Last updated:** 2026-08-13
 
 This document describes the current GitHub Project and issue workflow for
 EchoMind. It is project-management metadata; a Project status or an issue
@@ -44,8 +44,8 @@ deferred boundaries recorded in `JOURNAL.md`. The current live mapping is:
 |---|---|---|---|---|---|
 | [#1](https://github.com/pvnc228/EchoMind/issues/1) | `Done` | `verification` | `P1` | `M4` | Scoped repair gate closure |
 | [#6](https://github.com/pvnc228/EchoMind/issues/6) | `Done` | `feature` | `P2` | `M4` | Optional local follow-up/reminder |
-| [#2](https://github.com/pvnc228/EchoMind/issues/2) | `Backlog` | `feature` | `P0` | `M0` | Minimized context preview and per-request consent |
-| [#3](https://github.com/pvnc228/EchoMind/issues/3) | `Backlog` | `feature` | `P0` | `M1` | Bounded continue-discussion flow |
+| [#2](https://github.com/pvnc228/EchoMind/issues/2) | `Done` | `feature` | `P0` | `M0` | Minimized context preview and per-request consent |
+| [#3](https://github.com/pvnc228/EchoMind/issues/3) | `Done` | `feature` | `P0` | `M1` | Bounded continue-discussion flow |
 | [#4](https://github.com/pvnc228/EchoMind/issues/4) | `Done` | `verification` | `P1` | `M2` | Import integrity and selective restore |
 | [#5](https://github.com/pvnc228/EchoMind/issues/5) | `Backlog` | `verification` | `P1` | `M3` | Repeat-use evidence for Home resurfacing |
 | [#7](https://github.com/pvnc228/EchoMind/issues/7) | `Backlog` | `feature` | `P2` | `M5` | Explainable guidance on explicit request |
@@ -59,9 +59,10 @@ and the recorded journal result; the broader M4 milestone and the API26/API30
 compatibility rerun remain explicitly deferred.
 
 Issue #1 is a tracking card for the closed scoped repair gate. Its closure
-does not close M4 or the broader M2/M3/M4 product milestones. Issue #6 is the
-completed scoped verification card; the other cards remain documented backlog
-work.
+does not close M4 or the broader M2/M3/M4 product milestones. Issues #2 and #3
+close their scoped implementation results; whole-product regression,
+debugging, and stabilization are a separate subsequent stage rather than a
+reason to keep feature-development cards open.
 
 ## Working cycle
 

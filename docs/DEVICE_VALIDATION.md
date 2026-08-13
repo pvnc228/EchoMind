@@ -1,5 +1,19 @@
 # Device Validation Guide (EchoMind)
 
+## 2026-08-13 implementation handoff
+
+Before publication, the integrated M0/M1 branch completed the JVM suite and
+connected instrumentation on API 26, API 30, and API 35; each connected run
+reported `99/99`. The API 35 pass also covered the exact transmission preview,
+200% text, compact layout, IME, TalkBack service/tree focus, real landscape,
+and proposal persistence after restart.
+
+By owner decision, repeated whole-product regression, debugging, and
+stabilization now form a separate stage after cascade implementation. Moving
+Issues #2 and #3 to `Done` records integration of their scoped logic; it does
+not claim that every later stabilization pass or broader product milestone is
+complete.
+
 Ручной проход по экранам и состояниям на устройстве/эмуляторе. Гонять перед
 переводом UX-чекпоинта в `done`. Автопокрытие уже закрывает: сборку, юнит-
 тесты и 12/12 инструментованных тестов (вкл. Review-структуру).

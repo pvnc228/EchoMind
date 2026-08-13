@@ -4,7 +4,8 @@ EchoMind is a private Android thinking environment that turns short reflections 
 
 > The repository is an active product prototype. Its primary capture path now
 > enforces explicit confirmation and the local provenance graph is inspectable;
-> remote Q&A and automatic transcription remain deferred.
+> minimized remote Q&A is available behind an exact preview and one-request
+> transmission consent. Automatic transcription remains deferred.
 
 ## Documentation
 
@@ -21,10 +22,12 @@ EchoMind is a private Android thinking environment that turns short reflections 
 - On-device structured proposal: thesis, observations, interpretations,
   assumptions, open questions, and one alternative interpretation
 - Explicit edit, confirm, and reject boundary
+- One bounded local follow-up question whose result remains an unconfirmed proposal
+- Exact minimized-context preview and one-request consent for remote Q&A
 - Confirmed conclusion stored as revision 1 with its raw source
 - OpenAI-compatible text analysis, transcription client, and Q&A
 - Entry timeline, search, filters, details, and export
-- Room v8 provenance storage for raw records, hypotheses, conclusions, revisions,
+- Room v9 provenance storage for raw records, hypotheses, conclusions, revisions,
   immutable/pending evidence and theme links, decisions, drafts, and Home
   dispositions, the derived Unicode-aware search key, and persisted
   audio-cleanup retries
@@ -33,11 +36,10 @@ EchoMind is a private Android thinking environment that turns short reflections 
 Automatic transcription is not yet connected to the main recording flow.
 Archive/detail, deletion, Decisions, Home coverage, bounded Detail browsing,
 and empty-profile restore now expose the implemented provenance boundaries.
-The scoped repair gate is closed by the 2026-08-10 artifact; merge/selective
-restore, pending-link review UI, the optional M4 follow-up/reminder, and the
-broader product milestones remain deferred. `localMode` blocks repository
-network calls; minimized context preview and per-request consent remain
-tracked in the roadmap.
+The scoped repair gate, selective restore, optional M4 reminder, M0 minimized
+context consent, and M1 bounded discussion slices are implemented. `localMode`
+still blocks repository network calls. Broader product milestones and the
+separate whole-product debugging/verification stage remain open.
 
 ## Tech Stack
 

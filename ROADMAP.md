@@ -1,6 +1,6 @@
 # EchoMind — Product Roadmap
 
-**Last updated:** 2026-08-10
+**Last updated:** 2026-08-13
 
 **Product direction:** [VISION.md](VISION.md)
 
@@ -34,9 +34,9 @@ This roadmap replaces the former feature checklist for a "voice diary with AI." 
 - The legacy `Entry` archive remains alongside the M1 provenance graph and does
   not yet model themes, contradictions, decisions, or outcomes.
 - The current recording flow asks the user to type a transcript; the implemented transcription client is not connected to that flow.
-- Q&A and remote transcription are deliberately unavailable because the
-  prototype has no minimized-context preview or per-request transmission
-  approval.
+- Q&A is available only through an exact minimized-context preview and
+  per-request transmission approval. Remote transcription remains deliberately
+  unavailable in the recording flow.
 - The home screen is a diary timeline, not a prompt plus relevant evidence-backed resurfacing.
 - Current categories (`task`, `idea`, `feeling`, `plan`) do not express evolving conclusions.
 
@@ -105,7 +105,7 @@ No milestone is complete because a screen exists or an LLM returned plausible te
   - assumptions;
   - open questions.
 - [x] Offer one relevant counterargument or alternative interpretation without manufacturing disagreement.
-- [ ] Let the user edit, accept, reject, or continue discussing the draft.
+- [x] Let the user edit, accept, reject, or continue discussing the draft.
 - [x] Save only the accepted formulation as a confirmed conclusion.
 - [x] Display the raw source, AI proposal, user edits, and final conclusion as distinct objects.
 - [x] Provide graceful local-only behavior when remote assistance is unavailable.
@@ -363,8 +363,18 @@ restore.
 
 The live implementation backlog is tracked in
 [`docs/GITHUB_WORKFLOW.md`](docs/GITHUB_WORKFLOW.md): Issue #6 is `Done` for
-the scoped optional follow-up slice, while Issues #2–#5 and #7–#9 represent the remaining M0,
-M1, M2, M3, M5, M6, and M7 work. Issue #1 is the completed repair-gate card.
+the scoped optional follow-up slice; Issues #2 and #3 are `Done` for the M0
+consent and M1 bounded-discussion implementation slices. Issues #5 and #7–#9
+remain future product/evidence work. Issues #1 and #4 are completed verification
+cards.
+
+**Implementation status (2026-08-13):** the M0 minimized-context preview and
+per-request consent pipeline and the M1 one-step focused follow-up are in
+`master`. The owner accepted cascade development: implementation cards are
+closed when their scoped logic is integrated, while repeated whole-product
+testing, debugging, and stabilization are tracked as a separate subsequent
+stage. This status does not claim external-user validation or completion of
+the broader M3–M7 product milestones.
 
 The non-blocking audio-cleanup follow-up from the 2026-08-08 review is also
 implemented and verified (2026-08-09): terminal retry rows no longer starve

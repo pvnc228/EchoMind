@@ -45,6 +45,14 @@ Blur or compositing is not applied to scrolling content, and no callable
 surface relies on glass alone to signal state. After confirm or reject, a
 reversible "Start another reflection" action is available.
 
+The review surface may offer exactly one focused follow-up question. The
+question is labelled as user-authored and the resulting local response remains
+an EchoMind proposal until the ordinary confirm or reject action.
+
+Remote Q&A uses a separate consent preview. It shows purpose, exact provider
+destination, exact minimized content, provider-retention warning, `Allow once`,
+and `Cancel`. Confirmation of a conclusion never implies this consent.
+
 ## Do's and Don'ts
 
 - Do describe analysis as a local, unconfirmed proposal until the user explicitly confirms or edits it.

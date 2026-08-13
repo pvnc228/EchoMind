@@ -2,10 +2,10 @@
 
 **Status:** active implementation contract
 
-**Last updated:** 2026-08-10
+**Last updated:** 2026-08-13
 
 This document turns the promises in [VISION.md](VISION.md) into storage and
-network rules. Room schema version 8 includes the provenance graph, immutable
+network rules. Room schema version 9 includes the provenance graph, immutable
 and pending link metadata, decision guards, durable capture drafts,
 fingerprint-keyed Home-card dispositions, and the Unicode-aware manual-search
 key. It also persists failed audio cleanup attempts for WorkManager retry; this
@@ -72,6 +72,7 @@ device.
 | Room `raw_records` | original text, encrypted audio reference, duration, creation time | Raw + operational | User | Yes |
 | Room `raw_records` | `original_text_search_key` (NFKC + `Locale.ROOT` lowercase) | Derived operational search index; rebuilt from `original_text` | EchoMind | No |
 | Room `ai_hypotheses` | draft JSON, counterargument, status, source and creation metadata | Derived proposal + operational | User | Yes |
+| Room `ai_hypotheses` | optional parent hypothesis ID and user-authored focused follow-up question | Derived proposal provenance + raw user question | User | Yes |
 | Room `conclusions` | raw source, current revision pointer, creation time | Confirmed + operational | User | Yes |
 | Room `conclusion_revisions` | versioned text, author, creation time | Confirmed + operational | User | Yes |
 | Room `evidence_links` | revision/source IDs, relationship, status, origin, review metadata, graph timestamp | Derived or confirmed according to status | User | Yes |
@@ -104,6 +105,10 @@ non-exported key used for bounded Unicode-aware manual search. `MIGRATION_7_8`
 backfills that key from every legacy row using the same NFKC/ROOT-lowercase
 normalization used for new records. Export manifests continue to carry the raw
 original text, never this derived search key.
+Schema version 9 adds a nullable self-parent and focused question to
+`ai_hypotheses`. A unique parent index limits each root proposal to one child;
+the import validator rejects cycles, missing parents, cross-source children,
+and depth greater than one before any write.
 `MIGRATION_5_6` preserves rows and deterministically deduplicates
 conflicting link pairs; it does not use destructive fallback. Historical links
 are never moved to a new revision; inherited links are pending until reviewed.
@@ -111,7 +116,7 @@ are never moved to a new revision; inherited links are pending until reviewed.
 | Object | Minimum fields | Rule |
 |---|---|---|
 | `RawRecord` | `id`, original text, optional encrypted audio reference, creation time | Immutable content; corrections create another record |
-| `AiHypothesis` | `id`, source record ID, structured draft, counterargument, creation time, status | Always visibly unconfirmed |
+| `AiHypothesis` | `id`, source record ID, structured draft, counterargument, optional parent/question, creation time, status | Always visibly unconfirmed; at most one focused child per root |
 | `Conclusion` | `id`, source record ID, creation time, current revision ID | Exists only after explicit confirmation |
 | `ConclusionRevision` | `id`, conclusion ID, text, creation time, author | Append-only; user edits create a revision |
 | `EvidenceLink` | `id`, conclusion revision ID, source object ID, supports/contradicts, confirmation status | AI links remain proposals until confirmed |
@@ -128,6 +133,7 @@ copying their text.
 ```text
 RawRecord
   -> AiHypothesis.PROPOSED
+       -> FOCUSED_FOLLOW_UP -> AiHypothesis.PROPOSED (one child maximum)
        -> EDITED -> CONFIRMED -> Conclusion + ConclusionRevision(v1)
        -> CONFIRMED          -> Conclusion + ConclusionRevision(v1)
        -> REJECTED           -> no Conclusion
@@ -164,6 +170,11 @@ The implemented M1-A transition is:
 5. explicit confirm atomically changes the proposal to `CONFIRMED`, creates a
    `Conclusion`, appends user-authored `ConclusionRevision(version=1)`, updates
    the current revision pointer, and adds a confirmed source evidence link.
+
+A proposed root may be continued once with a non-blank focused question. The
+analysis runs off Main and the root/source/stale guards are rechecked inside
+the write transaction. The child remains `PROPOSED`; restart, import, retry,
+or background work cannot confirm it.
 
 The newest proposed reflection is restored when the capture screen is reopened.
 Confirmed wording and its source/revision relationship survive database reopen.
@@ -205,10 +216,13 @@ Remote access is denied by default and evaluated at the repository boundary:
 
 Raw records, raw audio, the complete personal model, secrets, and unconfirmed
 background requests never pass this boundary. Legacy entry analysis stays
-on-device even when local mode is off. Legacy Q&A and transcription fail before
-`LlmApi` in both modes: local mode reports that networking is disabled, while
-remote mode reports that minimized preview and per-request approval are
-required. Remote assistance remains unavailable until that pipeline exists.
+on-device even when local mode is off. Legacy raw-entry analysis and
+transcription still fail before `LlmApi`. Minimized Q&A is available only for
+confirmed conclusions: the repository creates an exact
+purpose/destination/content preview, issues a generation- and
+destination-bound one-shot approval, rechecks `localMode` and endpoint state,
+and sends through the approved dynamic URL. Cancel, stale approval, endpoint
+change, restart, and local mode transmit nothing and clear request-only state.
 
 Remote providers may retain prompts, responses, network metadata, or abuse
 monitoring records under their own policies. EchoMind cannot verify or delete

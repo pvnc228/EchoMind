@@ -20,7 +20,7 @@ EchoMind is not another diary or chatbot. Its distinctive mechanism is a local, 
 
 ## Operating Context
 
-The primary flow is text-first Android capture followed by local structuring, one grounded alternative or question, review, edit, confirm or reject, and inspection of the saved source relationship. Voice is an optional attachment. The user may be interrupted and return to a pending proposal; later product stages connect confirmed conclusions across time.
+The primary flow is text-first Android capture followed by local structuring, one grounded alternative or question, review, one optional bounded follow-up, edit, confirm or reject, and inspection of the saved source relationship. Voice is an optional attachment. The user may be interrupted and return to a pending proposal; later product stages connect confirmed conclusions across time.
 
 ## Capabilities and Constraints
 
@@ -29,7 +29,7 @@ The primary flow is text-first Android capture followed by local structuring, on
 - The current reflection analyzer is deterministic and local; its output is never authoritative.
 - Raw source, local proposal, user-edited wording, and confirmed conclusion must remain visibly and programmatically distinct.
 - Confirm, reject, revise, deletion, export, restart recovery, and any future transmission approval are separate state transitions.
-- Remote raw-content processing remains unavailable until minimized preview and per-request consent exist.
+- Remote Q&A may transmit only the exact minimized confirmed context shown in a preview after separate one-request consent. Raw records, unconfirmed proposals, and the complete personal model remain blocked.
 - The first UX implementation scope is the M1 reflection flow, not the future meaning-first Home, graph views, personalization, prediction, or broad visualization.
 
 ## Brand Commitments
@@ -41,7 +41,7 @@ The product name is EchoMind. Its voice is calm, precise, non-diagnostic, and ag
 - `VISION.md` defines the agreed product direction and non-goals.
 - `DATA_CONTRACT.md` defines ownership, provenance, confirmation, deletion, export, and network boundaries.
 - `M1_USABILITY_EVALUATION.md` records the frozen first-session usefulness rubric and the completed M1-C synthetic gate.
-- `JOURNAL.md` records implementation and emulator evidence through M1-C.
+- `JOURNAL.md` records implementation and emulator evidence through the M0 consent and M1 bounded-discussion slices.
 - The Compose implementation and tests cover capture, local proposal, review, confirm, reject, saved provenance, and restart behavior.
 - No external-user usefulness study, testimonials, clinical evidence, or product-market-fit evidence exists and none may be invented.
 
