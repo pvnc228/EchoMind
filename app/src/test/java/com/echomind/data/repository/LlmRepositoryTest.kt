@@ -8,6 +8,7 @@ import com.echomind.data.remote.RemoteAccessPolicy
 import com.echomind.data.remote.dto.AnalysisResponse
 import com.echomind.data.remote.dto.Choice
 import com.echomind.data.remote.dto.Message
+import com.echomind.data.remote.dto.TranscriptionResponse
 import com.echomind.data.settings.SettingsStore
 import com.echomind.data.settings.StoredSettings
 import com.echomind.domain.model.KnowledgeSearchResult
@@ -70,7 +71,7 @@ class LlmRepositoryTest {
             val result = repository.transcribeAudio(audioFile)
 
             assertTrue(result.exceptionOrNull() is AiNetworkDisabledException)
-            coVerify(exactly = 0) { llmApi.transcribeAudio(any(), any(), any()) }
+            coVerify(exactly = 0) { llmApi.transcribeAudio(any(), any(), any(), any(), any()) }
         } finally {
             audioFile.delete()
         }
@@ -106,7 +107,7 @@ class LlmRepositoryTest {
             val result = repository.transcribeAudio(audioFile)
 
             assertTrue(result.exceptionOrNull() is RemoteApprovalRequiredException)
-            coVerify(exactly = 0) { llmApi.transcribeAudio(any(), any(), any()) }
+            coVerify(exactly = 0) { llmApi.transcribeAudio(any(), any(), any(), any(), any()) }
         } finally {
             audioFile.delete()
         }
@@ -285,6 +286,201 @@ class LlmRepositoryTest {
 
         assertTrue(result.exceptionOrNull() is NoConfirmedContextException)
         coVerify(exactly = 0) { llmApi.analyzeText(any(), any(), any()) }
+    }
+
+    @Test
+    fun `previewAudioTranscription in local mode throws AiNetworkDisabledException`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns true
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider.example",
+            localMode = true
+        )
+        val tempAudio = File.createTempFile("test_audio", ".m4a").apply { writeText("dummy audio") }
+        try {
+            val result = repository.previewAudioTranscription(tempAudio, 5000L)
+            assertTrue(result.exceptionOrNull() is AiNetworkDisabledException)
+        } finally {
+            tempAudio.delete()
+        }
+    }
+
+    @Test
+    fun `previewAudioTranscription in remote mode returns preview with exact destination and audio metadata`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider.example",
+            localMode = false
+        )
+        val tempAudio = File.createTempFile("test_audio", ".m4a").apply { writeText("audio content bytes") }
+        try {
+            val preview = repository.previewAudioTranscription(tempAudio, 4200L).getOrThrow()
+            assertEquals("https://provider.example/v1/audio/transcriptions", preview.destination)
+            assertEquals("transcribe_audio", preview.purpose)
+            assertEquals(tempAudio.name, preview.audioFileName)
+            assertEquals(4200L, preview.audioDurationMs)
+            assertEquals(tempAudio.length(), preview.audioFileSizeBytes)
+        } finally {
+            tempAudio.delete()
+        }
+    }
+
+    @Test
+    fun `previewAudioTranscription fails if audio file is empty`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider.example",
+            localMode = false
+        )
+        val tempAudio = File.createTempFile("empty_audio", ".m4a")
+        try {
+            val result = repository.previewAudioTranscription(tempAudio, 0L)
+            assertTrue(result.isFailure)
+        } finally {
+            tempAudio.delete()
+        }
+    }
+
+    @Test
+    fun `sendApprovedAudioTranscription sends approved request and returns transcribed text`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider.example",
+            localMode = false
+        )
+        coEvery { llmApi.transcribeAudio(any(), any(), any(), any(), any()) } returns TranscriptionResponse(
+            text = "Transcribed reflection text from voice"
+        )
+        val tempAudio = File.createTempFile("voice_note", ".m4a").apply { writeText("audio data") }
+        try {
+            val preview = repository.previewAudioTranscription(tempAudio, 3000L).getOrThrow()
+            val result = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio).getOrThrow()
+
+            assertEquals("Transcribed reflection text from voice", result)
+            coVerify(exactly = 1) {
+                llmApi.transcribeAudio(
+                    preview.destination,
+                    preview.destination,
+                    any(),
+                    any(),
+                    any()
+                )
+            }
+        } finally {
+            tempAudio.delete()
+        }
+    }
+
+    @Test
+    fun `sendApprovedAudioTranscription is one shot and second call fails with StaleRemoteConsentException`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider.example",
+            localMode = false
+        )
+        coEvery { llmApi.transcribeAudio(any(), any(), any(), any(), any()) } returns TranscriptionResponse(
+            text = "Transcribed text"
+        )
+        val tempAudio = File.createTempFile("voice_note", ".m4a").apply { writeText("audio data") }
+        try {
+            val preview = repository.previewAudioTranscription(tempAudio, 3000L).getOrThrow()
+            val first = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio)
+            val second = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio)
+
+            assertEquals("Transcribed text", first.getOrThrow())
+            assertTrue(second.exceptionOrNull() is StaleRemoteConsentException)
+            coVerify(exactly = 1) { llmApi.transcribeAudio(any(), any(), any(), any(), any()) }
+        } finally {
+            tempAudio.delete()
+        }
+    }
+
+    @Test
+    fun `sendApprovedAudioTranscription when local mode enabled throws AiNetworkDisabledException and consumes permit`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider.example",
+            localMode = false
+        )
+        val tempAudio = File.createTempFile("voice_note", ".m4a").apply { writeText("audio data") }
+        try {
+            val preview = repository.previewAudioTranscription(tempAudio, 3000L).getOrThrow()
+            coEvery { settingsStore.isLocalMode() } returns true
+
+            val result = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio)
+            val replay = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio)
+
+            assertTrue(result.exceptionOrNull() is AiNetworkDisabledException)
+            assertTrue(replay.exceptionOrNull() is StaleRemoteConsentException)
+            coVerify(exactly = 0) { llmApi.transcribeAudio(any(), any(), any(), any(), any()) }
+        } finally {
+            tempAudio.delete()
+        }
+    }
+
+    @Test
+    fun `sendApprovedAudioTranscription when endpoint changed throws RemoteDestinationChangedException and consumes permit`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider-a.example/api",
+            localMode = false
+        )
+        remoteAccessPolicy.updateEndpoint("https://provider-a.example/api")
+        val tempAudio = File.createTempFile("voice_note", ".m4a").apply { writeText("audio data") }
+        try {
+            val preview = repository.previewAudioTranscription(tempAudio, 3000L).getOrThrow()
+            remoteAccessPolicy.updateEndpoint("https://provider-b.example/api")
+
+            val result = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio)
+            val replay = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio)
+
+            assertTrue(result.exceptionOrNull() is RemoteDestinationChangedException)
+            assertTrue(replay.exceptionOrNull() is StaleRemoteConsentException)
+            coVerify(exactly = 0) { llmApi.transcribeAudio(any(), any(), any(), any(), any()) }
+        } finally {
+            tempAudio.delete()
+        }
+    }
+
+    @Test
+    fun `sendApprovedAudioTranscription when provider fails leaves no replayable approval`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider.example",
+            localMode = false
+        )
+        coEvery { llmApi.transcribeAudio(any(), any(), any(), any(), any()) } throws IllegalStateException("provider down")
+        val tempAudio = File.createTempFile("voice_note", ".m4a").apply { writeText("audio data") }
+        try {
+            val preview = repository.previewAudioTranscription(tempAudio, 3000L).getOrThrow()
+            val result = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio)
+            val replay = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio)
+
+            assertEquals("provider down", result.exceptionOrNull()?.message)
+            assertTrue(replay.exceptionOrNull() is StaleRemoteConsentException)
+            coVerify(exactly = 1) { llmApi.transcribeAudio(any(), any(), any(), any(), any()) }
+        } finally {
+            tempAudio.delete()
+        }
+    }
+
+    @Test
+    fun `cancelTranscriptionPreview invalidates pending preview`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider.example",
+            localMode = false
+        )
+        val tempAudio = File.createTempFile("voice_note", ".m4a").apply { writeText("audio data") }
+        try {
+            val preview = repository.previewAudioTranscription(tempAudio, 3000L).getOrThrow()
+            repository.cancelTranscriptionPreview(preview.requestId)
+            val result = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio)
+
+            assertTrue(result.exceptionOrNull() is StaleRemoteConsentException)
+            coVerify(exactly = 0) { llmApi.transcribeAudio(any(), any(), any(), any(), any()) }
+        } finally {
+            tempAudio.delete()
+        }
     }
 
     private fun testEntry(transcript: String) = Entry(

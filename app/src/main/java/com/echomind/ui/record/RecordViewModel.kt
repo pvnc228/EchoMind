@@ -6,7 +6,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.echomind.data.local.security.AudioEncryptionUtil
+import com.echomind.data.remote.RemoteTranscriptionPreview
+import com.echomind.data.repository.LlmRepository
 import com.echomind.data.repository.ReflectionRepository
+import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.ReflectionDraft
 import com.echomind.domain.model.ReflectionSession
 import com.echomind.domain.model.ReflectionStatus
@@ -43,7 +46,9 @@ data class RecordUiState(
     val audioPath: String? = null,
     val error: String? = null,
     val amplitudes: List<Float> = emptyList(),
-    val permissionDenied: Boolean = false
+    val permissionDenied: Boolean = false,
+    val isTranscribing: Boolean = false,
+    val transcriptionPreview: RemoteTranscriptionPreview? = null
 )
 
 @HiltViewModel
@@ -51,6 +56,8 @@ class RecordViewModel @Inject constructor(
     application: Application,
     private val reflectionRepository: ReflectionRepository,
     private val audioEncryptionUtil: AudioEncryptionUtil,
+    private val llmRepository: LlmRepository,
+    private val settingsStore: SettingsStore,
     savedStateHandle: SavedStateHandle
 ) : AndroidViewModel(application) {
 
@@ -241,6 +248,107 @@ class RecordViewModel @Inject constructor(
                     )
                 }
         }
+    }
+
+    fun requestTranscription() {
+        val state = _uiState.value
+        val audioPath = state.audioPath ?: return
+        if (state.stage != ReflectionStage.CAPTURE || state.isTranscribing) return
+
+        val audioFile = File(audioPath)
+        if (!audioFile.exists() || audioFile.length() == 0L) {
+            _uiState.value = state.copy(error = "Audio file is missing or empty.")
+            return
+        }
+
+        viewModelScope.launch {
+            if (settingsStore.isLocalMode()) {
+                _uiState.value = state.copy(
+                    error = "Local mode is enabled. Turn off Local Mode in Settings to transcribe audio remotely, or type your reflection manually.",
+                    transcriptionPreview = null
+                )
+                return@launch
+            }
+
+            _uiState.value = state.copy(error = null)
+            val result = llmRepository.previewAudioTranscription(
+                audioFile = audioFile,
+                durationMs = state.durationMs
+            )
+            result.fold(
+                onSuccess = { preview ->
+                    _uiState.value = _uiState.value.copy(
+                        transcriptionPreview = preview,
+                        error = null
+                    )
+                },
+                onFailure = { error ->
+                    _uiState.value = _uiState.value.copy(
+                        error = error.message ?: "Could not prepare transcription preview.",
+                        transcriptionPreview = null
+                    )
+                }
+            )
+        }
+    }
+
+    fun approveTranscription() {
+        val state = _uiState.value
+        val preview = state.transcriptionPreview ?: return
+        val encryptedPath = state.audioPath ?: return
+
+        _uiState.value = state.copy(
+            isTranscribing = true,
+            transcriptionPreview = null,
+            error = null
+        )
+
+        viewModelScope.launch {
+            var tempDecryptedFile: File? = null
+            try {
+                tempDecryptedFile = audioEncryptionUtil.decryptToTempFile(encryptedPath)
+                val result = llmRepository.sendApprovedAudioTranscription(
+                    requestId = preview.requestId,
+                    audioFile = tempDecryptedFile
+                )
+                result.fold(
+                    onSuccess = { transcript ->
+                        val currentText = _uiState.value.thoughtText.trim()
+                        val updatedText = if (currentText.isBlank()) {
+                            transcript
+                        } else {
+                            "$currentText\n$transcript"
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            isTranscribing = false,
+                            thoughtText = updatedText
+                        )
+                        persistDraftNow()
+                    },
+                    onFailure = { error ->
+                        _uiState.value = _uiState.value.copy(
+                            isTranscribing = false,
+                            error = error.message ?: "Audio transcription failed."
+                        )
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isTranscribing = false,
+                    error = e.message ?: "Could not decrypt or transcribe audio."
+                )
+            } finally {
+                tempDecryptedFile?.let {
+                    audioEncryptionUtil.deleteTempFile(it.absolutePath)
+                }
+            }
+        }
+    }
+
+    fun cancelTranscription() {
+        val preview = _uiState.value.transcriptionPreview ?: return
+        llmRepository.cancelTranscriptionPreviewNow(preview.requestId)
+        _uiState.value = _uiState.value.copy(transcriptionPreview = null)
     }
 
     fun retry() {

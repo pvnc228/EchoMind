@@ -14,6 +14,13 @@ import com.echomind.data.remote.dto.Message
 import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.KnowledgeSearchResult
+import com.echomind.data.remote.RemoteTranscriptionPreview
+import com.echomind.data.remote.TRANSCRIPTION_API_PATH
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 import java.util.UUID
@@ -32,9 +39,92 @@ class LlmRepository @Inject constructor(
     private val consentLock = ReentrantLock()
     private val previewGeneration = AtomicLong(0)
     private var pendingQuestionPreview: RemoteQuestionPreview? = null
+    private val transcriptionPreviewGeneration = AtomicLong(0)
+    private var pendingTranscriptionPreview: RemoteTranscriptionPreview? = null
 
-    suspend fun transcribeAudio(audioFile: java.io.File): Result<String> {
+    suspend fun transcribeAudio(audioFile: File): Result<String> {
         return remoteRawContentBlocked()
+    }
+
+    suspend fun previewAudioTranscription(
+        audioFile: File,
+        durationMs: Long = 0L
+    ): Result<RemoteTranscriptionPreview> = runCatching {
+        val generation = transcriptionPreviewGeneration.incrementAndGet()
+        consentLock.withLock { pendingTranscriptionPreview = null }
+        val settings = settingsStore.load()
+        if (settings.localMode) throw AiNetworkDisabledException()
+        require(audioFile.exists() && audioFile.length() > 0) { "Audio file does not exist or is empty." }
+
+        val destination = baseUrlProvider.effectiveUrl(TRANSCRIPTION_API_PATH)
+        val preview = RemoteTranscriptionPreview(
+            requestId = UUID.randomUUID().toString(),
+            purpose = TRANSCRIPTION_PURPOSE,
+            destination = destination,
+            audioFileName = audioFile.name,
+            audioDurationMs = durationMs,
+            audioFileSizeBytes = audioFile.length()
+        )
+        consentLock.withLock {
+            if (generation != transcriptionPreviewGeneration.get()) {
+                throw StaleRemoteConsentException()
+            }
+            pendingTranscriptionPreview = preview
+        }
+        preview
+    }
+
+    suspend fun sendApprovedAudioTranscription(
+        requestId: String,
+        audioFile: File
+    ): Result<String> {
+        val preview = consentLock.withLock {
+            pendingTranscriptionPreview
+                ?.takeIf { it.requestId == requestId }
+                .also { pendingTranscriptionPreview = null }
+        } ?: return Result.failure(StaleRemoteConsentException())
+
+        return runCatching {
+            if (settingsStore.isLocalMode()) throw AiNetworkDisabledException()
+            if (baseUrlProvider.effectiveUrl(TRANSCRIPTION_API_PATH) != preview.destination) {
+                throw RemoteDestinationChangedException()
+            }
+            require(audioFile.exists() && audioFile.length() > 0) {
+                "Audio file is missing or empty."
+            }
+
+            val requestBody = audioFile.asRequestBody("audio/m4a".toMediaTypeOrNull())
+            val audioPart = MultipartBody.Part.createFormData("file", audioFile.name, requestBody)
+            val modelBody = "whisper-1".toRequestBody("text/plain".toMediaTypeOrNull())
+            val responseFormatBody = "json".toRequestBody("text/plain".toMediaTypeOrNull())
+
+            val response = try {
+                llmApi.transcribeAudio(
+                    url = preview.destination,
+                    approvedDestination = preview.destination,
+                    audio = audioPart,
+                    model = modelBody,
+                    responseFormat = responseFormatBody
+                )
+            } catch (_: RemoteLocalModeChangedException) {
+                throw AiNetworkDisabledException()
+            }
+            val text = response.text?.trim().orEmpty()
+            require(text.isNotBlank()) { "The remote provider returned an empty transcript." }
+            text
+        }
+    }
+
+    suspend fun cancelTranscriptionPreview(requestId: String) {
+        cancelTranscriptionPreviewNow(requestId)
+    }
+
+    fun cancelTranscriptionPreviewNow(requestId: String) {
+        consentLock.withLock {
+            if (pendingTranscriptionPreview?.requestId == requestId) {
+                pendingTranscriptionPreview = null
+            }
+        }
     }
 
     suspend fun analyzeEntry(entry: Entry): Result<Entry> {
@@ -171,6 +261,7 @@ class LlmRepository @Inject constructor(
 
     private companion object {
         const val QUESTION_PURPOSE = "answer_question_from_confirmed_conclusions"
+        const val TRANSCRIPTION_PURPOSE = "transcribe_audio"
         const val MAX_CONTEXT_ITEMS = 5
         const val MAX_CONTEXT_ITEM_CHARS = 600
     }
