@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -71,6 +72,49 @@ class LlmApiTransportTest {
             server.close()
         }
     }
+
+    @Test
+    fun realRetrofitApprovedTranscriptionReachesExactDestinationPath() = runBlocking {
+        val server = RecordingHttpServer()
+        try {
+            val policy = RemoteAccessPolicy()
+            val provider = BaseUrlProvider(policy)
+            policy.updateLocalMode(false)
+            provider.updateUrl("http://127.0.0.1:${server.port}/api")
+            val client = OkHttpClient.Builder()
+                .addInterceptor(EndpointInterceptor(provider, policy))
+                .build()
+            val retrofit = Retrofit.Builder()
+                .baseUrl("http://localhost:1234/")
+                .client(client)
+                .addConverterFactory(
+                    Json { ignoreUnknownKeys = true }
+                        .asConverterFactory("application/json".toMediaType())
+                )
+                .build()
+            val api = retrofit.create(LlmApi::class.java)
+            val destination = provider.effectiveUrl(TRANSCRIPTION_API_PATH)
+
+            val audioBody = "synthetic audio bytes".toByteArray().toRequestBody("audio/m4a".toMediaType())
+            val audioPart = okhttp3.MultipartBody.Part.createFormData("file", "sample.m4a", audioBody)
+            val modelBody = "whisper-1".toRequestBody("text/plain".toMediaType())
+            val responseFormatBody = "json".toRequestBody("text/plain".toMediaType())
+
+            val response = api.transcribeAudio(
+                url = destination,
+                approvedDestination = destination,
+                audio = audioPart,
+                model = modelBody,
+                responseFormat = responseFormatBody
+            )
+
+            assertEquals("synthetic transport answer", response.text)
+            assertTrue(server.requestSeen.await(2, TimeUnit.SECONDS))
+            assertEquals("/api/v1/audio/transcriptions", server.requestPath.get())
+        } finally {
+            server.close()
+        }
+    }
 }
 
 private class RecordingHttpServer : AutoCloseable {
@@ -92,7 +136,7 @@ private class RecordingHttpServer : AutoCloseable {
                     ?: 0
                 repeat(length) { input.read() }
                 requestSeen.countDown()
-                val body = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"synthetic transport answer\"}}]}"
+                val body = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"synthetic transport answer\"}}],\"text\":\"synthetic transport answer\"}"
                 BufferedOutputStream(socket.getOutputStream()).use { output ->
                     output.write(
                         ("HTTP/1.1 200 OK\r\n" +
