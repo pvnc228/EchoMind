@@ -14,11 +14,19 @@ class EndpointInterceptor @Inject constructor(
         val original = chain.request()
         val approvedDestination = original.header(APPROVED_DESTINATION_HEADER)
         if (approvedDestination != null) {
+            val apiPath = if (
+                original.url.encodedPath.contains("audio/transcriptions") ||
+                approvedDestination.contains("audio/transcriptions")
+            ) {
+                TRANSCRIPTION_API_PATH
+            } else {
+                QUESTION_API_PATH
+            }
             return remoteAccessPolicy.startApprovedRequest(
                 call = chain.call(),
                 expectedDestination = approvedDestination,
                 actualDestination = original.url.toString(),
-                apiPath = QUESTION_API_PATH
+                apiPath = apiPath
             ) {
                 chain.proceed(
                     original.newBuilder()

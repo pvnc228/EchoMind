@@ -12,12 +12,15 @@ import retrofit2.http.Part
 import retrofit2.http.Url
 
 const val QUESTION_API_PATH = "v1/chat/completions"
+const val TRANSCRIPTION_API_PATH = "v1/audio/transcriptions"
 const val APPROVED_DESTINATION_HEADER = "X-EchoMind-Approved-Destination"
 
 interface LlmApi {
     @Multipart
-    @POST("v1/audio/transcriptions")
+    @POST
     suspend fun transcribeAudio(
+        @Url url: String,
+        @Header(APPROVED_DESTINATION_HEADER) approvedDestination: String,
         @Part audio: MultipartBody.Part,
         @Part("model") model: okhttp3.RequestBody,
         @Part("response_format") responseFormat: okhttp3.RequestBody

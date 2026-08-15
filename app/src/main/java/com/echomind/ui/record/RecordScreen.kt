@@ -138,6 +138,32 @@ fun RecordScreen(
         )
     }
 
+    val transcriptionPreview = uiState.transcriptionPreview
+    if (transcriptionPreview != null) {
+        AlertDialog(
+            onDismissRequest = viewModel::cancelTranscription,
+            title = { Text("Transcribe voice note?") },
+            text = {
+                Text(
+                    "Your encrypted voice recording will be sent to the configured endpoint for transcription only:\n\n" +
+                        "${transcriptionPreview.destination}\n\n" +
+                        "Third-party providers may retain audio according to their own policies. " +
+                        "Once transcribed, you can review and edit the text before creating a reflection."
+                )
+            },
+            confirmButton = {
+                Button(onClick = viewModel::approveTranscription) {
+                    Text("Approve & Transcribe")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::cancelTranscription) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -156,6 +182,7 @@ fun RecordScreen(
             onSubmit = viewModel::submitThought,
             onStartRecording = requestRecording,
             onStopRecording = viewModel::stopRecording,
+            onRequestTranscription = viewModel::requestTranscription,
             onConfirmationChange = viewModel::updateConfirmation,
             onFollowUpQuestionChange = viewModel::updateFollowUpQuestion,
             onConfirm = viewModel::confirmProposal,
@@ -176,6 +203,7 @@ fun RecordScreenContent(
     onSubmit: () -> Unit,
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit,
+    onRequestTranscription: () -> Unit,
     onConfirmationChange: (String) -> Unit,
     onFollowUpQuestionChange: (String) -> Unit,
     onConfirm: () -> Unit,
@@ -195,10 +223,13 @@ fun RecordScreenContent(
             ReflectionStage.CAPTURE -> CaptureContent(
                 text = uiState.thoughtText,
                 hasAudio = uiState.audioPath != null,
+                isTranscribing = uiState.isTranscribing,
+                error = uiState.error,
                 permissionDenied = uiState.permissionDenied,
                 onTextChange = onThoughtChange,
                 onSubmit = onSubmit,
-                onStartRecording = onStartRecording
+                onStartRecording = onStartRecording,
+                onRequestTranscription = onRequestTranscription
             )
             ReflectionStage.RECORDING -> RecordingContent(
                 amplitudes = uiState.amplitudes,
@@ -250,10 +281,13 @@ fun RecordScreenContent(
 private fun CaptureContent(
     text: String,
     hasAudio: Boolean,
+    isTranscribing: Boolean,
+    error: String?,
     permissionDenied: Boolean,
     onTextChange: (String) -> Unit,
     onSubmit: () -> Unit,
-    onStartRecording: () -> Unit
+    onStartRecording: () -> Unit,
+    onRequestTranscription: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -283,11 +317,57 @@ private fun CaptureContent(
             modifier = Modifier.fillMaxWidth()
         )
         if (hasAudio) {
+            Spacer(Modifier.height(12.dp))
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        "Encrypted voice note attached",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Transcribe audio remotely with approval, or type/edit your reflection directly above.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (isTranscribing) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Text(
+                                "Transcribing audio remotely…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = onRequestTranscription,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Transcribe voice note")
+                        }
+                    }
+                }
+            }
+        }
+        if (error != null) {
             Spacer(Modifier.height(8.dp))
             Text(
-                "Encrypted voice note attached. Add or edit its transcript above.",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary
+                error,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
             )
         }
         if (permissionDenied) {
