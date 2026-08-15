@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.echomind.data.guidance.GuidanceRating
 import com.echomind.data.remote.GuidancePreview
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,7 +65,8 @@ fun GuidanceScreen(
         onInputChanged = viewModel::onInputChanged,
         onSend = viewModel::sendMessage,
         onApproveRemoteRequest = viewModel::approveRemoteRequest,
-        onCancelRemoteRequest = viewModel::cancelRemoteRequest
+        onCancelRemoteRequest = viewModel::cancelRemoteRequest,
+        onRateMessage = viewModel::rateMessage
     )
 }
 
@@ -76,7 +78,8 @@ fun GuidanceScreenContent(
     onInputChanged: (String) -> Unit = {},
     onSend: () -> Unit = {},
     onApproveRemoteRequest: () -> Unit = {},
-    onCancelRemoteRequest: () -> Unit = {}
+    onCancelRemoteRequest: () -> Unit = {},
+    onRateMessage: (String, GuidanceRating, String?) -> Unit = { _, _, _ -> }
 ) {
     val listState = rememberLazyListState()
 
@@ -161,8 +164,8 @@ fun GuidanceScreenContent(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     state = listState
                 ) {
-                    items(uiState.messages, key = { message -> message.hashCode() }) { message ->
-                        MessageBubble(message = message)
+                    items(uiState.messages, key = { message -> message.id }) { message ->
+                        MessageBubble(message = message, onRate = onRateMessage)
                     }
                     if (uiState.isLoading) {
                         item {
@@ -257,7 +260,10 @@ private fun GuidancePreviewDialog(
 }
 
 @Composable
-private fun MessageBubble(message: GuidanceMessage) {
+private fun MessageBubble(
+    message: GuidanceMessage,
+    onRate: (String, GuidanceRating, String?) -> Unit
+) {
     val alignment = if (message.isUser) Alignment.End else Alignment.Start
     val colors = if (message.isUser) {
         CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -275,11 +281,49 @@ private fun MessageBubble(message: GuidanceMessage) {
         horizontalAlignment = alignment
     ) {
         Card(colors = colors, shape = shape) {
+            Column {
+                Text(
+                    text = message.text,
+                    modifier = Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                if (!message.isUser) {
+                    RatingRow(
+                        message = message,
+                        onRate = onRate
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RatingRow(
+    message: GuidanceMessage,
+    onRate: (String, GuidanceRating, String?) -> Unit
+) {
+    Row(
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        if (message.hasFeedback) {
             Text(
-                text = message.text,
-                modifier = Modifier.padding(12.dp),
-                style = MaterialTheme.typography.bodyMedium
+                text = when (message.rating) {
+                    GuidanceRating.HELPFUL -> "Marked helpful"
+                    GuidanceRating.NOT_HELPFUL -> "Marked not helpful"
+                    null -> "Rated"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        } else {
+            TextButton(onClick = { onRate(message.id, GuidanceRating.HELPFUL, null) }) {
+                Text("Helpful", style = MaterialTheme.typography.labelSmall)
+            }
+            TextButton(onClick = { onRate(message.id, GuidanceRating.NOT_HELPFUL, null) }) {
+                Text("Not helpful", style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }

@@ -286,6 +286,20 @@ approval, and the exact-evidence preview. The milestone remains open: usefulness
 rating, the curated evaluation set, and a TalkBack/200%-text/compact/landscape
 accessibility pass on the new screen are still pending.
 
+**Status (2026-08-16, closure slice):** the three previously pending items are now
+implemented with fresh evidence: (1) compact/200%-font/landscape/scroll
+accessibility semantics for the guidance screen; (2) a local opt-in usefulness
+rating (thumbs) with an optional outcome, never granting transmission permission;
+(3) a curated evaluation set of deterministic safety refusals plus a live
+local-LLM path through the production remote seam (hermetic unless a live endpoint
+is configured). The live evaluation also exposed and fixed a transport bug:
+`AnalysisRequest.model`/`temperature` defaults were dropped because the production
+`Json` lacked `encodeDefaults = true`, so the remote body was missing `model` —
+now fixed with a regression test. Connected suite is `104/104` on `Pixel_8_2`
+API 35. The "helpful answers" evaluation is a technical seam check against a local
+model, not an external-user usefulness study; the usefulness rating is an
+implemented capture feature whose value is proven only by real use.
+
 ### Scope
 
 - [x] Retrieve relevant confirmed conclusions, counterevidence, and comparable outcomes.
@@ -294,7 +308,7 @@ accessibility pass on the new screen are still pending.
 - [x] Produce guidance with citations, uncertainty, and alternative interpretations.
 - [x] Refuse or ask focused questions when the evidence is insufficient.
 - [x] Keep advice domain-specific and prevent unsupported personality or clinical claims.
-- [ ] Let the user rate usefulness and report an eventual outcome without turning feedback into an obligation.
+- [x] Let the user rate usefulness and report an eventual outcome without turning feedback into an obligation.
 
 ### Completion criteria
 

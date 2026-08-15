@@ -2,6 +2,8 @@ package com.echomind.ui.guidance
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.echomind.data.guidance.GuidanceFeedbackStore
+import com.echomind.data.guidance.GuidanceRating
 import com.echomind.data.remote.GuidancePreview
 import com.echomind.data.repository.AiNetworkDisabledException
 import com.echomind.data.repository.GuidanceRequestResult
@@ -16,9 +18,12 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class GuidanceMessage(
+    val id: String,
     val text: String,
     val isUser: Boolean,
-    val sourceEntryIds: List<Long> = emptyList()
+    val sourceEntryIds: List<Long> = emptyList(),
+    val rating: GuidanceRating? = null,
+    val hasFeedback: Boolean = false
 )
 
 data class GuidanceUiState(
@@ -31,7 +36,8 @@ data class GuidanceUiState(
 
 @HiltViewModel
 class GuidanceViewModel @Inject constructor(
-    private val guidanceUseCase: GuidanceUseCase
+    private val guidanceUseCase: GuidanceUseCase,
+    private val feedbackStore: GuidanceFeedbackStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GuidanceUiState())
@@ -83,8 +89,13 @@ class GuidanceViewModel @Inject constructor(
                 onSuccess = { outcome ->
                     _uiState.value = _uiState.value.copy(
                         messages = _uiState.value.messages +
-                            GuidanceMessage(text = preview.question, isUser = true) +
                             GuidanceMessage(
+                                id = "user-${preview.requestId}",
+                                text = preview.question,
+                                isUser = true
+                            ) +
+                            GuidanceMessage(
+                                id = preview.requestId,
                                 text = outcome.answer,
                                 isUser = false,
                                 sourceEntryIds = outcome.sourceEntryIds
@@ -109,6 +120,21 @@ class GuidanceViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(pendingPreview = null, refusal = null)
         viewModelScope.launch {
             guidanceUseCase.cancel(preview.requestId)
+        }
+    }
+
+    fun rateMessage(messageId: String, rating: GuidanceRating, outcome: String? = null) {
+        viewModelScope.launch {
+            feedbackStore.record(messageId, rating, outcome)
+            _uiState.value = _uiState.value.copy(
+                messages = _uiState.value.messages.map { message ->
+                    if (message.id == messageId && !message.isUser) {
+                        message.copy(rating = rating, hasFeedback = true)
+                    } else {
+                        message
+                    }
+                }
+            )
         }
     }
 

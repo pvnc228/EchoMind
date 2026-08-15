@@ -1904,3 +1904,56 @@ remain open evidence requirements; the broader M4 milestone remains open.
   accessibility pass; those remain explicitly unrun for this slice.
 - Guidance remote responses remain a provider-owned artifact outside
   EchoMind's control, as with all remote requests.
+
+## 2026-08-16 - Issue #7: M5 slice closed — accessibility, rating, live-LLM eval, and a transport bug fix
+
+### Result
+
+- Closed the three items previously left open for the M5 guidance slice:
+  1. **Accessibility** — `GuidanceScreenTest` now covers the preview/refusal
+     semantics at compact width + 200% font scale (`Density(1f, 2f)`),
+     landscape, and scroll-reachability of the evidence preview, mirroring the
+     existing `DecisionsScreenTest` pattern.
+  2. **Usefulness rating** — a local, opt-in `GuidanceFeedbackStore` (DataStore)
+     plus a `Helpful` / `Not helpful` row on each assistant message. Storing a
+     rating never grants transmission permission and carries no obligation; the
+     record is a local user choice and is not exported. Covered by
+     `GuidanceViewModelTest`.
+  3. **Curated evaluation** — deterministic safety refusals (diagnosis,
+     hidden-motive, unsupported certainty, Russian variants) and a live
+     local-LLM path through the production remote seam (`requestGuidance` →
+     `sendApprovedGuidance` with a real Retrofit `LlmApi` against a running
+     Ollama OpenAI-compatible endpoint). The live tests are hermetic by default
+     (skipped unless `ECHOMIND_LIVE_LLM_URL` is set) and assert a non-empty
+     grounded answer plus the safety refusal with zero network.
+
+### Production bug found and fixed (transport)
+
+- The live evaluation exposed a real defect: `AnalysisRequest.model`
+  (`"local-model"`) and `temperature` are Kotlin defaults, but the production
+  `Json` in `NetworkModule` lacked `encodeDefaults = true`, so `model` was
+  silently dropped from the outgoing body. Any OpenAI-compatible endpoint
+  rejects such a request (`"model is required"`). This affected the whole
+  remote pipeline (M0 Q&A and M5 guidance).
+- Fix: `NetworkModule.provideJson` now sets `encodeDefaults = true`, plus a
+  regression test `productionJsonSerializesModelAndTemperatureDefaults` and a
+  live `GuidanceLiveLlmEvaluationTest`.
+
+### Evidence
+
+- JVM suite green (all unit tests, including the new live-eval and transport
+  regression tests). Live-LLM eval run with `ECHOMIND_LIVE_LLM_URL` against a
+  local Ollama endpoint produced a real grounded answer through the production
+  seam; the diagnosis prompt was refused with zero network.
+- Connected suite `104/104` on `Pixel_8_2` API 35 (three new accessibility
+  tests added to `GuidanceScreenTest`).
+- Android lint and `git diff --check` clean.
+
+### Boundary (honest, not external evidence)
+
+- The "helpful answers" evaluation is a **technical seam evaluation** against a
+  local model, not a user-usefulness study. It proves the request reaches a real
+  model and returns a non-empty, grounded response; it does not adjudicate
+  subjective helpfulness and is not recorded as external-user evidence.
+- The usefulness rating is an implemented capture feature; its value is proven
+  only when real users use it. No self-reported "helpful" verdict is claimed.
