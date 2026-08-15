@@ -1862,3 +1862,45 @@ remain open evidence requirements; the broader M4 milestone remains open.
 - Repeated whole-product regression, debugging, and stabilization are a
   separate subsequent stage. No fresh post-documentation full completion gate
   is claimed by this entry.
+
+## 2026-08-16 - Issue #7: explainable personal guidance (M5 slice)
+
+### Result
+
+- Added a `GuidanceRepository` that produces cautious, citation-bearing
+  guidance only on explicit request, from the user's confirmed conclusions,
+  counterevidence (`supports`/`contradicts`), and comparable reported outcomes.
+- The request path is deny-by-default and mirrors the existing consent
+  machinery: a deterministic, local safety refusal (diagnosis, hidden motive,
+  unsupported certainty) runs before any retrieval or network; evidence
+  assembly filters to current confirmed conclusions; the exact minimized
+  context (600-char per-fragment cap) is shown in a preview before a
+  one-shot, generation-bound approval. No raw records or unconfirmed data
+  cross the boundary, and the path never writes to the user model.
+- A new `Guidance` screen (use case, ViewModel, Compose UI) reuses the preview
+  + one-shot-consent pattern and surfaces refusals as non-error notices, with a
+  focused question when evidence is insufficient.
+- Adversarial self-review (via `code-review-expert`) found and closed two P1
+  issues before merge: unbounded outgoing context (now capped) and the
+  `"certain"` substring matching `"uncertain"` (now negated). It also drove a
+  `Failed` result so real faults are not masked as insufficient evidence.
+
+### Evidence
+
+- JVM suite green, including new `GuidanceRepositoryTest` (safety refusal,
+  refusal honesty for `uncertain`/`motivation`, citation/outcome composition,
+  one-shot approval, local-mode short-circuit) and `GuidanceViewModelTest`.
+- Connected suite `101/101` on `Pixel_8_2` API 35, including new
+  `GuidanceScreenTest` (exact evidence preview + one-shot actions, refusal
+  notice) and the pre-existing `QaScreenTest`.
+- Android lint and `git diff --check` passed.
+
+### Remaining limitations
+
+- Safety refusal is a local keyword gate; it is defense-in-depth on top of the
+  system prompt and the deny-by-default boundary, not a hard guarantee against
+  rephrasing or homoglyphs.
+- The new screen has not yet received a TalkBack/200%-text/compact/landscape
+  accessibility pass; those remain explicitly unrun for this slice.
+- Guidance remote responses remain a provider-owned artifact outside
+  EchoMind's control, as with all remote requests.

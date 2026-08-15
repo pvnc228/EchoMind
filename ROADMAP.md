@@ -274,14 +274,26 @@ separately required API26/API30/accessibility evidence.
 
 **Outcome:** on explicit request, EchoMind can offer cautious guidance supported by the user's relevant history.
 
+**Status (2026-08-16, first implementation slice):** a `GuidanceRepository` and a
+dedicated `Guidance` screen now retrieve relevant confirmed conclusions,
+counterevidence, and reported outcomes; assemble a minimized context (per-fragment
+cap) with a one-shot preview + consent before any remote transmission; refuse
+diagnosis, hidden-motive, and unsupported-certainty prompts locally with zero
+network; and produce citation-bearing guidance whose answer stays in-memory and
+never writes to the user model. Fresh JVM tests and a `101/101` connected suite on
+`Pixel_8_2` API 35 cover the safety refusals, evidence composition, one-shot
+approval, and the exact-evidence preview. The milestone remains open: usefulness
+rating, the curated evaluation set, and a TalkBack/200%-text/compact/landscape
+accessibility pass on the new screen are still pending.
+
 ### Scope
 
-- [ ] Retrieve relevant confirmed conclusions, counterevidence, and comparable outcomes.
-- [ ] Construct the smallest sufficient context for a local or remote model.
-- [ ] Show the exact context before any remote transmission.
-- [ ] Produce guidance with citations, uncertainty, and alternative interpretations.
-- [ ] Refuse or ask focused questions when the evidence is insufficient.
-- [ ] Keep advice domain-specific and prevent unsupported personality or clinical claims.
+- [x] Retrieve relevant confirmed conclusions, counterevidence, and comparable outcomes.
+- [x] Construct the smallest sufficient context for a local or remote model.
+- [x] Show the exact context before any remote transmission.
+- [x] Produce guidance with citations, uncertainty, and alternative interpretations.
+- [x] Refuse or ask focused questions when the evidence is insufficient.
+- [x] Keep advice domain-specific and prevent unsupported personality or clinical claims.
 - [ ] Let the user rate usefulness and report an eventual outcome without turning feedback into an obligation.
 
 ### Completion criteria
