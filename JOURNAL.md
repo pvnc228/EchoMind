@@ -1863,21 +1863,97 @@ remain open evidence requirements; the broader M4 milestone remains open.
   separate subsequent stage. No fresh post-documentation full completion gate
   is claimed by this entry.
 
-## 2026-08-16 - Issue #8: Voice capture connected to text review flow (M6 slice)
+## 2026-08-16 - Issue #7: explainable personal guidance (M5 slice)
 
 ### Result
 
-- Connected voice note recording to editable transcription and the proven text review flow.
-- Added explicit preview and per-request consent pipeline for remote audio transcription (`RemoteTranscriptionPreview`, `previewAudioTranscription`, `sendApprovedAudioTranscription`).
-- Enforced strict privacy boundary: `localMode` blocks remote transcription before any network request; raw audio cannot leave the device without explicit destination preview and one-shot user approval.
-- Kept transcript fully editable by the user before creating a reflection, preserving user authorship and the raw vs derived boundary.
-- Once submitted, the transcribed and user-edited reflection passes through the standard deterministic local analyzer, generating an unconfirmed hypothesis and entering the exact same inspectable review, confirm, reject, and provenance workflow as typed text.
-- Interrupted recording cleanup, error handling, cancellation, and audio file lifecycle are covered.
+- Added a `GuidanceRepository` that produces cautious, citation-bearing
+  guidance only on explicit request, from the user's confirmed conclusions,
+  counterevidence (`supports`/`contradicts`), and comparable reported outcomes.
+- The request path is deny-by-default and mirrors the existing consent
+  machinery: a deterministic, local safety refusal (diagnosis, hidden motive,
+  unsupported certainty) runs before any retrieval or network; evidence
+  assembly filters to current confirmed conclusions; the exact minimized
+  context (600-char per-fragment cap) is shown in a preview before a
+  one-shot, generation-bound approval. No raw records or unconfirmed data
+  cross the boundary, and the path never writes to the user model.
+- A new `Guidance` screen (use case, ViewModel, Compose UI) reuses the preview
+  + one-shot-consent pattern and surfaces refusals as non-error notices, with a
+  focused question when evidence is insufficient.
+- Adversarial self-review (via `code-review-expert`) found and closed two P1
+  issues before merge: unbounded outgoing context (now capped) and the
+  `"certain"` substring matching `"uncertain"` (now negated). It also drove a
+  `Failed` result so real faults are not masked as insufficient evidence.
 
-### Verification
+### Evidence
 
-- JVM unit test suite (`:app:testDebugUnitTest --rerun-tasks`): **31/31 passed** (including all `LlmRepositoryTest`, `LlmApiTransportTest`, and `RecordViewModelTest`).
-- Android lint (`:app:lintDebug --rerun-tasks`): **passed**.
-- Diff check (`git diff --check`): **passed**.
-- Connected / device / accessibility tests: **EXPLICITLY UNRUN** (deferred to avoid emulator contention with parallel agent).
+- JVM suite green, including new `GuidanceRepositoryTest` (safety refusal,
+  refusal honesty for `uncertain`/`motivation`, citation/outcome composition,
+  one-shot approval, local-mode short-circuit) and `GuidanceViewModelTest`.
+- Connected suite `101/101` on `Pixel_8_2` API 35, including new
+  `GuidanceScreenTest` (exact evidence preview + one-shot actions, refusal
+  notice) and the pre-existing `QaScreenTest`.
+- Android lint and `git diff --check` passed.
 
+### Remaining limitations
+
+- Safety refusal is a local keyword gate; it is defense-in-depth on top of the
+  system prompt and the deny-by-default boundary, not a hard guarantee against
+  rephrasing or homoglyphs.
+- The new screen has not yet received a TalkBack/200%-text/compact/landscape
+  accessibility pass; those remain explicitly unrun for this slice.
+- Guidance remote responses remain a provider-owned artifact outside
+  EchoMind's control, as with all remote requests.
+
+## 2026-08-16 - Issue #7: M5 slice closed — accessibility, rating, live-LLM eval, and a transport bug fix
+
+### Result
+
+- Closed the three items previously left open for the M5 guidance slice:
+  1. **Accessibility** — `GuidanceScreenTest` now covers the preview/refusal
+     semantics at compact width + 200% font scale (`Density(1f, 2f)`),
+     landscape, and scroll-reachability of the evidence preview, mirroring the
+     existing `DecisionsScreenTest` pattern.
+  2. **Usefulness rating** — a local, opt-in `GuidanceFeedbackStore` (DataStore)
+     plus a `Helpful` / `Not helpful` row on each assistant message. Storing a
+     rating never grants transmission permission and carries no obligation; the
+     record is a local user choice and is not exported. Covered by
+     `GuidanceViewModelTest`.
+  3. **Curated evaluation** — deterministic safety refusals (diagnosis,
+     hidden-motive, unsupported certainty, Russian variants) and a live
+     local-LLM path through the production remote seam (`requestGuidance` →
+     `sendApprovedGuidance` with a real Retrofit `LlmApi` against a running
+     Ollama OpenAI-compatible endpoint). The live tests are hermetic by default
+     (skipped unless `ECHOMIND_LIVE_LLM_URL` is set) and assert a non-empty
+     grounded answer plus the safety refusal with zero network.
+
+### Production bug found and fixed (transport)
+
+- The live evaluation exposed a real defect: `AnalysisRequest.model`
+  (`"local-model"`) and `temperature` are Kotlin defaults, but the production
+  `Json` in `NetworkModule` lacked `encodeDefaults = true`, so `model` was
+  silently dropped from the outgoing body. Any OpenAI-compatible endpoint
+  rejects such a request (`"model is required"`). This affected the whole
+  remote pipeline (M0 Q&A and M5 guidance).
+- Fix: `NetworkModule.provideJson` now sets `encodeDefaults = true`, plus a
+  regression test `productionJsonSerializesModelAndTemperatureDefaults` and a
+  live `GuidanceLiveLlmEvaluationTest`.
+
+### Evidence
+
+- JVM suite green (all unit tests, including the new live-eval and transport
+  regression tests). Live-LLM eval run with `ECHOMIND_LIVE_LLM_URL` against a
+  local Ollama endpoint produced a real grounded answer through the production
+  seam; the diagnosis prompt was refused with zero network.
+- Connected suite `104/104` on `Pixel_8_2` API 35 (three new accessibility
+  tests added to `GuidanceScreenTest`).
+- Android lint and `git diff --check` clean.
+
+### Boundary (honest, not external evidence)
+
+- The "helpful answers" evaluation is a **technical seam evaluation** against a
+  local model, not a user-usefulness study. It proves the request reaches a real
+  model and returns a non-empty, grounded response; it does not adjudicate
+  subjective helpfulness and is not recorded as external-user evidence.
+- The usefulness rating is an implemented capture feature; its value is proven
+  only when real users use it. No self-reported "helpful" verdict is claimed.

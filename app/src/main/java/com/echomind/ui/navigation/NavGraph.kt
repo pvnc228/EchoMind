@@ -14,6 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.echomind.ui.detail.DetailScreen
 import com.echomind.ui.decisions.DecisionsScreen
+import com.echomind.ui.guidance.GuidanceScreen
 import com.echomind.ui.home.HomeScreen
 import com.echomind.ui.onboarding.OnboardingManager
 import com.echomind.ui.onboarding.OnboardingScreen
@@ -64,6 +65,7 @@ fun EchoMindNavGraph(
                 onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
                 onNavigateToDetail = { entryId -> navController.navigate(Screen.Detail.createRoute(entryId)) },
                 onNavigateToQa = { navController.navigate(Screen.Qa.route) },
+                onNavigateToGuidance = { navController.navigate(Screen.Guidance.route) },
                 onNavigateToThemes = { navController.navigate(Screen.Themes.route) },
                 onNavigateToTheme = { themeId -> navController.navigate(Screen.ThemeDetail.createRoute(themeId)) },
                 onNavigateToHomeTarget = { target ->
@@ -104,6 +106,11 @@ fun EchoMindNavGraph(
             QaScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToDetail = { entryId -> navController.navigate(Screen.Detail.createRoute(entryId)) }
+            )
+        }
+        composable(Screen.Guidance.route) {
+            GuidanceScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
         composable(Screen.Record.route) {

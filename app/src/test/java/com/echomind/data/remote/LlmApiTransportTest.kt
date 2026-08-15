@@ -18,8 +18,22 @@ import java.net.ServerSocket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
-
 class LlmApiTransportTest {
+
+    @Test
+    fun productionJsonSerializesModelAndTemperatureDefaults() {
+        val json = Json {
+            ignoreUnknownKeys = true
+            coerceInputValues = true
+            encodeDefaults = true
+        }
+        val body = json.encodeToString(
+            com.echomind.data.remote.dto.AnalysisRequest.serializer(),
+            AnalysisRequest(messages = listOf(Message("user", "hi")))
+        )
+        assertTrue(body.contains("\"model\":\"local-model\""))
+        assertTrue(body.contains("\"temperature\":0.3"))
+    }
 
     @Test
     fun realRetrofitApprovedRequestReachesExactDestinationPath() = runBlocking {

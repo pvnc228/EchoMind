@@ -5,6 +5,7 @@ import com.echomind.data.repository.LlmRepository
 import com.echomind.domain.usecase.AnalyzeEntryUseCase
 import com.echomind.domain.usecase.AskQuestionUseCase
 import com.echomind.domain.usecase.GetEntriesUseCase
+import com.echomind.domain.usecase.GuidanceUseCase
 import com.echomind.domain.usecase.SaveEntryUseCase
 import dagger.Module
 import dagger.Provides
@@ -35,4 +36,9 @@ object RepositoryModule {
     @Singleton
     fun provideAskQuestionUseCase(repository: EntryRepository, llmRepository: LlmRepository): AskQuestionUseCase =
         AskQuestionUseCase(repository, llmRepository)
+
+    @Provides
+    @Singleton
+    fun provideGuidanceUseCase(repository: com.echomind.data.repository.GuidanceRepository): GuidanceUseCase =
+        GuidanceUseCase(repository)
 }

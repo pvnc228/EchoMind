@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -66,6 +67,7 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToDetail: (Long) -> Unit = {},
     onNavigateToQa: () -> Unit = {},
+    onNavigateToGuidance: () -> Unit = {},
     onNavigateToThemes: () -> Unit = {},
     onNavigateToTheme: (Long) -> Unit = {},
     onNavigateToHomeTarget: ((HomeNavigationTarget) -> Unit)? = null,
@@ -81,6 +83,7 @@ fun HomeScreen(
         onNavigateToSettings = onNavigateToSettings,
         onNavigateToDetail = onNavigateToDetail,
         onNavigateToQa = onNavigateToQa,
+        onNavigateToGuidance = onNavigateToGuidance,
         onNavigateToThemes = onNavigateToThemes,
         onNavigateToTheme = onNavigateToTheme,
         onNavigateToHomeTarget = onNavigateToHomeTarget,
@@ -102,6 +105,7 @@ fun HomeScreenContent(
     onNavigateToSettings: () -> Unit,
     onNavigateToDetail: (Long) -> Unit = {},
     onNavigateToQa: () -> Unit = {},
+    onNavigateToGuidance: () -> Unit = {},
     onNavigateToThemes: () -> Unit = {},
     onNavigateToTheme: (Long) -> Unit = {},
     onNavigateToHomeTarget: ((HomeNavigationTarget) -> Unit)? = null,
@@ -124,6 +128,9 @@ fun HomeScreenContent(
                 actions = {
                     IconButton(onClick = onNavigateToQa) {
                         Icon(Icons.Default.QuestionAnswer, contentDescription = "Ask AI")
+                    }
+                    IconButton(onClick = onNavigateToGuidance) {
+                        Icon(Icons.Default.Lightbulb, contentDescription = "Guidance")
                     }
                     IconButton(onClick = onNavigateToDecisions) {
                         Icon(Icons.Default.Checklist, contentDescription = "Decisions")
