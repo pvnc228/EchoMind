@@ -1862,3 +1862,22 @@ remain open evidence requirements; the broader M4 milestone remains open.
 - Repeated whole-product regression, debugging, and stabilization are a
   separate subsequent stage. No fresh post-documentation full completion gate
   is claimed by this entry.
+
+## 2026-08-16 - Issue #8: Voice capture connected to text review flow (M6 slice)
+
+### Result
+
+- Connected voice note recording to editable transcription and the proven text review flow.
+- Added explicit preview and per-request consent pipeline for remote audio transcription (`RemoteTranscriptionPreview`, `previewAudioTranscription`, `sendApprovedAudioTranscription`).
+- Enforced strict privacy boundary: `localMode` blocks remote transcription before any network request; raw audio cannot leave the device without explicit destination preview and one-shot user approval.
+- Kept transcript fully editable by the user before creating a reflection, preserving user authorship and the raw vs derived boundary.
+- Once submitted, the transcribed and user-edited reflection passes through the standard deterministic local analyzer, generating an unconfirmed hypothesis and entering the exact same inspectable review, confirm, reject, and provenance workflow as typed text.
+- Interrupted recording cleanup, error handling, cancellation, and audio file lifecycle are covered.
+
+### Verification
+
+- JVM unit test suite (`:app:testDebugUnitTest --rerun-tasks`): **31/31 passed** (including all `LlmRepositoryTest`, `LlmApiTransportTest`, and `RecordViewModelTest`).
+- Android lint (`:app:lintDebug --rerun-tasks`): **passed**.
+- Diff check (`git diff --check`): **passed**.
+- Connected / device / accessibility tests: **EXPLICITLY UNRUN** (deferred to avoid emulator contention with parallel agent).
+
