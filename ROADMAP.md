@@ -362,13 +362,22 @@ import are still pending.
 
 **Outcome:** the product promise is tested with reflective users rather than inferred from implementation completeness.
 
+**Status (2026-08-16, engineering slice):** the release build path
+(`:app:assembleRelease` with R8 + `lintVitalRelease`) and the reference-runtime
+profile are recorded on `Pixel_8_2` API 35, and a read-only release-security
+review is done; see the matching `JOURNAL.md` entry. The full `master`
+connected suite is green (**107/107**) after fixing a cross-branch test
+breakage left by the M6 merge. The milestone remains open: all user-study items
+and the full accessibility/backup/restore/failure-recovery matrix require real
+users and are not claimed.
+
 ### Scope
 
 - [ ] Run first-session tests focused on reaching a genuine clarification.
 - [ ] Test whether users voluntarily return with a second thought.
 - [ ] Test whether resurfacing recovers useful forgotten reasoning.
 - [ ] Evaluate remote-context previews for comprehension and informed consent.
-- [ ] Profile startup, database operations, encryption, and long-history retrieval.
+- [x] Profile startup, database operations, encryption, and long-history retrieval.
 - [ ] Complete accessibility, backup/restore, failure recovery, and release security review.
 - [ ] Gather research feedback without product telemetry; participation and any shared material must be explicit.
 

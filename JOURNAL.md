@@ -2019,3 +2019,80 @@ remain open evidence requirements; the broader M4 milestone remains open.
   completion criteria (on-device transcription evaluation, two-dimensional
   views, selective import), and the connected/device/accessibility evidence
   for the voice slice remains explicitly unrun.
+
+## 2026-08-16 - Issue #9 (M7): engineering slice — release build, profiling, and security review
+
+### Scope
+
+Issue #9 is an evidence milestone, not a technical screen. Its user-facing
+items (first-session/repeated-use studies, resurfacing usefulness,
+remote-context comprehension, feedback collection) require real reflective
+users and remain open. This entry records the engineering subset that is
+executable alone: release-path build, startup/DB/encryption/long-history
+profiling, and a read-only release-security review. It does not close M7.
+
+### Result
+
+- **Release build.** `:app:assembleRelease --rerun-tasks` succeeds with R8
+  minify/shrink enabled (`isMinifyEnabled = true`) and `lintVitalRelease`
+  green. R8 emitted only informational warnings about implicit default-constructor
+  keeping in third-party ProGuard rules (navigation, Compose UI, Room, Retrofit,
+  OkHttp, serialization); no keep-rule errors. This proves the release
+  (minified + ProGuard) path builds, not that a signed release APK is shipped.
+- **Broken test caught and fixed.** The full androidTest build failed to
+  compile because the M5→M6 merge left `ReflectionScreenTest.kt` behind the new
+  `RecordScreenContent.onRequestTranscription` parameter (added by the M6 voice
+  slice). Fixed by wiring the new callback in both call sites. This is exactly
+  the kind of cross-branch integration defect that a fresh full-suite run is
+  meant to catch; the earlier M6 branch explicitly deferred its connected run.
+- **Profiling benchmark.** Added `ReleaseProfileBenchmarkTest`, a connected
+  oracle that measures the production seams on `Pixel_8_2` API 35 (no synthetic
+  desktop-only timing):
+  - Encrypted SQLCipher DB: 1,000-row seed **148 ms**; cold open + first query
+    **145 ms**. Cold open uses a fresh `SupportFactory` from the persisted
+    passphrase, matching app restart.
+  - `AudioEncryptionUtil` (AES256-GCM-HKDF-4KB): 512 KB encrypt **28 ms**,
+    decrypt **18 ms** (median of the fresh run; earlier warm runs 22–48 ms).
+  - Long-history retrieval at 10,000 raw records through `KnowledgeRepository`
+    public seams: `search` **30 ms**, `getLinkCandidates` **660 ms**,
+    `getHomeRelevance` **48 ms**. All stay off Main (existing dispatcher
+    guarantees) and within the documented UX budget for the ranked-link path.
+- **Release-security review (read-only).** Findings, none critical:
+  - SQLCipher passphrase is a random 256-bit value stored in
+    `EncryptedSharedPreferences` (AES256-SIV keys / AES256-GCM values) backed by
+    a Keystore `MasterKey`; the passphrase is cleared from memory after first
+    open (confirmed by the benchmark: reopening requires a fresh factory).
+  - API key stored in encrypted preferences; sent only as a `Bearer` header by
+    `AuthInterceptor`; not logged (debug logging is `BASIC` metadata-only,
+    release is `NONE`).
+  - `FLAG_SECURE` on, `allowBackup=false`, components non-exported except the
+    launcher; `network_security_config` allows cleartext only to
+    `localhost`/`10.0.2.2`/`10.0.3.2` (dev endpoints).
+  - Export is plaintext by design and gated by an explicit warning dialog; the
+    archive path/entries/hashes/counts are validated before restore.
+  - Outstanding non-blocking notes for a later pass: `CredentialsProvider.apiKey`
+    is held in a plain `@Volatile var` after load (encrypted at rest, plain in
+    memory — acceptable, but a `CharArray`/immediate-scrub convention would be
+    stricter); debug logging at `BASIC` still logs request URLs (which can carry
+    the endpoint host, not the key); the app targets API 34 with `minSdk 26`.
+  - No secrets, raw reflections, or export contents are placed in the repo,
+    issues, or this journal.
+
+### Evidence
+
+- `:app:assembleRelease --rerun-tasks`: passed (R8 + lintVitalRelease green).
+- `:app:connectedDebugAndroidTest`: **107/107** on `Pixel_8_2` API 35,
+  including the new 3 profiling tests and the fixed `ReflectionScreenTest`.
+- `:app:lintDebug`: passed. `:app:testDebugUnitTest`: passed.
+- `git diff --check`: passed.
+- Profiling values above are the fresh run recorded at 2026-08-16 10:47.
+
+### Boundary
+
+- Issue #9 remains `In Progress` (not `Done`). The user-study items
+  (first-session, repeated-use, resurfacing usefulness, remote-context
+  comprehension, no-telemetry feedback) and the full accessibility/backup/
+  restore/failure-recovery matrix require real-user participation and remain
+  explicitly open. This artifact proves the release build path and records the
+  reference-runtime profile; it is not release evidence for the product
+  promise.
