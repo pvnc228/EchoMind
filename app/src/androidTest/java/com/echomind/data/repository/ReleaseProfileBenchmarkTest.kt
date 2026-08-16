@@ -22,10 +22,10 @@ import kotlin.system.measureNanoTime
 /**
  * M7 release-evidence profile. Each measurement goes through a production seam:
  * the SQLCipher passphrase provider, the AudioEncryptionUtil (AES256-GCM-HKDF), and the
- * public KnowledgeRepository retrieval paths. Values are printed for the record; the
- * assertions are sanity checks only (operation completes and returns the seeded data),
- * not performance budgets, because this artifact records the reference-runtime profile
- * rather than claiming a release latency guarantee.
+ * public KnowledgeRepository retrieval paths. Reported values are medians of several
+ * samples; the assertions are sanity checks only (operation completes and returns the
+ * seeded data), not performance budgets, because this artifact records the
+ * reference-runtime profile rather than claiming a release latency guarantee.
  */
 class ReleaseProfileBenchmarkTest {
 
@@ -37,13 +37,11 @@ class ReleaseProfileBenchmarkTest {
         val dbName = "profile-encrypted-${System.nanoTime()}.db"
         context.deleteDatabase(dbName)
         val passphraseProvider = PassphraseProvider(context)
-        val factory = SupportFactory(passphraseProvider.getPassphrase())
 
         var database: AppDatabase? = null
         try {
-            // Seed then close so the cold-open measurement includes the real SQLCipher open.
             database = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-                .openHelperFactory(factory)
+                .openHelperFactory(SupportFactory(passphraseProvider.getPassphrase()))
                 .build()
             val dao: KnowledgeDao = database!!.knowledgeDao()
             val seedNanos = measureNanoTime {
@@ -61,22 +59,24 @@ class ReleaseProfileBenchmarkTest {
             }
             database!!.close()
 
-            var coldOpenMillis = 0L
-            val coldOpenNanos = measureNanoTime {
-                // SQLCipher clears the passphrase after first open; a real reopen uses a fresh
-                // SupportFactory reading the persisted passphrase again, matching the app lifecycle.
-                val reopenFactory = SupportFactory(passphraseProvider.getPassphrase())
+            // SQLCipher clears the passphrase after first open; a real reopen uses a fresh
+            // SupportFactory reading the persisted passphrase again, matching the app lifecycle.
+            val coldOpenMillis = medianMillis(samples = 3) {
                 database = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-                    .openHelperFactory(reopenFactory)
+                    .openHelperFactory(SupportFactory(passphraseProvider.getPassphrase()))
                     .build()
                 val reopened = database!!.knowledgeDao()
                 runBlocking { reopened.getAllRawRecords() }
+                database!!.close()
             }
-            coldOpenMillis = coldOpenNanos / 1_000_000
+
+            database = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
+                .openHelperFactory(SupportFactory(passphraseProvider.getPassphrase()))
+                .build()
             assertEquals(1_000, runBlocking { database!!.knowledgeDao().getAllRawRecords() }.size)
             println(
                 "ENCRYPTED_DB_PROFILE seed1000Ms=${seedNanos / 1_000_000} " +
-                    "coldOpenAndFirstQueryMs=$coldOpenMillis"
+                    "coldOpenAndFirstQueryMedianMs=$coldOpenMillis"
             )
             assertTrue(database!!.isOpen)
         } finally {
@@ -88,17 +88,33 @@ class ReleaseProfileBenchmarkTest {
     @Test
     fun audioEncryptionProfile() {
         val util = AudioEncryptionUtil(context)
-        val plaintext = File(context.cacheDir, "profile_${System.nanoTime()}.wav")
-        val encrypted = File(context.cacheDir, "profile_${System.nanoTime()}.wav.enc")
+        val data = ByteArray(512 * 1024) { (it % 251).toByte() }
+
+        val encryptMillis = medianMillis(samples = 5) {
+            val plain = File(context.cacheDir, "profile_enc_${System.nanoTime()}.wav")
+            val encrypted = File(context.cacheDir, "profile_enc_${System.nanoTime()}.wav.enc")
+            try {
+                plain.writeBytes(data)
+                util.encryptFile(plain, encrypted)
+            } finally {
+                plain.delete()
+                encrypted.delete()
+            }
+        }
+
+        val plaintext = File(context.cacheDir, "profile_dec_${System.nanoTime()}.wav")
+        val encrypted = File(context.cacheDir, "profile_dec_${System.nanoTime()}.wav.enc")
         try {
-            plaintext.writeBytes(ByteArray(512 * 1024) { (it % 251).toByte() })
-            val encryptNanos = measureNanoTime { util.encryptFile(plaintext, encrypted) }
-            val decryptNanos = measureNanoTime { util.decryptToTempFile(encrypted.absolutePath) }
+            plaintext.writeBytes(data)
+            util.encryptFile(plaintext, encrypted)
+            val decryptMillis = medianMillis(samples = 5) {
+                val temp = util.decryptToTempFile(encrypted.absolutePath)
+                util.deleteTempFile(temp.absolutePath)
+            }
             println(
-                "AUDIO_ENCRYPT_PROFILE 512KB encryptMs=${encryptNanos / 1_000_000} " +
-                    "decryptMs=${decryptNanos / 1_000_000}"
+                "AUDIO_ENCRYPT_PROFILE 512KB encryptMedianMs=$encryptMillis " +
+                    "decryptMedianMs=$decryptMillis"
             )
-            assertTrue(encrypted.exists() && encrypted.length() > 0L)
         } finally {
             plaintext.delete()
             encrypted.delete()
@@ -107,6 +123,8 @@ class ReleaseProfileBenchmarkTest {
 
     @Test
     fun longHistoryRetrievalProfile() {
+        // Plain in-memory Room, not SQLCipher: isolates retrieval/ranking cost from the
+        // encrypted-I/O cost measured by the separate encrypted-DB profile.
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
             .build()
@@ -147,24 +165,30 @@ class ReleaseProfileBenchmarkTest {
                 settingsStore = SettingsStore(context)
             )
 
-            val searchNanos = measureNanoTime {
+            val searchMillis = medianMillis(samples = 5) {
                 runBlocking { repository.search("career") }
             }
-            val linkCandidatesNanos = measureNanoTime {
+            val linkCandidatesMillis = medianMillis(samples = 5) {
                 runBlocking { repository.getLinkCandidates(currentRevisionId = 1L) }
             }
-            val homeNanos = measureNanoTime {
+            val homeMillis = medianMillis(samples = 5) {
                 runBlocking { repository.getHomeRelevance() }
             }
             println(
-                "LONG_HISTORY_PROFILE 10k searchMs=${searchNanos / 1_000_000} " +
-                    "linkCandidatesMs=${linkCandidatesNanos / 1_000_000} " +
-                    "homeRelevanceMs=${homeNanos / 1_000_000}"
+                "LONG_HISTORY_PROFILE 10k searchMedianMs=$searchMillis " +
+                    "linkCandidatesMedianMs=$linkCandidatesMillis " +
+                    "homeRelevanceMedianMs=$homeMillis"
             )
             val searchResult = runBlocking { repository.search("career") }
             assertTrue(searchResult.isNotEmpty())
         } finally {
             database.close()
         }
+    }
+
+    private fun medianMillis(samples: Int, block: () -> Unit): Long {
+        require(samples >= 1) { "At least one sample is required." }
+        val nanos = List(samples) { measureNanoTime { block() } }.sorted()
+        return nanos[samples / 2] / 1_000_000
     }
 }

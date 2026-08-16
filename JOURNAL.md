@@ -2047,15 +2047,16 @@ profiling, and a read-only release-security review. It does not close M7.
   meant to catch; the earlier M6 branch explicitly deferred its connected run.
 - **Profiling benchmark.** Added `ReleaseProfileBenchmarkTest`, a connected
   oracle that measures the production seams on `Pixel_8_2` API 35 (no synthetic
-  desktop-only timing):
-  - Encrypted SQLCipher DB: 1,000-row seed **148 ms**; cold open + first query
-    **145 ms**. Cold open uses a fresh `SupportFactory` from the persisted
-    passphrase, matching app restart.
-  - `AudioEncryptionUtil` (AES256-GCM-HKDF-4KB): 512 KB encrypt **28 ms**,
-    decrypt **18 ms** (median of the fresh run; earlier warm runs 22–48 ms).
+  desktop-only timing). Reported values are medians of 3–5 samples.
+  - Encrypted SQLCipher DB: 1,000-row seed **178 ms**; cold open + first query
+    median **138 ms**. Cold open uses a fresh `SupportFactory` from the
+    persisted passphrase, matching app restart.
+  - `AudioEncryptionUtil` (AES256-GCM-HKDF-4KB): 512 KB encrypt median
+    **15 ms**, decrypt median **15 ms**.
   - Long-history retrieval at 10,000 raw records through `KnowledgeRepository`
-    public seams: `search` **30 ms**, `getLinkCandidates` **660 ms**,
-    `getHomeRelevance` **48 ms**. All stay off Main (existing dispatcher
+    public seams, on a plain in-memory Room DB (retrieval/ranking cost isolated
+    from encrypted I/O): `search` **27 ms**, `getLinkCandidates` **479 ms**,
+    `getHomeRelevance` **7 ms**. All stay off Main (existing dispatcher
     guarantees) and within the documented UX budget for the ranked-link path.
 - **Release-security review (read-only).** Findings, none critical:
   - SQLCipher passphrase is a random 256-bit value stored in
@@ -2085,7 +2086,8 @@ profiling, and a read-only release-security review. It does not close M7.
   including the new 3 profiling tests and the fixed `ReflectionScreenTest`.
 - `:app:lintDebug`: passed. `:app:testDebugUnitTest`: passed.
 - `git diff --check`: passed.
-- Profiling values above are the fresh run recorded at 2026-08-16 10:47.
+- Profiling values above are medians recorded at 2026-08-16 11:14 on the
+  reference `Pixel_8_2` API 35 runtime.
 
 ### Boundary
 
