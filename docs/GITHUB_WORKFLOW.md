@@ -1,7 +1,7 @@
 # GitHub workflow EchoMind
 
 **Status:** current operational workflow
-**Last updated:** 2026-08-13
+**Last updated:** 2026-08-16
 
 This document describes the current GitHub Project and issue workflow for
 EchoMind. It is project-management metadata; a Project status or an issue
@@ -48,15 +48,20 @@ deferred boundaries recorded in `JOURNAL.md`. The current live mapping is:
 | [#3](https://github.com/pvnc228/EchoMind/issues/3) | `Done` | `feature` | `P0` | `M1` | Bounded continue-discussion flow |
 | [#4](https://github.com/pvnc228/EchoMind/issues/4) | `Done` | `verification` | `P1` | `M2` | Import integrity and selective restore |
 | [#5](https://github.com/pvnc228/EchoMind/issues/5) | `Backlog` | `verification` | `P1` | `M3` | Repeat-use evidence for Home resurfacing |
-| [#7](https://github.com/pvnc228/EchoMind/issues/7) | `Backlog` | `feature` | `P2` | `M5` | Explainable guidance on explicit request |
-| [#8](https://github.com/pvnc228/EchoMind/issues/8) | `Backlog` | `feature` | `P3` | `M6` | Voice capture through the text review flow |
+| [#7](https://github.com/pvnc228/EchoMind/issues/7) | `Done` | `feature` | `P2` | `M5` | Explainable guidance on explicit request |
+| [#8](https://github.com/pvnc228/EchoMind/issues/8) | `Done` | `feature` | `P3` | `M6` | Voice capture through the text review flow |
 | [#9](https://github.com/pvnc228/EchoMind/issues/9) | `Backlog` | `verification` | `P3` | `M7` | Private-beta and release evidence |
 
 `Blocked` is intentionally empty. Issue #4 is in `Done` after the M2
 implementation, fresh API35 full connected artifact, and journal entry. Issue
 #6 is in `Done` after the M4 implementation, its fresh API35 slice evidence,
 and the recorded journal result; the broader M4 milestone and the API26/API30
-compatibility rerun remain explicitly deferred.
+compatibility rerun remain explicitly deferred. Issue #7 is `Done` after the
+M5 explainable-guidance slice (accessibility, rating, live-LLM eval, and the
+transport fix); the broader M5 milestone remains open for external-user
+usefulness evidence. Issue #8 is `Done` after the M6 voice slice; the broader
+M6 milestone and the voice slice's connected/device/accessibility evidence
+remain explicitly open.
 
 Issue #1 is a tracking card for the closed scoped repair gate. Its closure
 does not close M4 or the broader M2/M3/M4 product milestones. Issues #2 and #3

@@ -4,8 +4,9 @@ EchoMind is a private Android thinking environment that turns short reflections 
 
 > The repository is an active product prototype. Its primary capture path now
 > enforces explicit confirmation and the local provenance graph is inspectable;
-> minimized remote Q&A is available behind an exact preview and one-request
-> transmission consent. Automatic transcription remains deferred.
+> minimized remote Q&A and remote voice transcription are available behind an
+> exact preview and one-request transmission consent. On-device transcription
+> remains unevaluated.
 
 ## Documentation
 
@@ -24,6 +25,7 @@ EchoMind is a private Android thinking environment that turns short reflections 
 - Explicit edit, confirm, and reject boundary
 - One bounded local follow-up question whose result remains an unconfirmed proposal
 - Exact minimized-context preview and one-request consent for remote Q&A
+- Optional voice capture with remote transcription behind a preview + one-shot consent boundary, returning an editable transcript
 - Confirmed conclusion stored as revision 1 with its raw source
 - OpenAI-compatible text analysis, transcription client, and Q&A
 - Entry timeline, search, filters, details, and export
@@ -33,13 +35,15 @@ EchoMind is a private Android thinking environment that turns short reflections 
   audio-cleanup retries
 - Biometric release gate and screenshot protection
 
-Automatic transcription is not yet connected to the main recording flow.
+Remote audio transcription is connected to the recording flow behind a preview
+and one-shot consent; on-device transcription remains unevaluated.
 Archive/detail, deletion, Decisions, Home coverage, bounded Detail browsing,
 and empty-profile restore now expose the implemented provenance boundaries.
 The scoped repair gate, selective restore, optional M4 reminder, M0 minimized
-context consent, and M1 bounded discussion slices are implemented. `localMode`
-still blocks repository network calls. Broader product milestones and the
-separate whole-product debugging/verification stage remain open.
+context consent, M1 bounded discussion, M5 explainable guidance, and M6 voice
+slices are implemented. `localMode` still blocks repository network calls.
+Broader product milestones and the separate whole-product
+debugging/verification stage remain open.
 
 ## Tech Stack
 

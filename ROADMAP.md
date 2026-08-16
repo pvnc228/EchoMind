@@ -1,6 +1,6 @@
 # EchoMind — Product Roadmap
 
-**Last updated:** 2026-08-13
+**Last updated:** 2026-08-16
 
 **Product direction:** [VISION.md](VISION.md)
 
@@ -33,10 +33,13 @@ This roadmap replaces the former feature checklist for a "voice diary with AI." 
 
 - The legacy `Entry` archive remains alongside the M1 provenance graph and does
   not yet model themes, contradictions, decisions, or outcomes.
-- The current recording flow asks the user to type a transcript; the implemented transcription client is not connected to that flow.
+- The current recording flow asks the user to type a transcript; remote audio
+  transcription is now connected behind an exact preview and per-request
+  consent, while on-device transcription remains unevaluated.
 - Q&A is available only through an exact minimized-context preview and
-  per-request transmission approval. Remote transcription remains deliberately
-  unavailable in the recording flow.
+  per-request transmission approval. Remote transcription is connected to the
+  recording flow through the same preview + one-shot-consent boundary; raw
+  audio never leaves the device without explicit approval.
 - The home screen is a diary timeline, not a prompt plus relevant evidence-backed resurfacing.
 - Current categories (`task`, `idea`, `feeling`, `plan`) do not express evolving conclusions.
 
@@ -324,10 +327,23 @@ implemented capture feature whose value is proven only by real use.
 
 **Outcome:** additional modalities make the proven loop easier to use without redefining the product.
 
+**Status (2026-08-16, first implementation slice):** voice capture is now
+connected to the text review flow. Recorded audio is encrypted on stop and
+returned to the capture draft; the transcript is editable before it enters
+reflection, and remote transcription is available only through an explicit
+preview + one-shot consent boundary (`previewAudioTranscription` →
+`sendApprovedAudioTranscription`), so raw audio cannot leave the device without
+approval. `localMode` blocks the path before any network request. The slice
+shipped on branch evidence (JVM `31/31`, lint, `git diff --check`); its
+connected/device/accessibility evidence was explicitly deferred to avoid
+emulator contention and remains unrun. The milestone is open: on-device
+transcription evaluation, two-dimensional theme/revision views, and selective
+import are still pending.
+
 ### Scope
 
-- [ ] Connect optional voice capture to transcription and the same review flow as text.
-- [ ] Keep the transcript editable and retain the raw/derived distinction.
+- [x] Connect optional voice capture to transcription and the same review flow as text.
+- [x] Keep the transcript editable and retain the raw/derived distinction.
 - [ ] Evaluate on-device transcription before allowing raw audio to leave the device.
 - [ ] Add two-dimensional theme and revision views only for validated user questions.
 - [ ] Consider heatmaps or 3D visualization only after proving that they improve navigation or understanding.
@@ -390,9 +406,10 @@ restore.
 The live implementation backlog is tracked in
 [`docs/GITHUB_WORKFLOW.md`](docs/GITHUB_WORKFLOW.md): Issue #6 is `Done` for
 the scoped optional follow-up slice; Issues #2 and #3 are `Done` for the M0
-consent and M1 bounded-discussion implementation slices. Issues #5 and #7–#9
-remain future product/evidence work. Issues #1 and #4 are completed verification
-cards.
+consent and M1 bounded-discussion implementation slices; Issue #7 is `Done`
+for the M5 explainable-guidance slice; Issue #8 is `Done` for the M6 voice
+slice. Issues #5 and #9 remain future product/evidence work. Issues #1 and #4
+are completed verification cards.
 
 **Implementation status (2026-08-13):** the M0 minimized-context preview and
 per-request consent pipeline and the M1 one-step focused follow-up are in

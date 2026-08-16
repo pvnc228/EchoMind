@@ -2,7 +2,7 @@
 
 **Status:** active implementation contract
 
-**Last updated:** 2026-08-13
+**Last updated:** 2026-08-16
 
 This document turns the promises in [VISION.md](VISION.md) into storage and
 network rules. Room schema version 9 includes the provenance graph, immutable
@@ -216,13 +216,23 @@ Remote access is denied by default and evaluated at the repository boundary:
 
 Raw records, raw audio, the complete personal model, secrets, and unconfirmed
 background requests never pass this boundary. Legacy entry analysis stays
-on-device even when local mode is off. Legacy raw-entry analysis and
-transcription still fail before `LlmApi`. Minimized Q&A is available only for
+on-device even when local mode is off. Minimized Q&A is available only for
 confirmed conclusions: the repository creates an exact
 purpose/destination/content preview, issues a generation- and
 destination-bound one-shot approval, rechecks `localMode` and endpoint state,
 and sends through the approved dynamic URL. Cancel, stale approval, endpoint
 change, restart, and local mode transmit nothing and clear request-only state.
+
+Remote audio transcription follows the same preview + one-shot-consent
+boundary. `previewAudioTranscription` shows the exact destination plus the
+audio file name, duration, and size before any transmission;
+`sendApprovedAudioTranscription` consumes a generation-bound approval, rechecks
+`localMode` and endpoint state, sends only the approved audio part with a
+`whisper-1`/`json` body, and returns the transcript as derived text that the
+user can edit before it enters reflection. Raw audio cannot leave the device
+without approval, and cancel, stale approval, endpoint change, or provider
+failure never leave a reusable approval. The decrypted temp file used for the
+send is deleted on completion or failure.
 
 Remote providers may retain prompts, responses, network metadata, or abuse
 monitoring records under their own policies. EchoMind cannot verify or delete

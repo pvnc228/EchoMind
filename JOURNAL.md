@@ -1957,3 +1957,65 @@ remain open evidence requirements; the broader M4 milestone remains open.
   subjective helpfulness and is not recorded as external-user evidence.
 - The usefulness rating is an implemented capture feature; its value is proven
   only when real users use it. No self-reported "helpful" verdict is claimed.
+
+## 2026-08-16 - Issue #8: Voice capture connected to text review flow (M6 slice)
+
+### Result
+
+- Connected voice note recording to editable transcription and the proven text
+  review flow. Recorded audio is encrypted on stop and returned to the capture
+  draft as an optional attachment.
+- Added an explicit preview and per-request consent pipeline for remote audio
+  transcription (`RemoteTranscriptionPreview`, `previewAudioTranscription`,
+  `sendApprovedAudioTranscription`). The preview exposes the exact destination
+  plus audio name, duration, and size before any transmission.
+- Enforced a strict privacy boundary: `localMode` blocks remote transcription
+  before any network request; raw audio cannot leave the device without an
+  explicit destination preview and a one-shot, generation-bound approval.
+  Cancel, stale approval, endpoint change, and provider failure never leave a
+  reusable approval.
+- Kept the transcript fully editable by the user before creating a reflection,
+  preserving user authorship and the raw/derived boundary. The decrypted temp
+  file is deleted after send or failure.
+- Once submitted, the transcribed and user-edited reflection passes through the
+  standard deterministic local analyzer, generating an unconfirmed hypothesis
+  and entering the same inspectable review, confirm, reject, and provenance
+  workflow as typed text.
+- Interrupted recording cleanup, error handling, cancellation, and audio file
+  lifecycle are covered.
+
+### Verification
+
+- JVM unit test suite (`:app:testDebugUnitTest --rerun-tasks`): **31/31 passed**
+  on the branch, including `LlmRepositoryTest` (preview metadata, one-shot
+  approval, local-mode/endpoint/stale cancellation negatives),
+  `LlmApiTransportTest`, and `RecordViewModelTest` (decrypt/send/cleanup,
+  error paths, cancel).
+- Android lint (`:app:lintDebug --rerun-tasks`): **passed**.
+- Diff check (`git diff --check`): **passed**.
+- Connected / device / accessibility tests: **EXPLICITLY UNRUN** for this slice
+  (deferred to avoid emulator contention with a parallel agent).
+
+## 2026-08-16 - Documentation synchronization after M5/M6 merges
+
+### Result
+
+- `master` reached `c62d2cc` (merge of PR #14, M5) after `2c6cd59` (merge of
+  PR #13, M6). The M6 branch carried an Issue #8 journal entry, but the
+  merged `master` `JOURNAL.md` did not contain it (the PR #13→#14 merge line
+  did not carry that entry forward). This entry restores the Issue #8 result
+  from the branch artifact `5143e88`; it is a historical record, not new
+  evidence.
+- Synchronized the current documentation to the shipped `master` state:
+  `ROADMAP.md` M6 status and product gaps, `docs/GITHUB_WORKFLOW.md` board
+  mapping for Issues #7 and #8, `DATA_CONTRACT.md` remote transcription
+  consent pipeline, and `README.md` voice-transcription statements.
+
+### Boundary
+
+- No production code changed. This is a documentation-only synchronization.
+- Issue #8 remains `Done` in the Project for its scoped M6 implementation
+  slice; the M6 milestone in `ROADMAP.md` remains open for its broader
+  completion criteria (on-device transcription evaluation, two-dimensional
+  views, selective import), and the connected/device/accessibility evidence
+  for the voice slice remains explicitly unrun.
