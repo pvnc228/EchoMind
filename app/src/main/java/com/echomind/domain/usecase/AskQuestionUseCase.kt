@@ -1,7 +1,6 @@
 package com.echomind.domain.usecase
 
 import com.echomind.data.remote.RemoteQuestionPreview
-import com.echomind.data.repository.EntryRepository
 import com.echomind.data.repository.LlmRepository
 import javax.inject.Inject
 
@@ -13,9 +12,6 @@ data class QaResult(
 class AskQuestionUseCase @Inject constructor(
     private val llmRepository: LlmRepository
 ) {
-    // Kept for the existing provider module until its unrelated wiring is migrated.
-    constructor(@Suppress("UNUSED_PARAMETER") entryRepository: EntryRepository, llmRepository: LlmRepository) :
-        this(llmRepository)
 
     suspend fun preview(question: String): Result<RemoteQuestionPreview> = runCatching {
         val trimmedQuestion = question.trim()

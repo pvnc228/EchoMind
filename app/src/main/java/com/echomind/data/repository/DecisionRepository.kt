@@ -148,13 +148,14 @@ class DecisionRepository @Inject constructor(
         }
     }
 
-    suspend fun getDecisionSources(): List<DecisionSourceOption> {
-        val revisions = knowledgeDao.getAllRevisions().associateBy { it.id }
-        return knowledgeDao.getAllConclusions()
-            .mapNotNull { it.currentRevisionId?.let(revisions::get) }
-            .sortedWith(compareByDescending<com.echomind.data.local.entity.ConclusionRevisionEntity> { it.createdAt }.thenBy { it.id })
-            .map { DecisionSourceOption(it.id, it.version, it.text) }
-    }
+    suspend fun getDecisionSources(): List<DecisionSourceOption> =
+        knowledgeDao.getCurrentRevisionDecisionSources().map { row ->
+            DecisionSourceOption(
+                revisionId = row.id,
+                version = row.version,
+                text = row.text
+            )
+        }
 
     suspend fun getDecision(decisionId: Long): Decision? =
         knowledgeDao.getDecisionById(decisionId)?.let { toDomain(it) }

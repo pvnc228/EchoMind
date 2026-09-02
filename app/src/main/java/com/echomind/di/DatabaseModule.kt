@@ -26,6 +26,7 @@ object DatabaseModule {
     ): AppDatabase {
         val passphrase = passphraseProvider.getPassphrase()
         val supportFactory = SupportFactory(passphrase)
+        passphrase.fill(0.toByte())
         return Room.databaseBuilder(
             context,
             AppDatabase::class.java,

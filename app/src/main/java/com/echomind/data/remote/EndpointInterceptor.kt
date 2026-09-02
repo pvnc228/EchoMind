@@ -7,9 +7,14 @@ import javax.inject.Singleton
 
 @Singleton
 class EndpointInterceptor @Inject constructor(
-    private val baseUrlProvider: BaseUrlProvider,
     private val remoteAccessPolicy: RemoteAccessPolicy
 ) : Interceptor {
+
+    constructor(
+        baseUrlProvider: BaseUrlProvider,
+        remoteAccessPolicy: RemoteAccessPolicy
+    ) : this(remoteAccessPolicy)
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
         val approvedDestination = original.header(APPROVED_DESTINATION_HEADER)
@@ -36,6 +41,6 @@ class EndpointInterceptor @Inject constructor(
             }
         }
 
-        return chain.proceed(original.newBuilder().url(baseUrlProvider.rewrite(original.url)).build())
+        return chain.proceed(original.newBuilder().url(remoteAccessPolicy.rewrite(original.url)).build())
     }
 }

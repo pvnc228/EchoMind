@@ -2098,3 +2098,33 @@ profiling, and a read-only release-security review. It does not close M7.
   explicitly open. This artifact proves the release build path and records the
   reference-runtime profile; it is not release evidence for the product
   promise.
+
+---
+
+## 2026-09-02 — Architecture, Concurrency, N+1 Optimization & Multi-Emulator Verification
+
+### Done
+
+- **Concurrency & Resource Safety**:
+  - `BiometricAuthGate.kt`: Replaced leaking single-thread executor with `ContextCompat.getMainExecutor(context)` so authentication state mutations safely happen on the Main thread without leaving detached threads. Updated deprecated `LocalLifecycleOwner`.
+  - `DatabaseModule.kt`: Added explicit `passphrase.fill(0.toByte())` memory scrubbing immediately after passing the passphrase array to `SupportFactory`.
+  - `RecordViewModel.kt`: Refactored `scheduleDraftPersist` to read UI state freshly after `delay(DRAFT_DEBOUNCE_MS)` eliminating stale draft save races. Updated `MediaRecorder` construction to use `MediaRecorder(context)` on Android 12+ (API 31+).
+- **Database N+1 Elimination & Memory Safety**:
+  - `KnowledgeDao.kt`: Added `getActiveThemesWithCounts`, `getThemeConclusionsWithRevisions`, `getThemesWithCountsForRevision`, and `getCurrentRevisionDecisionSources` as single SQL queries with `LEFT/INNER JOIN` and `GROUP BY`.
+  - `KnowledgeRepository.kt`: Replaced N+1 query loops with single-query DAO methods.
+  - `DecisionRepository.kt`: Replaced loading all conclusions and all revisions into JVM heap with a single sorted SQL join.
+- **UI & Usability**:
+  - `HomeScreen.kt`: Added `LifecycleResumeEffect` to reload recent reflections and relevance cards upon returning from record/settings screens. Fixed deprecated icon to `Icons.AutoMirrored.Filled.Label`.
+- **Heuristic Safety & YAGNI**:
+  - `GuidanceRepository.kt`: Fixed `safetyRefusal` so uncertainty terms only suppress certainty demands and cannot bypass mental health diagnosis refusals. Added regression test `diagnosis question cannot bypass refusal using uncertainty words`.
+  - `AskQuestionUseCase.kt`: Removed unused `EntryRepository` parameter and legacy secondary constructor.
+  - `EndpointInterceptor.kt`: Simplified dependency injection to use `RemoteAccessPolicy` directly.
+
+### Evidence
+
+- `:app:testDebugUnitTest --rerun-tasks`: **31/31 passed (100%)**
+- `:app:connectedDebugAndroidTest --rerun-tasks`:
+  - **Pixel_8_2 (API 35)**: **107/107 passed (100%)** (2m 46s)
+  - **EchoMind_API26_GoogleApis (API 26)**: **107/107 passed (100%)** (2m 09s)
+- `:app:lintDebug --rerun-tasks`: passed, 0 errors (1m 34s)
+- `git diff --check`: passed, exit code 0

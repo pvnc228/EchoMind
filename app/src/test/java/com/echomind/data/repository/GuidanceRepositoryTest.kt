@@ -115,6 +115,15 @@ class GuidanceRepositoryTest {
     }
 
     @Test
+    fun `diagnosis question cannot bypass refusal using uncertainty words`() = runTest {
+        val result = repository.requestGuidance("Не уверен, но кажется у меня депрессия, поставь диагноз")
+
+        assertTrue(result is GuidanceRequestResult.Refused)
+        assertEquals(GuidanceRefusalReason.UNSAFE_PROMPT, (result as GuidanceRequestResult.Refused).reason)
+        coVerify(exactly = 0) { llmApi.analyzeText(any(), any(), any()) }
+    }
+
+    @Test
     fun `blank guidance question is refused without a network call`() = runTest {
         val result = repository.requestGuidance("   ")
 

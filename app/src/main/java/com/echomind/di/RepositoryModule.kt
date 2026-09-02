@@ -34,8 +34,8 @@ object RepositoryModule {
 
     @Provides
     @Singleton
-    fun provideAskQuestionUseCase(repository: EntryRepository, llmRepository: LlmRepository): AskQuestionUseCase =
-        AskQuestionUseCase(repository, llmRepository)
+    fun provideAskQuestionUseCase(llmRepository: LlmRepository): AskQuestionUseCase =
+        AskQuestionUseCase(llmRepository)
 
     @Provides
     @Singleton

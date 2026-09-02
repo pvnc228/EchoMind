@@ -2,6 +2,7 @@ package com.echomind.ui.record
 
 import android.app.Application
 import android.media.MediaRecorder
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -382,7 +383,12 @@ class RecordViewModel @Inject constructor(
         audioDir.mkdirs()
         val audioFile = File(audioDir, "entry_${System.currentTimeMillis()}.m4a")
 
-        val recorder = MediaRecorder().apply {
+        val recorder = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(context)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
+        }).apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -565,20 +571,24 @@ class RecordViewModel @Inject constructor(
     }
 
     private fun scheduleDraftPersist() {
-        val state = _uiState.value
-        if (state.stage != ReflectionStage.CAPTURE) return
+        if (_uiState.value.stage != ReflectionStage.CAPTURE) return
 
         draftSaveJob?.cancel()
         draftSaveJob = viewModelScope.launch {
             delay(DRAFT_DEBOUNCE_MS)
-            persistDraft(state)
+            val currentState = _uiState.value
+            if (currentState.stage == ReflectionStage.CAPTURE) {
+                persistDraft(currentState)
+            }
         }
     }
 
     private fun persistDraftNow() {
-        val state = _uiState.value
         draftSaveJob?.cancel()
-        draftSaveJob = viewModelScope.launch { persistDraft(state) }
+        draftSaveJob = viewModelScope.launch {
+            val currentState = _uiState.value
+            persistDraft(currentState)
+        }
     }
 
     private suspend fun persistDraft(state: RecordUiState): Result<Unit> =

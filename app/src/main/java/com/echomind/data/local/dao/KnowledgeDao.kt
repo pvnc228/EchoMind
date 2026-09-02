@@ -48,6 +48,27 @@ data class LinkCandidateRawRow(
     @ColumnInfo(name = "recorded_at") val recordedAt: Long
 )
 
+data class ThemeWithCountRow(
+    val id: Long,
+    val name: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "archived_at") val archivedAt: Long?,
+    @ColumnInfo(name = "conclusion_count") val conclusionCount: Int
+)
+
+data class ThemeConclusionRow(
+    @ColumnInfo(name = "revision_id") val revisionId: Long,
+    @ColumnInfo(name = "conclusion_text") val conclusionText: String,
+    @ColumnInfo(name = "revision_version") val revisionVersion: Int,
+    @ColumnInfo(name = "theme_id") val themeId: Long
+)
+
+data class DecisionSourceRow(
+    val id: Long,
+    val version: Int,
+    val text: String
+)
+
 @Dao
 interface KnowledgeDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
@@ -261,6 +282,49 @@ interface KnowledgeDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertThemeLinks(links: List<ThemeLinkEntity>)
+
+    @Query(
+        "SELECT themes.id AS id, themes.name AS name, themes.created_at AS created_at, " +
+            "themes.archived_at AS archived_at, COUNT(theme_links.id) AS conclusion_count " +
+            "FROM themes LEFT JOIN theme_links " +
+            "ON theme_links.theme_id = themes.id AND theme_links.confirmed = 1 " +
+            "WHERE themes.archived_at IS NULL " +
+            "GROUP BY themes.id ORDER BY themes.name"
+    )
+    suspend fun getActiveThemesWithCounts(): List<ThemeWithCountRow>
+
+    @Query(
+        "SELECT conclusion_revisions.id AS revision_id, " +
+            "conclusion_revisions.text AS conclusion_text, " +
+            "conclusion_revisions.version AS revision_version, " +
+            ":themeId AS theme_id " +
+            "FROM conclusion_revisions " +
+            "INNER JOIN theme_links ON theme_links.conclusion_revision_id = conclusion_revisions.id " +
+            "WHERE theme_links.theme_id = :themeId AND theme_links.confirmed = 1 " +
+            "ORDER BY conclusion_revisions.id"
+    )
+    suspend fun getThemeConclusionsWithRevisions(themeId: Long): List<ThemeConclusionRow>
+
+    @Query(
+        "SELECT themes.id AS id, themes.name AS name, themes.created_at AS created_at, " +
+            "themes.archived_at AS archived_at, " +
+            "(SELECT COUNT(*) FROM theme_links tl WHERE tl.theme_id = themes.id AND tl.confirmed = 1) AS conclusion_count " +
+            "FROM themes " +
+            "INNER JOIN theme_links ON theme_links.theme_id = themes.id " +
+            "WHERE theme_links.conclusion_revision_id = :revisionId AND theme_links.confirmed = 1 " +
+            "ORDER BY themes.name"
+    )
+    suspend fun getThemesWithCountsForRevision(revisionId: Long): List<ThemeWithCountRow>
+
+    @Query(
+        "SELECT conclusion_revisions.id AS id, " +
+            "conclusion_revisions.version AS version, " +
+            "conclusion_revisions.text AS text " +
+            "FROM conclusion_revisions " +
+            "INNER JOIN conclusions ON conclusions.current_revision_id = conclusion_revisions.id " +
+            "ORDER BY conclusion_revisions.created_at DESC, conclusion_revisions.id ASC"
+    )
+    suspend fun getCurrentRevisionDecisionSources(): List<DecisionSourceRow>
 
     @Query("SELECT * FROM themes WHERE archived_at IS NULL ORDER BY name")
     suspend fun getActiveThemes(): List<ThemeEntity>

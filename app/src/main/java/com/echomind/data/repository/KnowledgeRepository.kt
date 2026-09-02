@@ -42,13 +42,13 @@ class KnowledgeRepository @Inject constructor(
     }
 
     suspend fun getThemes(): List<Theme> =
-        knowledgeDao.getActiveThemes().map { theme ->
+        knowledgeDao.getActiveThemesWithCounts().map { row ->
             Theme(
-                id = theme.id,
-                name = theme.name,
-                createdAt = theme.createdAt,
-                archivedAt = theme.archivedAt,
-                conclusionCount = knowledgeDao.getConfirmedLinksForTheme(theme.id).size
+                id = row.id,
+                name = row.name,
+                createdAt = row.createdAt,
+                archivedAt = row.archivedAt,
+                conclusionCount = row.conclusionCount
             )
         }
 
@@ -98,13 +98,12 @@ class KnowledgeRepository @Inject constructor(
 
     suspend fun getThemeConclusions(themeId: Long): List<ThemeConclusion> {
         requireNotNull(knowledgeDao.getThemeById(themeId)) { "Theme $themeId does not exist." }
-        return knowledgeDao.getConfirmedLinksForTheme(themeId).map { link ->
-            val revision = requireNotNull(knowledgeDao.getRevisionById(link.conclusionRevisionId))
+        return knowledgeDao.getThemeConclusionsWithRevisions(themeId).map { row ->
             ThemeConclusion(
-                themeId = themeId,
-                conclusionText = revision.text,
-                revisionVersion = revision.version,
-                revisionId = revision.id
+                themeId = row.themeId,
+                conclusionText = row.conclusionText,
+                revisionVersion = row.revisionVersion,
+                revisionId = row.revisionId
             )
         }
     }
@@ -113,14 +112,13 @@ class KnowledgeRepository @Inject constructor(
         requireNotNull(knowledgeDao.getThemeById(themeId)) { "Theme $themeId does not exist." }.name
 
     suspend fun getConclusionsForRevision(revisionId: Long): List<Theme> =
-        knowledgeDao.getConfirmedLinksForRevision(revisionId).map { link ->
-            val theme = requireNotNull(knowledgeDao.getThemeById(link.themeId))
+        knowledgeDao.getThemesWithCountsForRevision(revisionId).map { row ->
             Theme(
-                id = theme.id,
-                name = theme.name,
-                createdAt = theme.createdAt,
-                archivedAt = theme.archivedAt,
-                conclusionCount = knowledgeDao.getConfirmedLinksForTheme(theme.id).size
+                id = row.id,
+                name = row.name,
+                createdAt = row.createdAt,
+                archivedAt = row.archivedAt,
+                conclusionCount = row.conclusionCount
             )
         }
 

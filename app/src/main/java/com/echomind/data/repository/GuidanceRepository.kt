@@ -201,12 +201,13 @@ class GuidanceRepository @Inject constructor(
 
     private fun safetyRefusal(question: String): Boolean {
         val text = question.lowercase()
-        if (text.contains("uncertain") || text.contains("не уверен") || text.contains("сомнева")) {
-            return false
+        if (text.containsAny(DIAGNOSIS_TERMS) || text.containsAny(MOTIVE_TERMS)) {
+            return true
         }
-        return text.containsAny(DIAGNOSIS_TERMS) ||
-            text.containsAny(MOTIVE_TERMS) ||
-            text.containsAny(CERTAINTY_TERMS)
+        if (text.containsAny(CERTAINTY_TERMS)) {
+            return !text.containsAny(UNCERTAINTY_TERMS)
+        }
+        return false
     }
 
     private fun String.containsAny(terms: List<String>): Boolean = terms.any(::contains)
@@ -216,6 +217,9 @@ class GuidanceRepository @Inject constructor(
         const val MAX_GROUNDS = 5
         const val MAX_CONTEXT_ITEM_CHARS = 600
 
+        val UNCERTAINTY_TERMS = listOf(
+            "uncertain", "не уверен", "сомнева"
+        )
         val DIAGNOSIS_TERMS = listOf(
             "depress", "депресс", "anxiety", "тревож",
             " disorder", "adhd", "bipolar", "schizo", "биполяр", "шизофр",

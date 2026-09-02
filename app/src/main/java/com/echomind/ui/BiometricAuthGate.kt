@@ -12,12 +12,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.echomind.BuildConfig
-import java.util.concurrent.Executors
 
 @Composable
 fun BiometricAuthGate(
@@ -45,7 +45,7 @@ fun BiometricAuthGate(
                             val activity = context as FragmentActivity
                             val prompt = BiometricPrompt(
                                 activity,
-                                Executors.newSingleThreadExecutor(),
+                                ContextCompat.getMainExecutor(context),
                                 object : BiometricPrompt.AuthenticationCallback() {
                                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                                         isAuthenticated = true
@@ -67,7 +67,7 @@ fun BiometricAuthGate(
                             )
                             val promptInfo = BiometricPrompt.PromptInfo.Builder()
                                 .setTitle("EchoMind")
-                                .setSubtitle("Authenticate to access your diary")
+                                .setSubtitle("Authenticate to access your reflections")
                                 .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
                                 .build()
                             prompt.authenticate(promptInfo)

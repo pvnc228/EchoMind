@@ -20,7 +20,7 @@ class AskQuestionUseCaseTest {
 
     @Before
     fun setup() {
-        useCase = AskQuestionUseCase(mockk<EntryRepository>(), llmRepository)
+        useCase = AskQuestionUseCase(llmRepository)
     }
 
     @Test
