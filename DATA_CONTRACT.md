@@ -239,6 +239,24 @@ monitoring records under their own policies. EchoMind cannot verify or delete
 provider-side copies. The preview must name the configured destination and
 state this limitation before consent.
 
+## BYOK (Bring Your Own Key) and Zero-Vendor-Lock
+
+EchoMind enforces strict independence from proprietary cloud AI vendors:
+
+- **No bundled credentials or developer telemetry**: The application binary
+  contains no hardcoded API keys, intermediary proxy servers, or metering
+  telemetry. The developer cannot view, log, intermediate, or bill user queries.
+- **Open standard protocol**: Network AI operations use standard
+  OpenAI-compatible endpoints (`/v1/chat/completions`, `/v1/audio/transcriptions`).
+- **User-owned credentials (BYOK)**: Users provide their own personal API key
+  (e.g. Google AI Studio, OpenAI, Groq, OpenRouter) or configure a local
+  self-hosted instance (e.g. Ollama, vLLM, llama.cpp at `http://localhost:11434`
+  or LAN IP).
+- **Keystore-backed encrypted storage**: Configured API keys and endpoint
+  settings are stored exclusively on-device in `EncryptedSharedPreferences`
+  backed by the Android Keystore master key. They are excluded from ZIP exports,
+  never uploaded, and never shared between profiles.
+
 ## Version 2 to 3 migration
 
 `MIGRATION_2_3` creates the provenance tables and copies each legacy entry's ID,

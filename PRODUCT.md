@@ -52,6 +52,7 @@ The product name is EchoMind. Its voice is calm, precise, non-diagnostic, and ag
 3. The user authors meaning; AI proposes.
 4. Simple capture outside, rich and inspectable provenance inside.
 5. Privacy, reversibility, and honest insufficiency are product behavior, not decorative claims.
+6. BYOK and Zero Vendor Lock-in: Zero bundled SaaS keys or proprietary provider SDKs. All optional remote capabilities use open standards, local-first options (self-hosted / Ollama), and user-owned credentials stored only on-device.
 
 ## Accessibility & Inclusion
 

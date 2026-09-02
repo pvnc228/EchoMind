@@ -2128,3 +2128,19 @@ profiling, and a read-only release-security review. It does not close M7.
   - **EchoMind_API26_GoogleApis (API 26)**: **107/107 passed (100%)** (2m 09s)
 - `:app:lintDebug --rerun-tasks`: passed, 0 errors (1m 34s)
 - `git diff --check`: passed, exit code 0
+
+---
+
+## 2026-09-03 — BYOK Architectural Invariant & Emulator Storage Cleanup
+
+### Done
+
+- **Architecture Invariant (BYOK & Zero Vendor Lock-in)**:
+  - Formally committed and documented Principle 6 in `PRODUCT.md` and `DATA_CONTRACT.md`:
+    Zero hardcoded proprietary vendor SDKs (Google GenAI, OpenAI SDK, etc.), zero bundled SaaS keys, and zero intermediary developer proxy/telemetry.
+  - EchoMind strictly adheres to open OpenAI-compatible HTTP schemas (`/v1/chat/completions`, `/v1/audio/transcriptions`), allowing seamless switching between local self-hosted engines (Ollama, vLLM, llama.cpp) and user-provided cloud provider keys (Google AI Studio, OpenAI, Groq, OpenRouter).
+  - All credentials remain exclusively in Android Keystore hardware-backed encrypted storage on-device and are never uploaded, proxied, or billed to the developer.
+- **Emulator Storage Cleanup**:
+  - Removed obsolete experimental Android 17 / API 37 AVD (`Pixel_8.avd`) and `system-images/android-37.1` (which failed due to upstream Espresso `InputManager.getInstance` removal).
+  - Removed unneeded intermediate Android 11 / API 30 AVD (`EchoMind_API30_GoogleApis.avd`) and `system-images/android-30`.
+  - Recovered **~34 GB** of storage on drive C, retaining the required reference release gate (`Pixel_8_2` API 35) and minimum boundary gate (`EchoMind_API26_GoogleApis` API 26).
