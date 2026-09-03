@@ -74,3 +74,17 @@ toggle); provenance остаётся читаемым материал.
 Зафиксируй итог в `JOURNAL.md` (проход/провал, замечания, кто гонял) с
 подписью `агент opencode` перед тем, как отметить чекпоинт complete в
 `ROADMAP.md`.
+
+## 6. Автоматизация вёрстки и доступности через android-cli (2026-09-03)
+
+- **Инструмент**: Google Android CLI (`android.exe` v1.0.15985488), эмулятор `Pixel_8_2` (API 35).
+- **Выгрузка иерархии Compose (android layout)**:
+  - Home 100% font scale: `docs/layout_home_100.json`, скриншот `docs/screenshots/home_100.png`
+  - Home 200% font scale: `docs/layout_home_200.json`, скриншот `docs/screenshots/home_200.png`
+  - Review 100% / 200%: `docs/layout_review_100.json`, `docs/layout_review_200.json`, скриншоты `docs/screenshots/review_100.png`
+  - Settings (Speech Recognition & BYOK Presets): `docs/layout_settings_200.json`, `docs/layout_settings_gemini.json`, скриншоты `docs/screenshots/settings_200.png`, `docs/screenshots/settings_gemini.png`
+- **Автоматическая валидация (`tools/validate_layout.py`)**:
+  - Масштаб шрифта 200%: все текстовые и интерактивные элементы остаются в пределах границ экрана [1080 x 2400], текст корректно переносится.
+  - ActionDock и навигационные элементы: отсутствуют перекрытия и взаимные пересечения активных зон.
+  - Порядок обхода TalkBack (accessibility traversal order): логическая группировка элементов сохраняет семантическую последовательность обхода.
+- **Инструментованный запуск**: `:app:connectedDebugAndroidTest` — 107/107 passed на `Pixel_8_2` API 35.

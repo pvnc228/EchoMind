@@ -10,14 +10,23 @@ data class TranscriptionResponse(
 )
 
 @Serializable
+data class ResponseFormat(
+    @SerialName("type")
+    val type: String = "json_object"
+)
+
+@Serializable
 data class AnalysisRequest(
     @SerialName("model")
     val model: String = "local-model",
     @SerialName("messages")
     val messages: List<Message>,
     @SerialName("temperature")
-    val temperature: Double = 0.3
+    val temperature: Double = 0.3,
+    @SerialName("response_format")
+    val responseFormat: ResponseFormat? = null
 )
+
 
 @Serializable
 data class Message(

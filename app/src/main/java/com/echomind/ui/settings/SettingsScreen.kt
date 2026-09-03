@@ -12,7 +12,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
+import com.echomind.domain.model.TranscriptionEngine
 import androidx.compose.material.icons.Icons
+
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Warning
@@ -246,8 +252,13 @@ fun SettingsScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
+        val scrollState = rememberScrollState()
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(scrollState)
+                .padding(16.dp)
         ) {
             Text("API Configuration", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(16.dp))
@@ -286,8 +297,35 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Speech Recognition", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            TranscriptionEngine.values().forEach { engine ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = uiState.transcriptionEngine == engine,
+                        onClick = { viewModel.updateTranscriptionEngine(engine) }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(engine.displayName, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            if (uiState.transcriptionEngine == TranscriptionEngine.GEMINI) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { viewModel.applyGeminiPreset() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Apply Gemini Endpoint Preset")
+                }
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
             Text("Data", style = MaterialTheme.typography.titleMedium)
+
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = { showExportWarning = true },

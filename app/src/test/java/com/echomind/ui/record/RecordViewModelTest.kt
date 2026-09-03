@@ -5,6 +5,7 @@ import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import androidx.lifecycle.SavedStateHandle
 import com.echomind.data.local.security.AudioEncryptionUtil
 import com.echomind.data.remote.RemoteTranscriptionPreview
+import com.echomind.data.repository.AudioRepository
 import com.echomind.data.repository.LlmRepository
 import com.echomind.data.repository.ReflectionRepository
 import com.echomind.data.settings.SettingsStore
@@ -13,6 +14,8 @@ import com.echomind.domain.model.CaptureDraft
 import com.echomind.domain.model.ReflectionDraft
 import com.echomind.domain.model.ReflectionSession
 import com.echomind.domain.model.ReflectionStatus
+import com.echomind.domain.model.TranscriptionEngine
+
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -45,6 +48,7 @@ class RecordViewModelTest {
     private val audioEncryptionUtil: AudioEncryptionUtil = mockk(relaxed = true)
     private val llmRepository: LlmRepository = mockk(relaxed = true)
     private val settingsStore: SettingsStore = mockk(relaxed = true)
+    private val audioRepository: AudioRepository = mockk(relaxed = true)
     private val savedStateHandle = SavedStateHandle()
 
     private lateinit var tempCacheDir: File
@@ -60,7 +64,18 @@ class RecordViewModelTest {
         every { application.noBackupFilesDir } returns tempCacheDir
         coEvery { reflectionRepository.loadCaptureDraft() } returns null
         coEvery { reflectionRepository.loadLatestProposedReflection() } returns null
+        coEvery { audioRepository.getEngine() } returns TranscriptionEngine.WHISPER
+        coEvery { audioRepository.previewRemoteTranscription(any(), any()) } coAnswers {
+            llmRepository.previewAudioTranscription(firstArg(), secondArg())
+        }
+        coEvery { audioRepository.sendApprovedRemoteTranscription(any(), any()) } coAnswers {
+            llmRepository.sendApprovedAudioTranscription(firstArg(), secondArg())
+        }
+        every { audioRepository.cancelRemoteTranscriptionPreview(any()) } answers {
+            llmRepository.cancelTranscriptionPreviewNow(firstArg())
+        }
     }
+
 
     @After
     fun tearDown() {
@@ -337,12 +352,45 @@ class RecordViewModelTest {
         }
     }
 
+    @Test
+    fun `requestTranscription with ON_DEVICE engine transcribes offline without network preview`() = runTest(testDispatcher) {
+        val audioFile = File(tempCacheDir, "draft.m4a.enc").apply { writeText("encrypted bytes") }
+        val decryptedTemp = File(tempCacheDir, "decrypted.m4a").apply { writeText("plain audio") }
+        val draft = CaptureDraft(
+            id = 1L,
+            text = "Initial text",
+            encryptedAudioPath = audioFile.absolutePath,
+            durationMs = 3000L,
+            captureStage = "CAPTURE",
+            createdAt = 1000L,
+            updatedAt = 2000L
+        )
+        coEvery { reflectionRepository.loadCaptureDraft() } returns draft
+        coEvery { audioRepository.getEngine() } returns TranscriptionEngine.ON_DEVICE
+        every { audioEncryptionUtil.decryptToTempFile(audioFile.absolutePath) } returns decryptedTemp
+        coEvery { audioRepository.transcribeOffline(decryptedTemp) } returns Result.success("Offline words")
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.requestTranscription()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertNull(state.transcriptionPreview)
+        assertFalse(state.isTranscribing)
+        assertEquals("Initial text\nOffline words", state.thoughtText)
+        verify(exactly = 1) { audioEncryptionUtil.deleteTempFile(decryptedTemp.absolutePath) }
+        coVerify(exactly = 0) { audioRepository.previewRemoteTranscription(any(), any()) }
+    }
+
     private fun createViewModel() = RecordViewModel(
         application = application,
         reflectionRepository = reflectionRepository,
         audioEncryptionUtil = audioEncryptionUtil,
         llmRepository = llmRepository,
         settingsStore = settingsStore,
-        savedStateHandle = savedStateHandle
+        savedStateHandle = savedStateHandle,
+        audioRepository = audioRepository
     )
 }

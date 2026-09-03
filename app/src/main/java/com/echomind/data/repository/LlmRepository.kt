@@ -28,19 +28,34 @@ import kotlin.concurrent.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
+import com.echomind.data.analysis.ReflectionDraftParser
+import com.echomind.data.analysis.StructuredReflectionResult
+import com.echomind.data.remote.dto.ResponseFormat
+
 @Singleton
 class LlmRepository @Inject constructor(
     private val llmApi: LlmApi,
     private val offlineAnalyzer: SimpleTextAnalyzer,
     private val settingsStore: SettingsStore,
     private val knowledgeRepository: KnowledgeRepository,
-    private val baseUrlProvider: BaseUrlProvider
+    private val baseUrlProvider: BaseUrlProvider,
+    private val reflectionDraftParser: ReflectionDraftParser = ReflectionDraftParser()
 ) {
     private val consentLock = ReentrantLock()
     private val previewGeneration = AtomicLong(0)
     private var pendingQuestionPreview: RemoteQuestionPreview? = null
     private val transcriptionPreviewGeneration = AtomicLong(0)
     private var pendingTranscriptionPreview: RemoteTranscriptionPreview? = null
+
+    fun parseStructuredReflection(rawJson: String): StructuredReflectionResult? =
+        reflectionDraftParser.parse(rawJson)
+
+    fun createStructuredAnalysisRequest(messages: List<Message>, model: String = "local-model"): AnalysisRequest =
+        AnalysisRequest(
+            model = model,
+            messages = messages,
+            responseFormat = ResponseFormat(type = "json_object")
+        )
 
     suspend fun transcribeAudio(audioFile: File): Result<String> {
         return remoteRawContentBlocked()

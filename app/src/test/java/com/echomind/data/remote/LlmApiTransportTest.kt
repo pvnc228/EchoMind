@@ -36,6 +36,24 @@ class LlmApiTransportTest {
     }
 
     @Test
+    fun productionJsonSerializesResponseFormatWhenProvided() {
+        val json = Json {
+            ignoreUnknownKeys = true
+            coerceInputValues = true
+            encodeDefaults = true
+        }
+        val body = json.encodeToString(
+            com.echomind.data.remote.dto.AnalysisRequest.serializer(),
+            AnalysisRequest(
+                messages = listOf(Message("user", "analyze")),
+                responseFormat = com.echomind.data.remote.dto.ResponseFormat(type = "json_object")
+            )
+        )
+        assertTrue(body.contains("\"response_format\":{\"type\":\"json_object\"}"))
+    }
+
+
+    @Test
     fun realRetrofitApprovedRequestReachesExactDestinationPath() = runBlocking {
         val server = RecordingHttpServer()
         try {

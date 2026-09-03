@@ -8,12 +8,15 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.echomind.data.local.security.AudioEncryptionUtil
 import com.echomind.data.remote.RemoteTranscriptionPreview
+import com.echomind.data.repository.AudioRepository
 import com.echomind.data.repository.LlmRepository
 import com.echomind.data.repository.ReflectionRepository
 import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.ReflectionDraft
 import com.echomind.domain.model.ReflectionSession
 import com.echomind.domain.model.ReflectionStatus
+import com.echomind.domain.model.TranscriptionEngine
+
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import javax.inject.Inject
@@ -59,8 +62,10 @@ class RecordViewModel @Inject constructor(
     private val audioEncryptionUtil: AudioEncryptionUtil,
     private val llmRepository: LlmRepository,
     private val settingsStore: SettingsStore,
-    savedStateHandle: SavedStateHandle
+    savedStateHandle: SavedStateHandle,
+    private val audioRepository: AudioRepository
 ) : AndroidViewModel(application) {
+
 
     private val _uiState = MutableStateFlow(RecordUiState())
     val uiState: StateFlow<RecordUiState> = _uiState.asStateFlow()
@@ -253,6 +258,7 @@ class RecordViewModel @Inject constructor(
 
     fun requestTranscription() {
         val state = _uiState.value
+
         val audioPath = state.audioPath ?: return
         if (state.stage != ReflectionStage.CAPTURE || state.isTranscribing) return
 
@@ -263,16 +269,58 @@ class RecordViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            val engine = audioRepository.getEngine()
+            if (engine == TranscriptionEngine.ON_DEVICE) {
+                _uiState.value = state.copy(isTranscribing = true, error = null)
+                var tempDecryptedFile: File? = null
+                try {
+                    tempDecryptedFile = audioEncryptionUtil.decryptToTempFile(audioPath)
+                    val result = audioRepository.transcribeOffline(tempDecryptedFile)
+                    result.fold(
+                        onSuccess = { transcript ->
+                            val currentText = _uiState.value.thoughtText.trim()
+                            val updatedText = if (currentText.isBlank()) {
+                                transcript
+                            } else {
+                                "$currentText\n$transcript"
+                            }
+                            _uiState.value = _uiState.value.copy(
+                                isTranscribing = false,
+                                thoughtText = updatedText
+                            )
+                            persistDraftNow()
+                        },
+                        onFailure = { error ->
+                            _uiState.value = _uiState.value.copy(
+                                isTranscribing = false,
+                                error = error.message ?: "On-device transcription failed."
+                            )
+                        }
+                    )
+                } catch (e: Exception) {
+                    _uiState.value = _uiState.value.copy(
+                        isTranscribing = false,
+                        error = e.message ?: "Could not decrypt or transcribe audio."
+                    )
+                } finally {
+                    tempDecryptedFile?.let {
+                        audioEncryptionUtil.deleteTempFile(it.absolutePath)
+                    }
+                }
+                return@launch
+            }
+
+            // Remote engines: WHISPER or GEMINI
             if (settingsStore.isLocalMode()) {
                 _uiState.value = state.copy(
-                    error = "Local mode is enabled. Turn off Local Mode in Settings to transcribe audio remotely, or type your reflection manually.",
+                    error = "Local mode is enabled. Turn off Local Mode in Settings to transcribe audio remotely, or switch to Android Speech in Settings.",
                     transcriptionPreview = null
                 )
                 return@launch
             }
 
             _uiState.value = state.copy(error = null)
-            val result = llmRepository.previewAudioTranscription(
+            val result = audioRepository.previewRemoteTranscription(
                 audioFile = audioFile,
                 durationMs = state.durationMs
             )
@@ -308,7 +356,7 @@ class RecordViewModel @Inject constructor(
             var tempDecryptedFile: File? = null
             try {
                 tempDecryptedFile = audioEncryptionUtil.decryptToTempFile(encryptedPath)
-                val result = llmRepository.sendApprovedAudioTranscription(
+                val result = audioRepository.sendApprovedRemoteTranscription(
                     requestId = preview.requestId,
                     audioFile = tempDecryptedFile
                 )
@@ -348,9 +396,10 @@ class RecordViewModel @Inject constructor(
 
     fun cancelTranscription() {
         val preview = _uiState.value.transcriptionPreview ?: return
-        llmRepository.cancelTranscriptionPreviewNow(preview.requestId)
+        audioRepository.cancelRemoteTranscriptionPreview(preview.requestId)
         _uiState.value = _uiState.value.copy(transcriptionPreview = null)
     }
+
 
     fun retry() {
         val state = _uiState.value

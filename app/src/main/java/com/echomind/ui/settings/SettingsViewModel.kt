@@ -26,16 +26,20 @@ import javax.inject.Inject
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 
+import com.echomind.domain.model.TranscriptionEngine
+
 data class SettingsUiState(
     val apiEndpoint: String = "http://localhost:1234",
     val apiKey: String = "",
     val localMode: Boolean = true,
+    val transcriptionEngine: TranscriptionEngine = TranscriptionEngine.ON_DEVICE,
     val exportState: ExportState = ExportState.Idle,
     val restoreState: RestoreState = RestoreState.Idle,
     val showEndpointWarning: Boolean = false,
     val dismissedCards: List<HomeCardDispositionEntity> = emptyList(),
     val pendingAudioCleanupCount: Int = 0
 )
+
 
 sealed interface ExportState {
     data object Idle : ExportState
@@ -82,13 +86,28 @@ class SettingsViewModel @Inject constructor(
                 apiEndpoint = settings.apiEndpoint,
                 apiKey = credentialsProvider.apiKey,
                 localMode = settings.localMode,
+                transcriptionEngine = settings.transcriptionEngine,
                 dismissedCards = dispositions.filter { it.dismissedAt != null },
                 pendingAudioCleanupCount = pendingAudioCleanupCount
             )
         }
     }
 
+    fun updateTranscriptionEngine(engine: TranscriptionEngine) {
+        _uiState.value = _uiState.value.copy(transcriptionEngine = engine)
+        viewModelScope.launch(ioDispatcher) {
+            settingsStore.setTranscriptionEngine(engine)
+        }
+    }
+
+    fun applyGeminiPreset() {
+        updateApiEndpoint("https://generativelanguage.googleapis.com/v1beta/openai/")
+        updateTranscriptionEngine(TranscriptionEngine.GEMINI)
+    }
+
+
     fun updateApiEndpoint(endpoint: String) {
+
         val isNonLocal = endpoint.contains("://") &&
             !endpoint.contains("localhost") &&
             !endpoint.contains("127.0.0.1") &&

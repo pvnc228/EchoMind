@@ -1,0 +1,108 @@
+[
+  {
+    "text": "Start with one thought",
+    "center": "[541,1236]",
+    "key": 3506402
+  },
+  {
+    "text": "Tap + to write your first reflection",
+    "center": "[540,1351]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[964,2158]",
+    "key": 3506402
+  },
+  {
+    "text": "EchoMind",
+    "center": "[183,216]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[377,217]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[503,217]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[629,217]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[755,217]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[881,217]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[1007,217]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "New reflection",
+    "center": "[964,2158]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Ask AI",
+    "center": "[376,216]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Guidance",
+    "center": "[502,216]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Decisions",
+    "center": "[628,216]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Themes",
+    "center": "[754,216]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Search",
+    "center": "[880,216]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Settings",
+    "center": "[1006,216]",
+    "key": 3506402
+  }
+]

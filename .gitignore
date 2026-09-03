@@ -12,3 +12,4 @@ local.properties
 
 # opencode agent
 /opencode_agent
+/.worktrees/

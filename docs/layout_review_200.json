@@ -1,0 +1,154 @@
+[
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[964,2158]",
+    "key": 3506402
+  },
+  {
+    "text": "Nothing needs attention now",
+    "center": "[496,1191]",
+    "key": 3506402
+  },
+  {
+    "text": "Recent",
+    "center": "[158,1306]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[540,1551]",
+    "key": 3506402
+  },
+  {
+    "text": "EchoMind",
+    "center": "[183,216]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[377,217]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[503,217]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[629,217]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[755,217]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[881,217]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[1007,217]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "New reflection",
+    "center": "[964,2158]",
+    "key": 3506402
+  },
+  {
+    "text": "What are you thinking about?",
+    "center": "[540,496]",
+    "key": 3506402
+  },
+  {
+    "text": "Capture a thought, or revisit one something reminds you of.",
+    "center": "[540,767]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[411,1007]",
+    "key": 3506402
+  },
+  {
+    "text": "General",
+    "center": "[191,1457]",
+    "key": 3506402
+  },
+  {
+    "text": "Sep 02, 2026 23:32",
+    "center": "[729,1457]",
+    "key": 3506402
+  },
+  {
+    "text": "Testing text for EchoMind reflection",
+    "center": "[540,1591]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Ask AI",
+    "center": "[376,216]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Guidance",
+    "center": "[502,216]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Decisions",
+    "center": "[628,216]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Themes",
+    "center": "[754,216]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Search",
+    "center": "[880,216]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Settings",
+    "center": "[1006,216]",
+    "key": 3506402
+  },
+  {
+    "text": "Write a reflection",
+    "center": "[411,1007]",
+    "key": 3506402
+  }
+]

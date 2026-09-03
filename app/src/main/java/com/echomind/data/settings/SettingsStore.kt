@@ -12,12 +12,15 @@ import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
+import com.echomind.domain.model.TranscriptionEngine
+
 private val Context.settingsDataStore by preferencesDataStore(name = "settings")
 private const val DEFAULT_API_ENDPOINT = "http://localhost:1234"
 
 data class StoredSettings(
     val apiEndpoint: String = DEFAULT_API_ENDPOINT,
-    val localMode: Boolean = true
+    val localMode: Boolean = true,
+    val transcriptionEngine: TranscriptionEngine = TranscriptionEngine.ON_DEVICE
 )
 
 @Singleton
@@ -36,16 +39,25 @@ class SettingsStore @Inject constructor(
                 localMode = remoteAccessPolicy.isLocalMode()
             )
         }
+        val engineName = preferences[KEY_TRANSCRIPTION_ENGINE]
+        val engine = engineName?.let {
+            runCatching { TranscriptionEngine.valueOf(it) }.getOrNull()
+        } ?: TranscriptionEngine.ON_DEVICE
+
+
         val settings = StoredSettings(
             apiEndpoint = preferences[KEY_API_ENDPOINT] ?: DEFAULT_API_ENDPOINT,
-            localMode = preferences[KEY_LOCAL_MODE] ?: true
+            localMode = preferences[KEY_LOCAL_MODE] ?: true,
+            transcriptionEngine = engine
         )
         remoteAccessPolicy.hydratePersisted(settings)
         return settings.copy(
             apiEndpoint = remoteAccessPolicy.endpoint(),
-            localMode = remoteAccessPolicy.isLocalMode()
+            localMode = remoteAccessPolicy.isLocalMode(),
+            transcriptionEngine = engine
         )
     }
+
 
     suspend fun getSuppressedCards(): Map<Long, Long> {
         val prefs = try {
@@ -105,9 +117,14 @@ class SettingsStore @Inject constructor(
         dataStore.edit { it[KEY_LOCAL_MODE] = enabled }
     }
 
+    suspend fun setTranscriptionEngine(engine: TranscriptionEngine) {
+        dataStore.edit { it[KEY_TRANSCRIPTION_ENGINE] = engine.name }
+    }
+
     private companion object {
         val KEY_API_ENDPOINT = stringPreferencesKey("api_endpoint")
         val KEY_LOCAL_MODE = booleanPreferencesKey("local_mode")
+        val KEY_TRANSCRIPTION_ENGINE = stringPreferencesKey("transcription_engine")
         val KEY_SUPPRESSED_CARDS = stringPreferencesKey("suppressed_cards")
         val KEY_LEGACY_SUPPRESSION_RESET = booleanPreferencesKey("legacy_suppression_reset_v6")
     }

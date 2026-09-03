@@ -2144,3 +2144,32 @@ profiling, and a read-only release-security review. It does not close M7.
   - Removed obsolete experimental Android 17 / API 37 AVD (`Pixel_8.avd`) and `system-images/android-37.1` (which failed due to upstream Espresso `InputManager.getInstance` removal).
   - Removed unneeded intermediate Android 11 / API 30 AVD (`EchoMind_API30_GoogleApis.avd`) and `system-images/android-30`.
   - Recovered **~34 GB** of storage on drive C, retaining the required reference release gate (`Pixel_8_2` API 35) and minimum boundary gate (`EchoMind_API26_GoogleApis` API 26).
+
+---
+
+## 2026-09-03 — Multi-Provider Voice, Structured JSON Outputs & android-cli Automation
+
+### Done
+
+- **Multi-Provider Voice Strategy (Milestone M6 / Voice)**:
+  - Added clean technical `TranscriptionEngine` enum (`ON_DEVICE`, `WHISPER`, `GEMINI`).
+  - Implemented `SpeechRecognizerWrapper` wrapping `android.speech.SpeechRecognizer` with `EXTRA_PREFER_OFFLINE = true` and `createOnDeviceSpeechRecognizer` on API 31+.
+  - Created `AudioRepository` orchestrating offline vs remote transcription flows.
+  - Refactored `RecordViewModel` to route transcription based on selected engine:
+    - Mode 1 (`ON_DEVICE`): 100% offline on-device speech recognition without network requests or preview dialog.
+    - Modes 2 & 3 (`WHISPER` / `GEMINI`): Preserved strict privacy boundary with Exact Evidence Preview (filename, size, duration) and one-shot user confirmation.
+  - Added Speech Recognition engine selector and Gemini OpenAI-compatible preset button in `SettingsScreen` and `SettingsViewModel`.
+- **Structured Outputs without Vendor Lock-in (JSON Standardization)**:
+  - Extended open network request DTO `AnalysisRequest` with standard parameter `response_format: { type: "json_object" }`.
+  - Implemented `ReflectionDraftParser` handling markdown code block wrapping, raw json, missing keys, and empty lists.
+  - Added structured analysis helpers to `LlmRepository`.
+- **UI & Accessibility Automation via android-cli**:
+  - Installed and verified `android.exe` (v1.0.15985488).
+  - Dumped Compose layout hierarchies: `docs/layout_home_100.json`, `docs/layout_home_200.json`, `docs/layout_review_100.json`, `docs/layout_settings_200.json`, `docs/layout_settings_gemini.json`.
+  - Captured visual evidence screenshots: `docs/screenshots/home_100.png`, `docs/screenshots/home_200.png`, `docs/screenshots/review_100.png`, `docs/screenshots/settings_200.png`, `docs/screenshots/settings_gemini.png`.
+  - Created automated validator `tools/validate_layout.py` verifying 200% font scale in-bounds layout, absence of ActionDock overlaps, and TalkBack traversal order consistency.
+- **Verification Gates**:
+  - `:app:testDebugUnitTest --rerun-tasks`: **31/31 passed (100%)**
+  - `:app:connectedDebugAndroidTest --rerun-tasks`: **107/107 passed (100%)** on `Pixel_8_2` API 35
+  - `:app:lintDebug --rerun-tasks`: **0 errors**
+  - `git diff --check`: clean (exit code 0)
