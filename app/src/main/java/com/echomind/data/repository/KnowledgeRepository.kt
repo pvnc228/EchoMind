@@ -78,22 +78,31 @@ class KnowledgeRepository @Inject constructor(
     }
 
     suspend fun linkConclusionToTheme(themeId: Long, revisionId: Long) {
-        requireNotNull(knowledgeDao.getThemeById(themeId)) { "Theme $themeId does not exist." }
-        requireNotNull(knowledgeDao.getRevisionById(revisionId)) { "Revision $revisionId does not exist." }
-        check(
-            knowledgeDao.insertThemeLink(
-            ThemeLinkEntity(
-                themeId = themeId,
-                conclusionRevisionId = revisionId,
-                confirmed = true,
-                createdAt = System.currentTimeMillis()
-            )
-            ) != -1L
-        ) { "Theme link already exists and requires explicit review." }
+        database.withTransaction {
+            requireNotNull(knowledgeDao.getThemeById(themeId)) { "Theme $themeId does not exist." }
+            val revision = requireNotNull(knowledgeDao.getRevisionById(revisionId)) { "Revision $revisionId does not exist." }
+            val conclusion = requireNotNull(knowledgeDao.getConclusionById(revision.conclusionId)) { "Conclusion ${revision.conclusionId} does not exist." }
+            require(conclusion.currentRevisionId == revisionId) { "Cannot link a historical revision to a theme." }
+            check(
+                knowledgeDao.insertThemeLink(
+                    ThemeLinkEntity(
+                        themeId = themeId,
+                        conclusionRevisionId = revisionId,
+                        confirmed = true,
+                        createdAt = System.currentTimeMillis()
+                    )
+                ) != -1L
+            ) { "Theme link already exists and requires explicit review." }
+        }
     }
 
     suspend fun unlinkConclusionFromTheme(themeId: Long, revisionId: Long) {
-        knowledgeDao.deleteThemeLink(themeId, revisionId)
+        database.withTransaction {
+            val revision = requireNotNull(knowledgeDao.getRevisionById(revisionId)) { "Revision $revisionId does not exist." }
+            val conclusion = requireNotNull(knowledgeDao.getConclusionById(revision.conclusionId)) { "Conclusion ${revision.conclusionId} does not exist." }
+            require(conclusion.currentRevisionId == revisionId) { "Cannot unlink a historical revision from a theme." }
+            knowledgeDao.deleteThemeLink(themeId, revisionId)
+        }
     }
 
     suspend fun getThemeConclusions(themeId: Long): List<ThemeConclusion> {
@@ -155,22 +164,31 @@ class KnowledgeRepository @Inject constructor(
         require(relationship == Relationship.SUPPORTS || relationship == Relationship.CONTRADICTS) {
             "Relationship must be supports or contradicts."
         }
-        requireNotNull(knowledgeDao.getRevisionById(revisionId)) { "Revision $revisionId missing." }
-        requireNotNull(knowledgeDao.getRawRecordById(sourceRecordId)) { "Record $sourceRecordId missing." }
-        knowledgeDao.insertEvidenceLink(
-            EvidenceLinkEntity(
-                conclusionRevisionId = revisionId,
-                sourceRawRecordId = sourceRecordId,
-                relationship = relationship,
-                status = "confirmed",
-                origin = "user_confirmed",
-                createdAt = System.currentTimeMillis()
+        database.withTransaction {
+            val revision = requireNotNull(knowledgeDao.getRevisionById(revisionId)) { "Revision $revisionId missing." }
+            val conclusion = requireNotNull(knowledgeDao.getConclusionById(revision.conclusionId)) { "Conclusion ${revision.conclusionId} missing." }
+            require(conclusion.currentRevisionId == revisionId) { "Cannot link evidence to a historical revision." }
+            requireNotNull(knowledgeDao.getRawRecordById(sourceRecordId)) { "Record $sourceRecordId missing." }
+            knowledgeDao.insertEvidenceLink(
+                EvidenceLinkEntity(
+                    conclusionRevisionId = revisionId,
+                    sourceRawRecordId = sourceRecordId,
+                    relationship = relationship,
+                    status = "confirmed",
+                    origin = "user_confirmed",
+                    createdAt = System.currentTimeMillis()
+                )
             )
-        )
+        }
     }
 
     suspend fun unlinkRelatedRecord(revisionId: Long, sourceRecordId: Long) {
-        knowledgeDao.deleteEvidenceLink(revisionId, sourceRecordId)
+        database.withTransaction {
+            val revision = requireNotNull(knowledgeDao.getRevisionById(revisionId)) { "Revision $revisionId missing." }
+            val conclusion = requireNotNull(knowledgeDao.getConclusionById(revision.conclusionId)) { "Conclusion ${revision.conclusionId} missing." }
+            require(conclusion.currentRevisionId == revisionId) { "Cannot unlink evidence from a historical revision." }
+            knowledgeDao.deleteEvidenceLink(revisionId, sourceRecordId)
+        }
     }
 
     suspend fun getRelatedRecords(revisionId: Long): List<RelatedRecord> {

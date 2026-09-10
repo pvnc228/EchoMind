@@ -2173,3 +2173,43 @@ profiling, and a read-only release-security review. It does not close M7.
   - `:app:connectedDebugAndroidTest --rerun-tasks`: **107/107 passed (100%)** on `Pixel_8_2` API 35
   - `:app:lintDebug --rerun-tasks`: **0 errors**
   - `git diff --check`: clean (exit code 0)
+
+---
+
+## 2026-09-10 — Architecture & Logic Audit Repairs (A01–A13)
+
+### Done
+
+- **Security & Cryptography (A01, A03, A06, A09)**:
+  - `DatabaseModule.kt`: Removed premature `passphrase.fill(0)` wiping before Room initialization; added `ensureDatabaseKeyCompatibility` detecting legacy databases encrypted with 32 zero bytes and rekeying them to `targetPassphrase` via native SQLCipher `rekey(byte[])`. Added instrumented test `DatabaseModuleTest.kt`.
+  - `AudioEncryptionUtil.kt`: Decryption failures (tampered ciphertext / AEAD authentication tag mismatch) now guarantee `tempFile.delete()` in a `try/catch` block before rethrowing.
+  - `RemoteTranscriptionRequest.kt` & `LlmRepository.kt`: Bound user consent to SHA-256 digest of previewed audio; verify file digest matches approved hash before reading/transmitting bytes.
+  - `DataRedactor.kt`: Created local PII redactor (emails, phone numbers, IPv4 addresses) and applied before preview and transmission in `LlmRepository` and `GuidanceRepository`.
+- **Speech Recognition & Remote Endpoints (A04, A05)**:
+  - `SpeechRecognizerWrapper.kt`: `transcribeAudioFile` fails closed with `OfflineSpeechRecognitionUnavailableException` instead of opening the device microphone.
+  - `RemoteAccessPolicy.kt`: Fixed `joinPath` to prevent duplication of `/v1/` segment when base URL ends with `/openai` or `/v1` (e.g. Gemini preset).
+- **Privacy & Guidance Invariants (A02, A11, A12, A13)**:
+  - `GuidanceRepository.kt`: Excluded raw `originalText` of external sources from guidance messages; substituted confirmed conclusions or local evidence stubs.
+  - Fixed false-positive safety refusal on Russian word forms of "мотивация".
+  - Tokenized candidate search using `LinkCandidateRanker.tokenize` and bounded candidate retrieval (`.take(MAX_CANDIDATES)`) prior to projection.
+  - Enforced bounded prompt budgets (question clamped to 500 chars, max 10 messages, max 5 evidence items).
+- **Historical Immutability & Main-Safety (A07, A08, A10)**:
+  - `KnowledgeRepository.kt`: Enforced `conclusion.currentRevisionId == revisionId` inside `database.withTransaction` for link/unlink of themes and related records.
+  - `ExportManager.kt`: Wrapped ZIP export/import in `withContext(Dispatchers.IO)`.
+  - `ReflectionRepository.kt`: Wrapped reflection heuristic analysis in `withContext(analysisDispatcher)`.
+  - `RecordViewModel.kt`: Injected `@IoDispatcher` for audio encryption/decryption on background dispatcher.
+  - `LocalReflectionAnalyzer.kt`: Used word-boundary regex on `lowercase()` to prevent substrings ("холодно") from triggering counterevidence; required specialization terms before attributing praise to identity.
+
+### Evidence
+
+- `:app:testDebugUnitTest --rerun-tasks`: **114/114 passed (100%)** across 22 suites (0 failures, 0 errors)
+  - `AuditUnitProbeTest`: 3/3 passed
+  - `AuditHeuristicProbeTest`: 3/3 passed
+  - `LocalReflectionAnalyzerTest`: 15/15 passed
+  - `GuidanceRepositoryTest`: 13/13 passed
+  - `RecordViewModelTest`: 8/8 passed
+- `:app:connectedDebugAndroidTest --rerun-tasks`: **116/116 passed (100%)** on `Pixel_8_2` API 35 (3m 42s)
+  - `AuditDeviceProbeTest`: 6/6 passed
+  - `DatabaseModuleTest`: 3/3 passed (including legacy zero-key recovery & rekeying)
+- `:app:lintDebug --rerun-tasks`: **0 errors** (2m 10s)
+- `git diff --check`: clean (exit code 0)

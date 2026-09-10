@@ -24,6 +24,8 @@ import com.echomind.domain.model.HomeCardType
 import com.echomind.domain.model.Relationship
 import com.echomind.domain.model.ReflectionStatus
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -91,251 +93,259 @@ class ExportManager @Inject constructor(
     private val knowledgeDao: KnowledgeDao,
     private val audioEncryptionUtil: AudioEncryptionUtil
 ) {
-    suspend fun exportToZip(): Result<File> = runCatching {
-        val snapshot = database.withTransaction { snapshotInTransaction() }
-        val audioNames = buildMap {
-            snapshot.rawRecords
-                .filter { it.audioPath != null }
-                .distinctBy { it.audioPath }
-                .forEach { raw -> put(raw.audioPath!!, "audio/raw_${raw.id}.wav") }
-            snapshot.entries
-                .filter { it.audioPath != null && !containsKey(it.audioPath) }
-                .forEach { entry -> put(entry.audioPath!!, "audio/entry_${entry.id}.wav") }
-            snapshot.captureDraft?.encryptedAudioPath?.let { put(it, "audio/draft_1.wav") }
-        }
-        val preparedAudio = mutableListOf<PreparedAudio>()
-        try {
-            audioNames.forEach { (path, archiveName) ->
-                val source = File(path)
-                require(source.exists()) { "Referenced audio is missing: $path" }
-                val decrypted = audioEncryptionUtil.decryptToTempFile(path)
-                preparedAudio += PreparedAudio(
-                    archiveName = archiveName,
-                    file = decrypted,
-                    size = decrypted.length(),
-                    sha256 = sha256(decrypted)
-                )
+    suspend fun exportToZip(): Result<File> = withContext(Dispatchers.IO) {
+        runCatching {
+            val snapshot = database.withTransaction { snapshotInTransaction() }
+            val audioNames = buildMap {
+                snapshot.rawRecords
+                    .filter { it.audioPath != null }
+                    .distinctBy { it.audioPath }
+                    .forEach { raw -> put(raw.audioPath!!, "audio/raw_${raw.id}.wav") }
+                snapshot.entries
+                    .filter { it.audioPath != null && !containsKey(it.audioPath) }
+                    .forEach { entry -> put(entry.audioPath!!, "audio/entry_${entry.id}.wav") }
+                snapshot.captureDraft?.encryptedAudioPath?.let { put(it, "audio/draft_1.wav") }
             }
-        } catch (error: Exception) {
-            preparedAudio.forEach { it.file.delete() }
-            throw error
-        }
-        val dateStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val exportDir = File(
-            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-            "EchoMind"
-        )
-        exportDir.mkdirs()
-        val zipFile = File(exportDir, "echomind_export_$dateStr.zip")
-
-        try {
-            ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
-                val manifest = buildManifest(
-                    snapshot = snapshot,
-                    audioNames = audioNames,
-                    files = preparedAudio.map { ExportFile(it.archiveName, it.size, it.sha256) }
-                )
-            val json = Json { prettyPrint = true }
-            zos.putNextEntry(ZipEntry("manifest.json"))
-            zos.write(json.encodeToString(manifest).toByteArray())
-            zos.closeEntry()
-
-                preparedAudio.forEach { audio ->
-                    zos.putNextEntry(ZipEntry(audio.archiveName))
-                    audio.file.inputStream().use { it.copyTo(zos) }
-                    zos.closeEntry()
+            val preparedAudio = mutableListOf<PreparedAudio>()
+            try {
+                audioNames.forEach { (path, archiveName) ->
+                    val source = File(path)
+                    require(source.exists()) { "Referenced audio is missing: $path" }
+                    val decrypted = audioEncryptionUtil.decryptToTempFile(path)
+                    preparedAudio += PreparedAudio(
+                        archiveName = archiveName,
+                        file = decrypted,
+                        size = decrypted.length(),
+                        sha256 = sha256(decrypted)
+                    )
                 }
+            } catch (error: Exception) {
+                preparedAudio.forEach { it.file.delete() }
+                throw error
             }
-        } catch (error: Exception) {
-            zipFile.delete()
-            throw error
-        } finally {
-            preparedAudio.forEach { it.file.delete() }
-        }
+            val dateStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val exportDir = File(
+                context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+                "EchoMind"
+            )
+            exportDir.mkdirs()
+            val zipFile = File(exportDir, "echomind_export_$dateStr.zip")
 
-        zipFile
+            try {
+                ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
+                    val manifest = buildManifest(
+                        snapshot = snapshot,
+                        audioNames = audioNames,
+                        files = preparedAudio.map { ExportFile(it.archiveName, it.size, it.sha256) }
+                    )
+                    val json = Json { prettyPrint = true }
+                    zos.putNextEntry(ZipEntry("manifest.json"))
+                    zos.write(json.encodeToString(manifest).toByteArray())
+                    zos.closeEntry()
+
+                    preparedAudio.forEach { audio ->
+                        zos.putNextEntry(ZipEntry(audio.archiveName))
+                        audio.file.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
+                    }
+                }
+            } catch (error: Exception) {
+                zipFile.delete()
+                throw error
+            } finally {
+                preparedAudio.forEach { it.file.delete() }
+            }
+
+            zipFile
+        }
     }
 
     suspend fun previewRestore(
         archive: File,
         scope: RestoreScope = RestoreScope.All
-    ): Result<RestorePreview> = runCatching {
-        require(archive.isFile) { "Restore archive does not exist." }
-        val manifest = readAndValidateArchive(archive).manifest
-        buildRestorePlan(manifest, scope, readSnapshot()).preview
+    ): Result<RestorePreview> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(archive.isFile) { "Restore archive does not exist." }
+            val manifest = readAndValidateArchive(archive).manifest
+            buildRestorePlan(manifest, scope, readSnapshot()).preview
+        }
     }
 
     suspend fun restoreFromZip(archive: File): Result<Unit> =
         restoreFromZip(archive, RestoreScope.EmptyProfile)
 
-    suspend fun restoreFromZip(archive: File, scope: RestoreScope): Result<Unit> = runCatching {
-        require(archive.isFile) { "Restore archive does not exist." }
-        val manifest = readAndValidateArchive(archive).manifest
-        val initialPlan = buildRestorePlan(manifest, scope, readSnapshot())
-        if (scope == RestoreScope.EmptyProfile) {
-            require(initialPlan.isEmptyTarget) { "Restore requires an empty profile" }
-        }
-        require(initialPlan.preview.conflicts.isEmpty()) {
-            "Restore conflicts with the existing profile: ${
-                initialPlan.preview.conflicts.joinToString { "${it.entityType}:${it.identifier}" }
-            }"
-        }
+    suspend fun restoreFromZip(archive: File, scope: RestoreScope): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(archive.isFile) { "Restore archive does not exist." }
+            val manifest = readAndValidateArchive(archive).manifest
+            val initialPlan = buildRestorePlan(manifest, scope, readSnapshot())
+            if (scope == RestoreScope.EmptyProfile) {
+                require(initialPlan.isEmptyTarget) { "Restore requires an empty profile" }
+            }
+            require(initialPlan.preview.conflicts.isEmpty()) {
+                "Restore conflicts with the existing profile: ${
+                    initialPlan.preview.conflicts.joinToString { "${it.entityType}:${it.identifier}" }
+                }"
+            }
 
-        val sessionDir = File(context.noBackupFilesDir, "restore_${UUID.randomUUID()}")
-        val audioDir = File(context.noBackupFilesDir, "restored_audio")
-        val stagedAudio = mutableMapOf<String, String>()
-        try {
-            if (initialPlan.audioFileNames.isNotEmpty()) {
-                sessionDir.mkdirs()
-                audioDir.mkdirs()
-                ZipFile(archive).use { zip ->
-                    initialPlan.audioFileNames.forEachIndexed { index, fileName ->
-                        val fileMetadata = manifest.files.single { it.name == fileName }
-                        val source = requireNotNull(zip.getEntry(fileMetadata.name))
-                        val plaintext = File(sessionDir, "$index.wav")
-                        zip.getInputStream(source).use { input ->
-                            plaintext.outputStream().use { input.copyTo(it) }
+            val sessionDir = File(context.noBackupFilesDir, "restore_${UUID.randomUUID()}")
+            val audioDir = File(context.noBackupFilesDir, "restored_audio")
+            val stagedAudio = mutableMapOf<String, String>()
+            try {
+                if (initialPlan.audioFileNames.isNotEmpty()) {
+                    sessionDir.mkdirs()
+                    audioDir.mkdirs()
+                    val archiveZip = ZipFile(archive)
+                    archiveZip.use { zip ->
+                        initialPlan.audioFileNames.forEachIndexed { index, name ->
+                            val entry = requireNotNull(zip.getEntry(name)) {
+                                "Archive audio entry $name is missing."
+                            }
+                            val plaintext = File(sessionDir, "audio_$index.wav")
+                            zip.getInputStream(entry).use { input ->
+                                plaintext.outputStream().use { output -> input.copyTo(output) }
+                            }
+                            val fileMetadata = manifest.files.first { it.name == name }
+                            val encrypted = File(
+                                audioDir,
+                                "restore_${index}_${fileMetadata.sha256}.enc"
+                            )
+                            audioEncryptionUtil.encryptFile(plaintext, encrypted)
+                            stagedAudio[fileMetadata.name] = encrypted.absolutePath
                         }
-                        val encrypted = File(
-                            audioDir,
-                            "restore_${index}_${fileMetadata.sha256}.enc"
-                        )
-                        audioEncryptionUtil.encryptFile(plaintext, encrypted)
-                        stagedAudio[fileMetadata.name] = encrypted.absolutePath
                     }
                 }
-            }
-            database.withTransaction {
-                val plan = buildRestorePlan(manifest, scope, snapshotInTransaction())
-                if (scope == RestoreScope.EmptyProfile) {
-                    require(plan.isEmptyTarget) { "Restore requires an empty profile" }
-                }
-                require(plan.preview.conflicts.isEmpty()) {
-                    "Restore conflicts with the existing profile: ${
-                        plan.preview.conflicts.joinToString { "${it.entityType}:${it.identifier}" }
-                    }"
-                }
-                entryDao.insertEntries(plan.entries.map { entry ->
-                    EntryEntity(
-                        id = entry.id,
-                        transcript = entry.transcript,
-                        audioPath = entry.audioFileName?.let(stagedAudio::get),
-                        durationMs = entry.durationMs,
-                        createdAt = entry.createdAt,
-                        category = entry.category,
-                        tags = entry.tags,
-                        summary = entry.summary,
-                        tasks = entry.tasks,
-                        ideas = entry.ideas,
-                        emotions = entry.emotions
-                    )
-                })
-                knowledgeDao.insertRawRecords(plan.rawRecords.map { raw ->
-                    RawRecordEntity(
-                        id = raw.id,
-                        legacyEntryId = raw.legacyEntryId,
-                        originalText = raw.originalText,
-                        audioPath = raw.audioFileName?.let(stagedAudio::get),
-                        durationMs = raw.durationMs,
-                        createdAt = raw.createdAt
-                    )
-                })
-                knowledgeDao.insertHypotheses(plan.hypotheses.sortedBy { it.parentHypothesisId != null }.map {
-                    AiHypothesisEntity(
-                        id = it.id,
-                        rawRecordId = it.rawRecordId,
-                        draftJson = it.draftJson,
-                        counterargument = it.counterargument,
-                        status = it.status,
-                        parentHypothesisId = it.parentHypothesisId,
-                        followUpQuestion = it.followUpQuestion,
-                        createdAt = it.createdAt
-                    )
-                })
-                knowledgeDao.insertConclusions(plan.conclusions.map {
-                    ConclusionEntity(it.id, it.rawRecordId, it.currentRevisionId, it.createdAt)
-                })
-                knowledgeDao.insertRevisions(plan.revisions.map {
-                    ConclusionRevisionEntity(it.id, it.conclusionId, it.version, it.text, it.author, it.createdAt)
-                })
-                knowledgeDao.insertThemes(plan.themes.map {
-                    ThemeEntity(it.id, it.name, it.createdAt, it.archivedAt)
-                })
-                knowledgeDao.insertEvidenceLinks(plan.evidenceLinks.map {
-                    EvidenceLinkEntity(
-                        id = it.id,
-                        conclusionRevisionId = it.conclusionRevisionId,
-                        sourceRawRecordId = it.sourceRawRecordId,
-                        relationship = it.relationship,
-                        status = it.status,
-                        origin = it.origin,
-                        createdAt = it.createdAt,
-                        createdAtEstimated = it.createdAtEstimated,
-                        reviewMetadata = it.reviewMetadata
-                    )
-                })
-                knowledgeDao.insertThemeLinks(plan.themeLinks.map {
-                    ThemeLinkEntity(
-                        id = it.id,
-                        themeId = it.themeId,
-                        conclusionRevisionId = it.conclusionRevisionId,
-                        confirmed = it.confirmed,
-                        createdAt = it.createdAt,
-                        origin = it.origin,
-                        reviewRequired = it.reviewRequired
-                    )
-                })
-                knowledgeDao.insertDecisions(plan.decisions.map {
-                    DecisionEntity(
-                        id = it.id,
-                        question = it.question,
-                        suggestion = it.suggestion,
-                        choice = it.choice,
-                        sourceRevisionId = it.sourceRevisionId,
-                        createdAt = it.createdAt,
-                        suggestionAuthor = it.suggestionAuthor,
-                        suggestionSource = it.suggestionSource,
-                        suggestionStatus = it.suggestionStatus
-                    )
-                })
-                knowledgeDao.insertOutcomes(plan.outcomes.map {
-                    OutcomeEntity(it.id, it.decisionId, it.report, it.createdAt)
-                })
-                plan.captureDraft?.let { draft ->
-                    knowledgeDao.upsertCaptureDraft(
-                        CaptureDraftEntity(
-                            id = draft.id,
-                            text = draft.text,
-                            encryptedAudioPath = draft.encryptedAudioFileName?.let(stagedAudio::get),
-                            durationMs = draft.durationMs,
-                            captureStage = draft.captureStage,
-                            createdAt = draft.createdAt,
-                            updatedAt = draft.updatedAt
+                database.withTransaction {
+                    val plan = buildRestorePlan(manifest, scope, snapshotInTransaction())
+                    if (scope == RestoreScope.EmptyProfile) {
+                        require(plan.isEmptyTarget) { "Restore requires an empty profile" }
+                    }
+                    require(plan.preview.conflicts.isEmpty()) {
+                        "Restore conflicts with the existing profile: ${
+                            plan.preview.conflicts.joinToString { "${it.entityType}:${it.identifier}" }
+                        }"
+                    }
+                    entryDao.insertEntries(plan.entries.map { entry ->
+                        EntryEntity(
+                            id = entry.id,
+                            transcript = entry.transcript,
+                            audioPath = entry.audioFileName?.let(stagedAudio::get),
+                            durationMs = entry.durationMs,
+                            createdAt = entry.createdAt,
+                            category = entry.category,
+                            tags = entry.tags,
+                            summary = entry.summary,
+                            tasks = entry.tasks,
+                            ideas = entry.ideas,
+                            emotions = entry.emotions
                         )
-                    )
-                }
-                plan.dispositions.forEach { disposition ->
-                    knowledgeDao.upsertHomeCardDisposition(
-                        HomeCardDispositionEntity(
-                            cardKey = disposition.cardKey,
-                            cardType = disposition.cardType,
-                            scopeType = disposition.scopeType,
-                            scopeId = disposition.scopeId,
-                            dismissedAt = disposition.dismissedAt,
-                            postponedUntil = disposition.postponedUntil,
-                            createdAt = disposition.createdAt
+                    })
+                    knowledgeDao.insertRawRecords(plan.rawRecords.map { raw ->
+                        RawRecordEntity(
+                            id = raw.id,
+                            legacyEntryId = raw.legacyEntryId,
+                            originalText = raw.originalText,
+                            audioPath = raw.audioFileName?.let(stagedAudio::get),
+                            durationMs = raw.durationMs,
+                            createdAt = raw.createdAt
                         )
-                    )
+                    })
+                    knowledgeDao.insertHypotheses(plan.hypotheses.sortedBy { it.parentHypothesisId != null }.map {
+                        AiHypothesisEntity(
+                            id = it.id,
+                            rawRecordId = it.rawRecordId,
+                            draftJson = it.draftJson,
+                            counterargument = it.counterargument,
+                            status = it.status,
+                            parentHypothesisId = it.parentHypothesisId,
+                            followUpQuestion = it.followUpQuestion,
+                            createdAt = it.createdAt
+                        )
+                    })
+                    knowledgeDao.insertConclusions(plan.conclusions.map {
+                        ConclusionEntity(it.id, it.rawRecordId, it.currentRevisionId, it.createdAt)
+                    })
+                    knowledgeDao.insertRevisions(plan.revisions.map {
+                        ConclusionRevisionEntity(it.id, it.conclusionId, it.version, it.text, it.author, it.createdAt)
+                    })
+                    knowledgeDao.insertEvidenceLinks(plan.evidenceLinks.map {
+                        EvidenceLinkEntity(
+                            id = it.id,
+                            conclusionRevisionId = it.conclusionRevisionId,
+                            sourceRawRecordId = it.sourceRawRecordId,
+                            relationship = it.relationship,
+                            status = it.status,
+                            origin = it.origin,
+                            createdAt = it.createdAt,
+                            createdAtEstimated = it.createdAtEstimated,
+                            reviewMetadata = it.reviewMetadata
+                        )
+                    })
+                    knowledgeDao.insertThemes(plan.themes.map {
+                        ThemeEntity(it.id, it.name, it.createdAt, it.archivedAt)
+                    })
+                    knowledgeDao.insertThemeLinks(plan.themeLinks.map {
+                        ThemeLinkEntity(
+                            id = it.id,
+                            themeId = it.themeId,
+                            conclusionRevisionId = it.conclusionRevisionId,
+                            confirmed = it.confirmed,
+                            createdAt = it.createdAt,
+                            origin = it.origin,
+                            reviewRequired = it.reviewRequired
+                        )
+                    })
+                    knowledgeDao.insertDecisions(plan.decisions.map {
+                        DecisionEntity(
+                            id = it.id,
+                            question = it.question,
+                            choice = it.choice,
+                            sourceRevisionId = it.sourceRevisionId,
+                            createdAt = it.createdAt,
+                            suggestionAuthor = it.suggestionAuthor,
+                            suggestionSource = it.suggestionSource,
+                            suggestionStatus = it.suggestionStatus
+                        )
+                    })
+                    knowledgeDao.insertOutcomes(plan.outcomes.map {
+                        OutcomeEntity(it.id, it.decisionId, it.report, it.createdAt)
+                    })
+                    plan.captureDraft?.let { draft ->
+                        knowledgeDao.upsertCaptureDraft(
+                            CaptureDraftEntity(
+                                id = draft.id,
+                                text = draft.text,
+                                encryptedAudioPath = draft.encryptedAudioFileName?.let(stagedAudio::get),
+                                durationMs = draft.durationMs,
+                                captureStage = draft.captureStage,
+                                createdAt = draft.createdAt,
+                                updatedAt = draft.updatedAt
+                            )
+                        )
+                    }
+                    plan.dispositions.forEach { disposition ->
+                        knowledgeDao.upsertHomeCardDisposition(
+                            HomeCardDispositionEntity(
+                                cardKey = disposition.cardKey,
+                                cardType = disposition.cardType,
+                                scopeType = disposition.scopeType,
+                                scopeId = disposition.scopeId,
+                                dismissedAt = disposition.dismissedAt,
+                                postponedUntil = disposition.postponedUntil,
+                                createdAt = disposition.createdAt
+                            )
+                        )
+                    }
                 }
+            } catch (error: Exception) {
+                stagedAudio.values.map(::File).forEach { it.delete() }
+                if (audioDir.isDirectory && audioDir.listFiles().isNullOrEmpty()) {
+                    audioDir.delete()
+                }
+                throw error
+            } finally {
+                sessionDir.deleteRecursively()
             }
-        } catch (error: Exception) {
-            stagedAudio.values.map(::File).forEach { it.delete() }
-            if (audioDir.isDirectory && audioDir.listFiles().isNullOrEmpty()) {
-                audioDir.delete()
-            }
-            throw error
-        } finally {
-            sessionDir.deleteRecursively()
         }
     }
 

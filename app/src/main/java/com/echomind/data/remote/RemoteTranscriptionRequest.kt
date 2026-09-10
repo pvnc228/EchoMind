@@ -6,7 +6,8 @@ data class RemoteTranscriptionPreview(
     val destination: String,
     val audioFileName: String,
     val audioDurationMs: Long,
-    val audioFileSizeBytes: Long
+    val audioFileSizeBytes: Long,
+    val audioSha256: String = ""
 ) {
     init {
         require(requestId.isNotBlank()) { "A transcription preview requires a request ID." }

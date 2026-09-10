@@ -123,7 +123,9 @@ class ReflectionRepository @Inject constructor(
         val rawRecord = requireNotNull(knowledgeDao.getRawRecordById(rawRecordId)) {
             "Raw reflection $rawRecordId does not exist."
         }
-        val proposal = analyzer.analyze(rawRecord.originalText)
+        val proposal = withContext(analysisDispatcher) {
+            analyzer.analyze(rawRecord.originalText)
+        }
         val hypothesisId = knowledgeDao.insertHypothesis(
             AiHypothesisEntity(
                 rawRecordId = rawRecordId,

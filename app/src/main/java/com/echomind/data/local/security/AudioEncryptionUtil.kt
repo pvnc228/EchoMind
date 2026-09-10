@@ -49,19 +49,26 @@ class AudioEncryptionUtil @Inject constructor(
     fun decryptToTempFile(encryptedPath: String): File {
         val encryptedFile = File(encryptedPath)
         val tempFile = File(context.cacheDir, "playback_${encryptedFile.nameWithoutExtension}.wav")
-        val decrypted = EncryptedFile.Builder(
-            context,
-            encryptedFile,
-            masterKey,
-            EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
-        ).build()
+        try {
+            val decrypted = EncryptedFile.Builder(
+                context,
+                encryptedFile,
+                masterKey,
+                EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
+            ).build()
 
-        decrypted.openFileInput().use { input ->
-            tempFile.outputStream().use { output ->
-                input.copyTo(output)
+            decrypted.openFileInput().use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
             }
+            return tempFile
+        } catch (t: Throwable) {
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
+            throw t
         }
-        return tempFile
     }
 
     fun deleteTempFile(tempPath: String) {

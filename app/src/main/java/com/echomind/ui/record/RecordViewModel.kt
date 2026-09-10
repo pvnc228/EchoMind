@@ -17,9 +17,12 @@ import com.echomind.domain.model.ReflectionSession
 import com.echomind.domain.model.ReflectionStatus
 import com.echomind.domain.model.TranscriptionEngine
 
+import com.echomind.di.IoDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import javax.inject.Inject
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -30,6 +33,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 enum class ReflectionStage {
     LOADING, CAPTURE, RECORDING, PROCESSING, REVIEW, CONFIRMED, REJECTED, ERROR
@@ -63,7 +67,8 @@ class RecordViewModel @Inject constructor(
     private val llmRepository: LlmRepository,
     private val settingsStore: SettingsStore,
     savedStateHandle: SavedStateHandle,
-    private val audioRepository: AudioRepository
+    private val audioRepository: AudioRepository,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : AndroidViewModel(application) {
 
 
@@ -355,7 +360,9 @@ class RecordViewModel @Inject constructor(
         viewModelScope.launch {
             var tempDecryptedFile: File? = null
             try {
-                tempDecryptedFile = audioEncryptionUtil.decryptToTempFile(encryptedPath)
+                tempDecryptedFile = withContext(ioDispatcher) {
+                    audioEncryptionUtil.decryptToTempFile(encryptedPath)
+                }
                 val result = audioRepository.sendApprovedRemoteTranscription(
                     requestId = preview.requestId,
                     audioFile = tempDecryptedFile
@@ -564,31 +571,37 @@ class RecordViewModel @Inject constructor(
         }
 
         val originalPath = state.audioPath
-        val encryptedPath = originalPath?.let { path ->
-            val original = File(path)
-            val encrypted = File(original.parent, original.name + AudioEncryptionUtil.ENCRYPTED_EXTENSION)
-            try {
-                audioEncryptionUtil.encryptFile(original, encrypted)
-                encrypted.absolutePath
-            } catch (error: Exception) {
-                original.delete()
-                encrypted.delete()
+        viewModelScope.launch(ioDispatcher) {
+            val encryptedPath = originalPath?.let { path ->
+                val original = File(path)
+                val encrypted = File(original.parent, original.name + AudioEncryptionUtil.ENCRYPTED_EXTENSION)
+                try {
+                    audioEncryptionUtil.encryptFile(original, encrypted)
+                    encrypted.absolutePath
+                } catch (error: Exception) {
+                    original.delete()
+                    encrypted.delete()
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = state.copy(
+                            stage = ReflectionStage.ERROR,
+                            audioPath = null,
+                            error = "Encryption failed: ${error.message ?: "unknown error"}."
+                        )
+                    }
+                    return@launch
+                }
+            }
+
+            withContext(Dispatchers.Main) {
                 _uiState.value = state.copy(
-                    stage = ReflectionStage.ERROR,
-                    audioPath = null,
-                    error = "Encryption failed: ${error.message ?: "unknown error"}."
+                    stage = ReflectionStage.CAPTURE,
+                    durationMs = System.currentTimeMillis() - startTime,
+                    audioPath = encryptedPath,
+                    amplitudes = emptyList()
                 )
-                return
+                persistDraftNow()
             }
         }
-
-        _uiState.value = state.copy(
-            stage = ReflectionStage.CAPTURE,
-            durationMs = System.currentTimeMillis() - startTime,
-            audioPath = encryptedPath,
-            amplitudes = emptyList()
-        )
-        persistDraftNow()
     }
 
     private fun showSession(session: ReflectionSession) {

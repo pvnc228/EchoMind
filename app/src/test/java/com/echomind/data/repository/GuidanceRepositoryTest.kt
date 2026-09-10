@@ -41,6 +41,8 @@ class GuidanceRepositoryTest {
         )
         coEvery { settingsStore.isLocalMode() } returns false
         baseUrlProvider.updateUrl("https://provider.example")
+        coEvery { knowledgeDao.getConclusionForRawRecord(any()) } returns null
+        coEvery { knowledgeDao.getRevisionById(any()) } returns null
         repository = GuidanceRepository(
             llmApi = llmApi,
             settingsStore = settingsStore,
@@ -168,6 +170,18 @@ class GuidanceRepositoryTest {
                 recordedAt = 2L
             )
         )
+        coEvery { knowledgeDao.getConclusionForRawRecord(100L) } returns com.echomind.data.local.entity.ConclusionEntity(
+            id = 1000L, rawRecordId = 100L, currentRevisionId = 2000L, createdAt = 1L
+        )
+        coEvery { knowledgeDao.getRevisionById(2000L) } returns com.echomind.data.local.entity.ConclusionRevisionEntity(
+            id = 2000L, conclusionId = 1000L, version = 1, text = "an opposing planning record", author = "user", createdAt = 1L
+        )
+        coEvery { knowledgeDao.getConclusionForRawRecord(101L) } returns com.echomind.data.local.entity.ConclusionEntity(
+            id = 1001L, rawRecordId = 101L, currentRevisionId = 2001L, createdAt = 2L
+        )
+        coEvery { knowledgeDao.getRevisionById(2001L) } returns com.echomind.data.local.entity.ConclusionRevisionEntity(
+            id = 2001L, conclusionId = 1001L, version = 1, text = "a supporting planning record", author = "user", createdAt = 2L
+        )
         coEvery { knowledgeDao.getDecisionsForSourceRevision(9L) } returns listOf(
             com.echomind.data.local.entity.DecisionEntity(
                 id = 1L,
@@ -199,6 +213,31 @@ class GuidanceRepositoryTest {
         assertTrue(system.contains("the plan worked"))
         assertTrue(preview.messages.none { it.content.contains("RAW PRIVATE TRANSCRIPT") })
         coVerify(exactly = 0) { llmApi.analyzeText(any(), any(), any()) }
+    }
+
+    @Test
+    fun `raw related record without conclusion is redacted to local evidence stub`() = runTest {
+        coEvery { knowledgeRepository.search("planning") } returns listOf(
+            KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
+        )
+        coEvery { knowledgeRepository.getRelatedRecords(9L) } returns listOf(
+            RelatedRecord(
+                rawRecordId = 100L,
+                relationship = Relationship.SUPPORTS,
+                sourceText = "SECRET RAW DIARY TEXT",
+                recordedAt = 1L
+            )
+        )
+        coEvery { knowledgeDao.getConclusionForRawRecord(100L) } returns null
+        coEvery { knowledgeDao.getDecisionsForSourceRevision(9L) } returns emptyList()
+
+        val result = repository.requestGuidance("planning")
+
+        assertTrue(result is GuidanceRequestResult.Ready)
+        val preview = (result as GuidanceRequestResult.Ready).preview
+        val grounds = preview.grounds.single()
+        assertEquals(listOf("[Source record #100] (local evidence, retained on device)"), grounds.supports)
+        assertTrue(preview.messages.none { it.content.contains("SECRET RAW DIARY TEXT") })
     }
 
     @Test

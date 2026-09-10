@@ -391,6 +391,7 @@ class RecordViewModelTest {
         llmRepository = llmRepository,
         settingsStore = settingsStore,
         savedStateHandle = savedStateHandle,
-        audioRepository = audioRepository
+        audioRepository = audioRepository,
+        ioDispatcher = testDispatcher
     )
 }

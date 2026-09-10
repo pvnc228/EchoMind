@@ -21,12 +21,14 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
+import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 import java.util.UUID
 import kotlin.concurrent.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.echomind.data.util.DataRedactor
 
 import com.echomind.data.analysis.ReflectionDraftParser
 import com.echomind.data.analysis.StructuredReflectionResult
@@ -72,13 +74,15 @@ class LlmRepository @Inject constructor(
         require(audioFile.exists() && audioFile.length() > 0) { "Audio file does not exist or is empty." }
 
         val destination = baseUrlProvider.effectiveUrl(TRANSCRIPTION_API_PATH)
+        val sha256 = computeSha256(audioFile)
         val preview = RemoteTranscriptionPreview(
             requestId = UUID.randomUUID().toString(),
             purpose = TRANSCRIPTION_PURPOSE,
             destination = destination,
             audioFileName = audioFile.name,
             audioDurationMs = durationMs,
-            audioFileSizeBytes = audioFile.length()
+            audioFileSizeBytes = audioFile.length(),
+            audioSha256 = sha256
         )
         consentLock.withLock {
             if (generation != transcriptionPreviewGeneration.get()) {
@@ -106,6 +110,12 @@ class LlmRepository @Inject constructor(
             }
             require(audioFile.exists() && audioFile.length() > 0) {
                 "Audio file is missing or empty."
+            }
+            if (preview.audioSha256.isNotBlank()) {
+                val actualSha256 = computeSha256(audioFile)
+                if (actualSha256 != preview.audioSha256) {
+                    throw StaleRemoteConsentException()
+                }
             }
 
             val requestBody = audioFile.asRequestBody("audio/m4a".toMediaTypeOrNull())
@@ -162,6 +172,7 @@ class LlmRepository @Inject constructor(
         val trimmedQuestion = question.trim()
         require(trimmedQuestion.isNotBlank()) { "A remote question cannot be blank." }
 
+        val redactedQuestion = DataRedactor.redact(trimmedQuestion)
         val boundedContext = knowledgeRepository.search(trimmedQuestion)
             .asSequence()
             .filterIsInstance<KnowledgeSearchResult.Conclusion>()
@@ -172,7 +183,7 @@ class LlmRepository @Inject constructor(
                     entryId = conclusion.entryId,
                     revisionId = conclusion.revisionId,
                     version = conclusion.revisionVersion,
-                    text = conclusion.text.trim()
+                    text = DataRedactor.redact(conclusion.text.trim())
                 )
             }
             .filter { it.text.isNotBlank() }
@@ -183,12 +194,12 @@ class LlmRepository @Inject constructor(
             .toList()
         if (boundedContext.isEmpty()) throw NoConfirmedContextException()
 
-        val messages = buildQuestionMessages(trimmedQuestion, boundedContext)
+        val messages = buildQuestionMessages(redactedQuestion, boundedContext)
         val preview = RemoteQuestionPreview(
             requestId = UUID.randomUUID().toString(),
             purpose = QUESTION_PURPOSE,
             destination = baseUrlProvider.effectiveUrl(QUESTION_API_PATH),
-            question = trimmedQuestion,
+            question = redactedQuestion,
             context = boundedContext,
             messages = messages,
             sourceEntryIds = boundedContext.mapNotNull { it.entryId }.distinct()
@@ -200,6 +211,18 @@ class LlmRepository @Inject constructor(
             pendingQuestionPreview = preview
         }
         preview
+    }
+
+    private fun computeSha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { stream ->
+            val buffer = ByteArray(8192)
+            var read: Int
+            while (stream.read(buffer).also { read = it } != -1) {
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     /** Consumes approval before the network call; failures never leave a reusable approval. */

@@ -14,6 +14,7 @@ import com.echomind.data.remote.dto.Message
 import com.echomind.data.settings.SettingsStore
 import com.echomind.domain.model.GuidanceRefusalReason
 import com.echomind.domain.model.KnowledgeSearchResult
+import com.echomind.domain.model.RelatedRecord
 import com.echomind.domain.model.Relationship
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
@@ -53,7 +54,7 @@ class GuidanceRepository @Inject constructor(
         if (settingsStore.isLocalMode()) {
             return GuidanceRequestResult.Refused(GuidanceRefusalReason.LOCAL_MODE)
         }
-        val trimmed = question.trim()
+        val trimmed = question.trim().take(MAX_QUESTION_CHARS)
         if (trimmed.isBlank()) {
             return GuidanceRequestResult.Refused(
                 GuidanceRefusalReason.INSUFFICIENT_EVIDENCE,
@@ -79,12 +80,13 @@ class GuidanceRepository @Inject constructor(
             return GuidanceRequestResult.Refused(GuidanceRefusalReason.LOCAL_MODE)
         }
 
-        val messages = buildGuidanceMessages(trimmed, grounds)
+        val redactedQuestion = com.echomind.data.util.DataRedactor.redact(trimmed)
+        val messages = buildGuidanceMessages(redactedQuestion, grounds)
         val preview = GuidancePreview(
             requestId = UUID.randomUUID().toString(),
             purpose = GUIDANCE_PURPOSE,
             destination = baseUrlProvider.effectiveUrl(QUESTION_API_PATH),
-            question = trimmed,
+            question = redactedQuestion,
             grounds = grounds,
             messages = messages,
             sourceEntryIds = grounds.mapNotNull { it.entryId }.distinct()
@@ -138,42 +140,92 @@ class GuidanceRepository @Inject constructor(
     }
 
     private suspend fun assembleGrounds(question: String): List<GuidanceGrounds> {
-        return knowledgeRepository.search(question)
-            .filterIsInstance<KnowledgeSearchResult.Conclusion>()
+        val questionTokens = com.echomind.domain.model.LinkCandidateRanker.tokenize(question)
+        val candidateConclusions = mutableListOf<KnowledgeSearchResult.Conclusion>()
+
+        candidateConclusions.addAll(
+            knowledgeRepository.search(question).filterIsInstance<KnowledgeSearchResult.Conclusion>()
+        )
+
+        for (token in questionTokens.take(5)) {
+            if (candidateConclusions.size >= MAX_CANDIDATE_SEARCH_RESULTS) break
+            candidateConclusions.addAll(
+                knowledgeRepository.search(token).filterIsInstance<KnowledgeSearchResult.Conclusion>()
+            )
+        }
+
+        val uniqueConclusions = candidateConclusions
             .filter { it.isCurrent && it.text.isNotBlank() }
             .distinctBy { it.revisionId }
-            .mapNotNull { conclusion ->
-                val related = knowledgeRepository.getRelatedRecords(conclusion.revisionId)
-                val outcomes = knowledgeDao.getDecisionsForSourceRevision(conclusion.revisionId)
-                    .flatMap { decision ->
-                        knowledgeDao.getOutcomesForDecision(decision.id).map { it.report }
-                    }
-                    .map { it.trim().take(MAX_CONTEXT_ITEM_CHARS) }
-                    .filter { it.isNotBlank() }
-                    .distinct()
-                val supports = related.filter { it.relationship == Relationship.SUPPORTS }
-                    .map { it.sourceText.trim().take(MAX_CONTEXT_ITEM_CHARS) }
-                    .filter { it.isNotBlank() }
-                val contradictions = related.filter { it.relationship == Relationship.CONTRADICTS }
-                    .map { it.sourceText.trim().take(MAX_CONTEXT_ITEM_CHARS) }
-                    .filter { it.isNotBlank() }
-                val grounds = GuidanceGrounds(
-                    conclusionId = conclusion.conclusionId,
-                    revisionId = conclusion.revisionId,
-                    version = conclusion.revisionVersion,
-                    entryId = conclusion.entryId,
-                    text = conclusion.text.trim().take(MAX_CONTEXT_ITEM_CHARS),
-                    supports = supports,
-                    contradictions = contradictions,
-                    outcomes = outcomes
-                )
-                if (grounds.supports.isEmpty() && grounds.contradictions.isEmpty() && grounds.outcomes.isEmpty()) {
-                    null
-                } else {
-                    grounds
-                }
+
+        val rankedConclusions = uniqueConclusions
+            .map { conclusion ->
+                val tokens = com.echomind.domain.model.LinkCandidateRanker.tokenize(conclusion.text)
+                val overlap = questionTokens.intersect(tokens).size
+                conclusion to overlap
             }
+            .sortedWith(
+                compareByDescending<Pair<KnowledgeSearchResult.Conclusion, Int>> { it.second }
+                    .thenByDescending { it.first.revisionId }
+            )
+            .map { it.first }
             .take(MAX_GROUNDS)
+
+        return rankedConclusions.mapNotNull { conclusion ->
+            val related = knowledgeRepository.getRelatedRecords(conclusion.revisionId)
+            val outcomes = knowledgeDao.getDecisionsForSourceRevision(conclusion.revisionId)
+                .flatMap { decision ->
+                    knowledgeDao.getOutcomesForDecision(decision.id).map { it.report }
+                }
+                .map { com.echomind.data.util.DataRedactor.redact(it).trim().take(MAX_CONTEXT_ITEM_CHARS) }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .take(MAX_ITEMS_PER_GROUND)
+
+            val supports = related.filter { it.relationship == Relationship.SUPPORTS }
+                .take(MAX_ITEMS_PER_GROUND)
+                .map { resolveEvidenceText(it) }
+                .filter { it.isNotBlank() }
+
+            val contradictions = related.filter { it.relationship == Relationship.CONTRADICTS }
+                .take(MAX_ITEMS_PER_GROUND)
+                .map { resolveEvidenceText(it) }
+                .filter { it.isNotBlank() }
+
+            val redactedConclusionText = com.echomind.data.util.DataRedactor.redact(conclusion.text)
+                .trim()
+                .take(MAX_CONTEXT_ITEM_CHARS)
+
+            val grounds = GuidanceGrounds(
+                conclusionId = conclusion.conclusionId,
+                revisionId = conclusion.revisionId,
+                version = conclusion.revisionVersion,
+                entryId = conclusion.entryId,
+                text = redactedConclusionText,
+                supports = supports,
+                contradictions = contradictions,
+                outcomes = outcomes
+            )
+            if (grounds.supports.isEmpty() && grounds.contradictions.isEmpty() && grounds.outcomes.isEmpty()) {
+                null
+            } else {
+                grounds
+            }
+        }.take(MAX_GROUNDS)
+    }
+
+    private suspend fun resolveEvidenceText(rel: RelatedRecord): String {
+        val conclusion = knowledgeDao.getConclusionForRawRecord(rel.rawRecordId)
+        val revisionId = conclusion?.currentRevisionId
+        if (revisionId != null) {
+            val revision = knowledgeDao.getRevisionById(revisionId)
+            if (revision != null && revision.text.isNotBlank()) {
+                return com.echomind.data.util.DataRedactor.redact(revision.text)
+                    .trim()
+                    .take(MAX_CONTEXT_ITEM_CHARS)
+            }
+        }
+        return "[Source record #${rel.rawRecordId}] (local evidence, retained on device)"
     }
 
     private fun buildGuidanceMessages(
@@ -214,7 +266,10 @@ class GuidanceRepository @Inject constructor(
 
     private companion object {
         const val GUIDANCE_PURPOSE = "guidance_from_confirmed_conclusions"
+        const val MAX_QUESTION_CHARS = 500
         const val MAX_GROUNDS = 5
+        const val MAX_CANDIDATE_SEARCH_RESULTS = 25
+        const val MAX_ITEMS_PER_GROUND = 3
         const val MAX_CONTEXT_ITEM_CHARS = 600
 
         val UNCERTAINTY_TERMS = listOf(
@@ -226,8 +281,10 @@ class GuidanceRepository @Inject constructor(
             "diagnos", "диагноз", "mental illness", "психическ"
         )
         val MOTIVE_TERMS = listOf(
-            "hidden motive", "скрыт", " мотив", "motive", "манипулир",
-            "tricking me", "обманыва"
+            "hidden motive", "ulterior motive", "secret motive", "true motive",
+            "скрытый мотив", "скрытые мотивы", "тайный мотив", "тайные мотивы", "истинный мотив",
+            "чужой мотив", "скрытые намерения", "скрытые цели",
+            "манипулир", "tricking me", "обманыва"
         )
         val CERTAINTY_TERMS = listOf(
             "100%", "100 percent", "guarantee", "гарантир",

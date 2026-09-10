@@ -155,7 +155,10 @@ class RemoteAccessPolicy @Inject constructor() {
 
     private fun joinPath(prefix: String, suffix: String): String {
         val normalizedPrefix = prefix.trimEnd('/')
-        val normalizedSuffix = suffix.trimStart('/')
+        var normalizedSuffix = suffix.trimStart('/')
+        if ((normalizedPrefix.endsWith("/openai") || normalizedPrefix.endsWith("/v1")) && normalizedSuffix.startsWith("v1/")) {
+            normalizedSuffix = normalizedSuffix.removePrefix("v1/").trimStart('/')
+        }
         return "/" + listOf(normalizedPrefix.trimStart('/'), normalizedSuffix)
             .filter { it.isNotBlank() }
             .joinToString("/")

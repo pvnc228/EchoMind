@@ -86,7 +86,9 @@ class LocalReflectionAnalyzer @Inject constructor() {
         counterEvidence: List<String>
     ): Relation = when {
         assumptions.isEmpty() && interpretations.isEmpty() -> Relation.OBSERVATIONAL
-        text.containsAny("похвал", "одобр", "praised", "compliment") -> Relation.PRAISE_TO_IDENTITY
+        text.containsAny("похвал", "одобр", "praised", "compliment") &&
+            text.containsAny("специализ", "професси", "карьер", "призван", "направлени", "specializ", "career", "profess", "vocation", "role") ->
+            Relation.PRAISE_TO_IDENTITY
         text.containsAny("сообщени", "ответил", "ответила", "reply", "message") &&
             text.containsAny("одним словом", "кратк", "короч", "short", "brief") &&
             text.containsAny("недовол", "ошиб", "оценк", "dissatisf", "mistake", "evaluat") ->
@@ -187,9 +189,8 @@ class LocalReflectionAnalyzer @Inject constructor() {
         "всегда", "никогда", "должен", "должна", "нужно", "обязан", "обязана", "нельзя", "очевидно", "никто"
     )
 
-    private fun looksLikeCounterEvidence(sentence: String): Boolean = sentence.containsAny(
-        "но ", "однако", "хотя", "недостаточно", "but ", "however", "although", "not enough"
-    )
+    private fun looksLikeCounterEvidence(sentence: String): Boolean =
+        COUNTER_EVIDENCE_REGEX.containsMatchIn(sentence.lowercase())
 
     private fun detailOf(sentence: String): String = sentence
         .removeSuffix(".")
@@ -232,5 +233,8 @@ class LocalReflectionAnalyzer @Inject constructor() {
 
     private companion object {
         const val MAX_ITEMS = 4
+        val COUNTER_EVIDENCE_REGEX = Regex(
+            """(?<!\p{L})(?:но|однако|хотя|недостаточно|but|however|although|not\s+enough)(?!\p{L})"""
+        )
     }
 }
