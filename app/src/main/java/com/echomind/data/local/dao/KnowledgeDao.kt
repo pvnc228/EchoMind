@@ -250,6 +250,20 @@ interface KnowledgeDao {
     @Query("SELECT * FROM evidence_links WHERE conclusion_revision_id = :revisionId ORDER BY id")
     suspend fun getEvidenceLinksForRevision(revisionId: Long): List<EvidenceLinkEntity>
 
+    @Query("SELECT * FROM evidence_links WHERE conclusion_revision_id = :revisionId ORDER BY id LIMIT :limit")
+    suspend fun getEvidenceLinksForRevision(revisionId: Long, limit: Int): List<EvidenceLinkEntity>
+
+    @Query("SELECT * FROM evidence_links WHERE conclusion_revision_id = :revisionId AND status = 'confirmed' ORDER BY id")
+    suspend fun getConfirmedEvidenceLinksForRevision(revisionId: Long): List<EvidenceLinkEntity>
+
+    @Query(
+        "SELECT * FROM evidence_links WHERE conclusion_revision_id = :revisionId AND status = 'confirmed' " +
+            "AND source_raw_record_id != (SELECT conclusions.raw_record_id FROM conclusions " +
+            "INNER JOIN conclusion_revisions ON conclusion_revisions.conclusion_id = conclusions.id " +
+            "WHERE conclusion_revisions.id = :revisionId) ORDER BY id LIMIT :limit"
+    )
+    suspend fun getConfirmedEvidenceLinksForRevision(revisionId: Long, limit: Int): List<EvidenceLinkEntity>
+
     @Query(
         "SELECT * FROM evidence_links WHERE conclusion_revision_id = :revisionId " +
             "AND status != 'confirmed' ORDER BY id"
@@ -415,6 +429,23 @@ interface KnowledgeDao {
     suspend fun searchConclusionRows(query: String): List<SearchConclusionRow>
 
     @Query(
+        "SELECT conclusion_revisions.id AS revision_id, " +
+            "conclusion_revisions.conclusion_id AS conclusion_id, " +
+            "raw_records.legacy_entry_id AS legacy_entry_id, " +
+            "conclusion_revisions.text AS text, " +
+            "conclusion_revisions.version AS version, " +
+            "conclusion_revisions.created_at AS revision_created_at, " +
+            "conclusions.current_revision_id AS current_revision_id " +
+            "FROM conclusions " +
+            "INNER JOIN conclusion_revisions ON conclusion_revisions.id = conclusions.current_revision_id " +
+            "INNER JOIN raw_records ON raw_records.id = conclusions.raw_record_id " +
+            "WHERE conclusion_revisions.text LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "ORDER BY conclusion_revisions.created_at DESC, conclusion_revisions.id DESC " +
+            "LIMIT :limit"
+    )
+    suspend fun searchCurrentConclusionRows(query: String, limit: Int): List<SearchConclusionRow>
+
+    @Query(
         "SELECT themes.id AS theme_id, themes.name AS name, COUNT(theme_links.id) AS conclusion_count " +
             "FROM themes LEFT JOIN theme_links " +
             "ON theme_links.theme_id = themes.id AND theme_links.confirmed = 1 " +
@@ -503,8 +534,14 @@ interface KnowledgeDao {
     @Query("SELECT * FROM decisions WHERE source_revision_id = :revisionId")
     suspend fun getDecisionsForSourceRevision(revisionId: Long): List<DecisionEntity>
 
+    @Query("SELECT * FROM decisions WHERE source_revision_id = :revisionId ORDER BY created_at DESC, id DESC LIMIT :limit")
+    suspend fun getDecisionsForSourceRevision(revisionId: Long, limit: Int): List<DecisionEntity>
+
     @Query("SELECT * FROM outcomes WHERE decision_id = :decisionId ORDER BY created_at, id")
     suspend fun getOutcomesForDecision(decisionId: Long): List<OutcomeEntity>
+
+    @Query("SELECT * FROM outcomes WHERE decision_id = :decisionId ORDER BY created_at, id LIMIT :limit")
+    suspend fun getOutcomesForDecision(decisionId: Long, limit: Int): List<OutcomeEntity>
 
     @Query(
         "SELECT outcomes.* FROM outcomes " +

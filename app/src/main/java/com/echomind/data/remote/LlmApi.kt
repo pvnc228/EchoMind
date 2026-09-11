@@ -27,6 +27,13 @@ interface LlmApi {
     ): TranscriptionResponse
 
     @POST
+    suspend fun transcribeAudioChatCompletions(
+        @Url url: String,
+        @Header(APPROVED_DESTINATION_HEADER) approvedDestination: String,
+        @Body request: okhttp3.RequestBody
+    ): AnalysisResponse = throw UnsupportedOperationException("transcribeAudioChatCompletions requires implementation")
+
+    @POST
     suspend fun analyzeText(
         @Url url: String,
         @Header(APPROVED_DESTINATION_HEADER) approvedDestination: String,

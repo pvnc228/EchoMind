@@ -191,11 +191,16 @@ class KnowledgeRepository @Inject constructor(
         }
     }
 
-    suspend fun getRelatedRecords(revisionId: Long): List<RelatedRecord> {
+    suspend fun getRelatedRecords(revisionId: Long, limit: Int = 0): List<RelatedRecord> {
         val revision = knowledgeDao.getRevisionById(revisionId) ?: return emptyList()
         val ownRawRecordId = knowledgeDao.getConclusionById(revision.conclusionId)
             ?.rawRecordId
-        return knowledgeDao.getEvidenceLinksForRevision(revisionId).mapNotNull { link ->
+        val links = if (limit > 0) {
+            knowledgeDao.getConfirmedEvidenceLinksForRevision(revisionId, limit)
+        } else {
+            knowledgeDao.getConfirmedEvidenceLinksForRevision(revisionId)
+        }
+        return links.mapNotNull { link ->
             if (link.status != "confirmed" || link.sourceRawRecordId == ownRawRecordId) {
                 return@mapNotNull null
             }
@@ -513,6 +518,23 @@ class KnowledgeRepository @Inject constructor(
             )
         }
         return rawResults + conclusionResults + themeResults
+    }
+
+    suspend fun searchCurrentConclusions(query: String, limit: Int = 10): List<KnowledgeSearchResult.Conclusion> {
+        val trimmed = query.trim()
+        if (trimmed.isBlank() || limit <= 0) return emptyList()
+        val escaped = escapeLikeQuery(trimmed)
+        return knowledgeDao.searchCurrentConclusionRows(escaped, limit).map { row ->
+            KnowledgeSearchResult.Conclusion(
+                conclusionId = row.conclusionId,
+                revisionId = row.revisionId,
+                entryId = row.legacyEntryId,
+                text = row.text,
+                revisionVersion = row.version,
+                createdAt = row.revisionCreatedAt,
+                isCurrent = true
+            )
+        }
     }
 
     private fun escapeLikeQuery(value: String): String = value

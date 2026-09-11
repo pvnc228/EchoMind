@@ -13,6 +13,8 @@ import javax.inject.Singleton
 class AudioEncryptionUtil @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    private var startupCleanupCompleted = false
+    private var interruptedRecording = false
     private val masterKey by lazy {
         MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -27,12 +29,22 @@ class AudioEncryptionUtil @Inject constructor(
             EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
         ).build()
 
-        inputFile.inputStream().use { input ->
-            encryptedFile.openFileOutput().use { output ->
-                input.copyTo(output)
+        try {
+            inputFile.inputStream().use { input ->
+                encryptedFile.openFileOutput().use { output ->
+                    input.copyTo(output)
+                }
             }
+            inputFile.delete()
+        } catch (t: Throwable) {
+            if (outputFile.exists()) {
+                outputFile.delete()
+            }
+            if (inputFile.exists()) {
+                inputFile.delete()
+            }
+            throw t
         }
-        inputFile.delete()
     }
 
     fun getDecryptedInputStream(encryptedFile: File): InputStream {
@@ -46,9 +58,10 @@ class AudioEncryptionUtil @Inject constructor(
         return file.openFileInput()
     }
 
-    fun decryptToTempFile(encryptedPath: String): File {
+    fun decryptToTempFile(encryptedPath: String, targetFile: File? = null): File {
+        cleanupOrphanedTempFiles()
         val encryptedFile = File(encryptedPath)
-        val tempFile = File(context.cacheDir, "playback_${encryptedFile.nameWithoutExtension}.wav")
+        val tempFile = targetFile ?: File(context.cacheDir, "playback_${encryptedFile.nameWithoutExtension}.wav")
         try {
             val decrypted = EncryptedFile.Builder(
                 context,
@@ -69,6 +82,37 @@ class AudioEncryptionUtil @Inject constructor(
             }
             throw t
         }
+    }
+
+    fun decryptToUniqueTempFile(encryptedPath: String, prefix: String = "transcription_", extension: String = "m4a"): File {
+        val uniqueName = "${prefix}${java.util.UUID.randomUUID()}.$extension"
+        val uniqueFile = File(context.cacheDir, uniqueName)
+        return decryptToTempFile(encryptedPath, uniqueFile)
+    }
+
+    /** IO-only startup barrier shared by Application and audio producers. */
+    @Synchronized
+    fun cleanupOrphanedTempFiles() {
+        if (startupCleanupCompleted) return
+        val cacheFiles = context.cacheDir.listFiles { file ->
+            file.isFile && (file.name.startsWith("transcription_") || file.name.startsWith("playback_"))
+        }.orEmpty()
+        val captureFiles = File(context.noBackupFilesDir, "capture_tmp").listFiles { file ->
+            file.isFile && (file.extension == "m4a" || file.name.endsWith(".tmp"))
+        }.orEmpty()
+        val staleFiles = cacheFiles.toList() + captureFiles.toList()
+        staleFiles.forEach { file ->
+            check(file.delete() || !file.exists()) { "Could not clean interrupted audio file." }
+        }
+        startupCleanupCompleted = true
+        interruptedRecording = captureFiles.isNotEmpty()
+    }
+
+    @Synchronized
+    fun consumeInterruptedRecordingNotice(): Boolean {
+        val interrupted = interruptedRecording
+        interruptedRecording = false
+        return interrupted
     }
 
     fun deleteTempFile(tempPath: String) {

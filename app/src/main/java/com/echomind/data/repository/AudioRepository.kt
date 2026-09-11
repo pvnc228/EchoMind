@@ -32,9 +32,11 @@ class AudioRepository @Inject constructor(
 
     suspend fun previewRemoteTranscription(
         audioFile: File,
-        durationMs: Long
+        durationMs: Long,
+        engine: TranscriptionEngine? = null,
+        model: String? = null
     ): Result<RemoteTranscriptionPreview> {
-        return llmRepository.previewAudioTranscription(audioFile, durationMs)
+        return llmRepository.previewAudioTranscription(audioFile, durationMs, engine, model)
     }
 
     suspend fun sendApprovedRemoteTranscription(

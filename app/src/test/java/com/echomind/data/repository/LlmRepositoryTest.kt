@@ -14,9 +14,13 @@ import com.echomind.data.settings.StoredSettings
 import com.echomind.domain.model.KnowledgeSearchResult
 import com.echomind.domain.model.Entry
 import com.echomind.domain.model.EntryCategory
+import com.echomind.domain.model.TranscriptionEngine
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.slot
+import okhttp3.RequestBody
+import okio.Buffer
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -116,8 +120,7 @@ class LlmRepositoryTest {
     @Test
     fun `preview includes only current conclusions and exact bounded payload`() = runTest {
         coEvery { settingsStore.isLocalMode() } returns false
-        coEvery { knowledgeRepository.search("planning") } returns listOf(
-            KnowledgeSearchResult.RawRecord(41L, 7L, "RAW PRIVATE TRANSCRIPT", 1L),
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true),
             KnowledgeSearchResult.Conclusion(8L, 10L, 7L, "historical private text", 1, 1L, false)
         )
@@ -144,7 +147,7 @@ class LlmRepositoryTest {
             freshPolicy.hydratePersisted(persisted)
             persisted
         }
-        coEvery { knowledgeRepository.search("planning") } returns listOf(
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
         )
         coEvery { llmApi.analyzeText(any(), any(), any()) } returns AnalysisResponse(
@@ -175,7 +178,7 @@ class LlmRepositoryTest {
     @Test
     fun `approval is one shot and stale approval cannot resend`() = runTest {
         coEvery { settingsStore.isLocalMode() } returns false
-        coEvery { knowledgeRepository.search("planning") } returns listOf(
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
         )
         coEvery { llmApi.analyzeText(any(), any(), any()) } returns AnalysisResponse(
@@ -196,7 +199,7 @@ class LlmRepositoryTest {
     @Test
     fun `local mode blocks an approved preview before the api and consumes it`() = runTest {
         coEvery { settingsStore.isLocalMode() } returns true
-        coEvery { knowledgeRepository.search("planning") } returns listOf(
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
         )
 
@@ -212,7 +215,7 @@ class LlmRepositoryTest {
     @Test
     fun `provider failure consumes approval and leaves no replayable request`() = runTest {
         coEvery { settingsStore.isLocalMode() } returns false
-        coEvery { knowledgeRepository.search("planning") } returns listOf(
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
         )
         coEvery { llmApi.analyzeText(any(), any(), any()) } throws IllegalStateException("provider unavailable")
@@ -234,7 +237,7 @@ class LlmRepositoryTest {
             localMode = false
         )
         remoteAccessPolicy.updateEndpoint("https://provider-a.example/api")
-        coEvery { knowledgeRepository.search("planning") } returns listOf(
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
         )
 
@@ -254,12 +257,12 @@ class LlmRepositoryTest {
         coEvery { settingsStore.isLocalMode() } returns false
         val slowStarted = CompletableDeferred<Unit>()
         val releaseSlowSearch = CompletableDeferred<Unit>()
-        coEvery { knowledgeRepository.search("slow") } coAnswers {
+        coEvery { knowledgeRepository.searchCurrentConclusions("slow", any()) } coAnswers {
             slowStarted.complete(Unit)
             releaseSlowSearch.await()
             listOf(KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "slow conclusion", 2, 2L, true))
         }
-        coEvery { knowledgeRepository.search("fast") } returns listOf(
+        coEvery { knowledgeRepository.searchCurrentConclusions("fast", any()) } returns listOf(
             KnowledgeSearchResult.Conclusion(8L, 10L, 7L, "fast conclusion", 2, 2L, true)
         )
 
@@ -277,8 +280,7 @@ class LlmRepositoryTest {
     @Test
     fun `preview refuses when search has no current confirmed conclusion`() = runTest {
         coEvery { settingsStore.isLocalMode() } returns false
-        coEvery { knowledgeRepository.search("planning") } returns listOf(
-            KnowledgeSearchResult.RawRecord(41L, 7L, "RAW PRIVATE TRANSCRIPT", 1L),
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "historical conclusion", 1, 1L, false)
         )
 
@@ -481,6 +483,116 @@ class LlmRepositoryTest {
         } finally {
             tempAudio.delete()
         }
+    }
+
+    @Test
+    fun `sendApprovedAudioTranscription with GEMINI engine uses chat completions input_audio`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider.example",
+            localMode = false,
+            transcriptionEngine = TranscriptionEngine.GEMINI
+        )
+        val requestSlot = slot<RequestBody>()
+        coEvery {
+            llmApi.transcribeAudioChatCompletions(
+                url = any(),
+                approvedDestination = any(),
+                request = capture(requestSlot)
+            )
+        } returns AnalysisResponse(
+            choices = listOf(Choice(Message("assistant", "Gemini verbatim transcript")))
+        )
+        val tempAudio = File.createTempFile("gemini_voice", ".m4a").apply { writeText("audio m4a content") }
+        try {
+            val preview = repository.previewAudioTranscription(
+                audioFile = tempAudio,
+                durationMs = 4000L,
+                engine = TranscriptionEngine.GEMINI,
+                model = "gemini-2.5-flash"
+            ).getOrThrow()
+
+            assertEquals(TranscriptionEngine.GEMINI, preview.engine)
+            assertEquals("gemini-2.5-flash", preview.model)
+            assertTrue(preview.destination.endsWith("v1/chat/completions"))
+
+            val result = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio).getOrThrow()
+            assertEquals("Gemini verbatim transcript", result)
+
+            assertTrue("RequestBody must be captured", requestSlot.isCaptured)
+            val buffer = Buffer()
+            requestSlot.captured.writeTo(buffer)
+            val json = buffer.readUtf8()
+            assertTrue("JSON must include gemini-2.5-flash model", json.contains("\"model\":\"gemini-2.5-flash\""))
+            assertTrue("JSON must include input_audio type", json.contains("\"type\":\"input_audio\""))
+            assertTrue("JSON must specify m4a format", json.contains("\"format\":\"m4a\""))
+            val expectedBase64 = java.util.Base64.getEncoder().encodeToString("audio m4a content".toByteArray())
+            assertTrue("JSON must include base64 audio data", json.contains("\"data\":\"$expectedBase64\""))
+        } finally {
+            tempAudio.delete()
+        }
+    }
+
+    @Test
+    fun `sendApprovedAudioTranscription with audio exceeding 10MB limit fails`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { settingsStore.load() } returns StoredSettings(
+            apiEndpoint = "https://provider.example",
+            localMode = false
+        )
+        val tempAudio = File.createTempFile("large_voice", ".m4a")
+        try {
+            java.io.RandomAccessFile(tempAudio, "rw").use { raf ->
+                raf.setLength(10L * 1024L * 1024L + 100L)
+            }
+            val preview = repository.previewAudioTranscription(tempAudio, 60000L).getOrThrow()
+            val result = repository.sendApprovedAudioTranscription(preview.requestId, tempAudio)
+
+            assertTrue(result.isFailure)
+            assertTrue(result.exceptionOrNull()?.message?.contains("10MB") == true)
+        } finally {
+            tempAudio.delete()
+        }
+    }
+
+    @Test
+    fun `previewQuestion ranks candidates by tokenized overlap with question`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        val cLowOverlap = KnowledgeSearchResult.Conclusion(
+            conclusionId = 1L,
+            revisionId = 10L,
+            entryId = 100L,
+            text = "irrelevant random words here",
+            revisionVersion = 1,
+            createdAt = 1000L,
+            isCurrent = true
+        )
+        val cHighOverlap = KnowledgeSearchResult.Conclusion(
+            conclusionId = 2L,
+            revisionId = 20L,
+            entryId = 200L,
+            text = "strategic architecture planning roadmap decisions",
+            revisionVersion = 1,
+            createdAt = 2000L,
+            isCurrent = true
+        )
+        coEvery { knowledgeRepository.searchCurrentConclusions(any(), any()) } returns listOf(cLowOverlap, cHighOverlap)
+
+        val preview = repository.previewQuestion("strategic planning roadmap").getOrThrow()
+        val context = preview.context
+        assertTrue(context.size >= 2)
+        assertEquals(20L, context[0].revisionId)
+    }
+
+    @Test
+    fun `question database failure never scans unbounded history`() = runTest {
+        coEvery { settingsStore.isLocalMode() } returns false
+        val failure = IllegalStateException("bounded query failed")
+        coEvery { knowledgeRepository.searchCurrentConclusions(any(), any()) } throws failure
+        coEvery { knowledgeRepository.search(any()) } returns emptyList()
+        val result = repository.previewQuestion("planning")
+        assertEquals(failure, result.exceptionOrNull())
+        coVerify(exactly = 0) { knowledgeRepository.search(any()) }
     }
 
     private fun testEntry(transcript: String) = Entry(

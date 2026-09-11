@@ -65,7 +65,13 @@ class GuidanceRepository @Inject constructor(
             return GuidanceRequestResult.Refused(GuidanceRefusalReason.UNSAFE_PROMPT)
         }
 
-        val grounds = assembleGrounds(trimmed)
+        val grounds = try {
+            assembleGrounds(trimmed)
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            return GuidanceRequestResult.Failed(error)
+        }
         if (grounds.isEmpty()) {
             return GuidanceRequestResult.Refused(
                 GuidanceRefusalReason.INSUFFICIENT_EVIDENCE,
@@ -143,16 +149,16 @@ class GuidanceRepository @Inject constructor(
         val questionTokens = com.echomind.domain.model.LinkCandidateRanker.tokenize(question)
         val candidateConclusions = mutableListOf<KnowledgeSearchResult.Conclusion>()
 
-        candidateConclusions.addAll(
-            knowledgeRepository.search(question).filterIsInstance<KnowledgeSearchResult.Conclusion>()
-        )
-
-        for (token in questionTokens.take(5)) {
-            if (candidateConclusions.size >= MAX_CANDIDATE_SEARCH_RESULTS) break
-            candidateConclusions.addAll(
-                knowledgeRepository.search(token).filterIsInstance<KnowledgeSearchResult.Conclusion>()
-            )
+        val searchCandidates = run {
+            val list = mutableListOf<KnowledgeSearchResult.Conclusion>()
+            list.addAll(knowledgeRepository.searchCurrentConclusions(question, limit = 10))
+            for (token in questionTokens.take(3)) {
+                if (list.size >= MAX_CANDIDATES_TO_INSPECT) break
+                list.addAll(knowledgeRepository.searchCurrentConclusions(token, limit = 10))
+            }
+            list
         }
+        candidateConclusions.addAll(searchCandidates)
 
         val uniqueConclusions = candidateConclusions
             .filter { it.isCurrent && it.text.isNotBlank() }
@@ -169,14 +175,16 @@ class GuidanceRepository @Inject constructor(
                     .thenByDescending { it.first.revisionId }
             )
             .map { it.first }
-            .take(MAX_GROUNDS)
+            .take(MAX_CANDIDATES_TO_INSPECT)
 
-        return rankedConclusions.mapNotNull { conclusion ->
-            val related = knowledgeRepository.getRelatedRecords(conclusion.revisionId)
-            val outcomes = knowledgeDao.getDecisionsForSourceRevision(conclusion.revisionId)
-                .flatMap { decision ->
-                    knowledgeDao.getOutcomesForDecision(decision.id).map { it.report }
-                }
+        val validGrounds = mutableListOf<GuidanceGrounds>()
+        for (conclusion in rankedConclusions) {
+            if (validGrounds.size >= MAX_GROUNDS) break
+            val related = knowledgeRepository.getRelatedRecords(conclusion.revisionId, MAX_ITEMS_PER_GROUND)
+            val decisions = knowledgeDao.getDecisionsForSourceRevision(conclusion.revisionId, MAX_ITEMS_PER_GROUND)
+            val outcomes = decisions.flatMap { decision ->
+                knowledgeDao.getOutcomesForDecision(decision.id, MAX_ITEMS_PER_GROUND).map { it.report }
+            }
                 .map { com.echomind.data.util.DataRedactor.redact(it).trim().take(MAX_CONTEXT_ITEM_CHARS) }
                 .filter { it.isNotBlank() }
                 .distinct()
@@ -192,26 +200,28 @@ class GuidanceRepository @Inject constructor(
                 .map { resolveEvidenceText(it) }
                 .filter { it.isNotBlank() }
 
+            if (supports.isEmpty() && contradictions.isEmpty() && outcomes.isEmpty()) {
+                continue
+            }
+
             val redactedConclusionText = com.echomind.data.util.DataRedactor.redact(conclusion.text)
                 .trim()
                 .take(MAX_CONTEXT_ITEM_CHARS)
 
-            val grounds = GuidanceGrounds(
-                conclusionId = conclusion.conclusionId,
-                revisionId = conclusion.revisionId,
-                version = conclusion.revisionVersion,
-                entryId = conclusion.entryId,
-                text = redactedConclusionText,
-                supports = supports,
-                contradictions = contradictions,
-                outcomes = outcomes
+            validGrounds.add(
+                GuidanceGrounds(
+                    conclusionId = conclusion.conclusionId,
+                    revisionId = conclusion.revisionId,
+                    version = conclusion.revisionVersion,
+                    entryId = conclusion.entryId,
+                    text = redactedConclusionText,
+                    supports = supports,
+                    contradictions = contradictions,
+                    outcomes = outcomes
+                )
             )
-            if (grounds.supports.isEmpty() && grounds.contradictions.isEmpty() && grounds.outcomes.isEmpty()) {
-                null
-            } else {
-                grounds
-            }
-        }.take(MAX_GROUNDS)
+        }
+        return validGrounds
     }
 
     private suspend fun resolveEvidenceText(rel: RelatedRecord): String {
@@ -268,6 +278,7 @@ class GuidanceRepository @Inject constructor(
         const val GUIDANCE_PURPOSE = "guidance_from_confirmed_conclusions"
         const val MAX_QUESTION_CHARS = 500
         const val MAX_GROUNDS = 5
+        const val MAX_CANDIDATES_TO_INSPECT = 20
         const val MAX_CANDIDATE_SEARCH_RESULTS = 25
         const val MAX_ITEMS_PER_GROUND = 3
         const val MAX_CONTEXT_ITEM_CHARS = 600

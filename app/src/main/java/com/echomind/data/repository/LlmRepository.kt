@@ -16,11 +16,23 @@ import com.echomind.domain.model.Entry
 import com.echomind.domain.model.KnowledgeSearchResult
 import com.echomind.data.remote.RemoteTranscriptionPreview
 import com.echomind.data.remote.TRANSCRIPTION_API_PATH
+import com.echomind.domain.model.TranscriptionEngine
+import com.echomind.domain.model.LinkCandidateRanker
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
@@ -65,7 +77,9 @@ class LlmRepository @Inject constructor(
 
     suspend fun previewAudioTranscription(
         audioFile: File,
-        durationMs: Long = 0L
+        durationMs: Long = 0L,
+        engine: TranscriptionEngine? = null,
+        model: String? = null
     ): Result<RemoteTranscriptionPreview> = runCatching {
         val generation = transcriptionPreviewGeneration.incrementAndGet()
         consentLock.withLock { pendingTranscriptionPreview = null }
@@ -73,8 +87,17 @@ class LlmRepository @Inject constructor(
         if (settings.localMode) throw AiNetworkDisabledException()
         require(audioFile.exists() && audioFile.length() > 0) { "Audio file does not exist or is empty." }
 
-        val destination = baseUrlProvider.effectiveUrl(TRANSCRIPTION_API_PATH)
-        val sha256 = computeSha256(audioFile)
+        val effectiveEngine = engine
+            ?: settings.transcriptionEngine.takeIf { it != TranscriptionEngine.ON_DEVICE }
+            ?: TranscriptionEngine.WHISPER
+        val effectiveModel = model
+            ?: if (effectiveEngine == TranscriptionEngine.GEMINI) "gemini-2.5-flash" else "whisper-1"
+        val apiPath = if (effectiveEngine == TranscriptionEngine.GEMINI) QUESTION_API_PATH else TRANSCRIPTION_API_PATH
+        val destination = baseUrlProvider.effectiveUrl(apiPath)
+
+        val sha256 = withContext(Dispatchers.IO) {
+            computeSha256(audioFile)
+        }
         val preview = RemoteTranscriptionPreview(
             requestId = UUID.randomUUID().toString(),
             purpose = TRANSCRIPTION_PURPOSE,
@@ -82,7 +105,9 @@ class LlmRepository @Inject constructor(
             audioFileName = audioFile.name,
             audioDurationMs = durationMs,
             audioFileSizeBytes = audioFile.length(),
-            audioSha256 = sha256
+            audioSha256 = sha256,
+            engine = effectiveEngine,
+            model = effectiveModel
         )
         consentLock.withLock {
             if (generation != transcriptionPreviewGeneration.get()) {
@@ -103,40 +128,96 @@ class LlmRepository @Inject constructor(
                 .also { pendingTranscriptionPreview = null }
         } ?: return Result.failure(StaleRemoteConsentException())
 
-        return runCatching {
-            if (settingsStore.isLocalMode()) throw AiNetworkDisabledException()
-            if (baseUrlProvider.effectiveUrl(TRANSCRIPTION_API_PATH) != preview.destination) {
-                throw RemoteDestinationChangedException()
-            }
-            require(audioFile.exists() && audioFile.length() > 0) {
-                "Audio file is missing or empty."
-            }
-            if (preview.audioSha256.isNotBlank()) {
-                val actualSha256 = computeSha256(audioFile)
-                if (actualSha256 != preview.audioSha256) {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val currentSettings = settingsStore.load()
+                if (settingsStore.isLocalMode() || currentSettings.localMode) throw AiNetworkDisabledException()
+                val currentEngine = currentSettings.transcriptionEngine.takeIf { it != TranscriptionEngine.ON_DEVICE } ?: TranscriptionEngine.WHISPER
+                if (currentEngine != preview.engine) {
                     throw StaleRemoteConsentException()
                 }
-            }
+                val expectedPath = if (preview.engine == TranscriptionEngine.GEMINI) QUESTION_API_PATH else TRANSCRIPTION_API_PATH
+                if (baseUrlProvider.effectiveUrl(expectedPath) != preview.destination) {
+                    throw RemoteDestinationChangedException()
+                }
+                require(audioFile.exists() && audioFile.length() > 0) {
+                    "Audio file is missing or empty."
+                }
 
-            val requestBody = audioFile.asRequestBody("audio/m4a".toMediaTypeOrNull())
-            val audioPart = MultipartBody.Part.createFormData("file", audioFile.name, requestBody)
-            val modelBody = "whisper-1".toRequestBody("text/plain".toMediaTypeOrNull())
-            val responseFormatBody = "json".toRequestBody("text/plain".toMediaTypeOrNull())
+                val audioBytes = audioFile.inputStream().use { input ->
+                    readBoundedBytes(input, MAX_AUDIO_BYTES)
+                }
+                require(audioBytes.isNotEmpty()) {
+                    "Audio file is missing or empty."
+                }
 
-            val response = try {
-                llmApi.transcribeAudio(
-                    url = preview.destination,
-                    approvedDestination = preview.destination,
-                    audio = audioPart,
-                    model = modelBody,
-                    responseFormat = responseFormatBody
-                )
-            } catch (_: RemoteLocalModeChangedException) {
-                throw AiNetworkDisabledException()
+                val actualSha256 = computeSha256(audioBytes)
+                if (preview.audioSha256.isNotBlank() && actualSha256 != preview.audioSha256) {
+                    throw StaleRemoteConsentException()
+                }
+
+                when (preview.engine) {
+                    TranscriptionEngine.GEMINI -> {
+                        val base64Audio = java.util.Base64.getEncoder().encodeToString(audioBytes)
+                        val jsonString = buildJsonObject {
+                            put("model", preview.model)
+                            putJsonArray("messages") {
+                                addJsonObject {
+                                    put("role", "user")
+                                    putJsonArray("content") {
+                                        addJsonObject {
+                                            put("type", "text")
+                                            put("text", "Please provide a verbatim transcription of this audio.")
+                                        }
+                                        addJsonObject {
+                                            put("type", "input_audio")
+                                            putJsonObject("input_audio") {
+                                                put("data", base64Audio)
+                                                put("format", "m4a")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }.toString()
+
+                        val requestBody = jsonString.toRequestBody("application/json".toMediaTypeOrNull())
+                        val response = try {
+                            llmApi.transcribeAudioChatCompletions(
+                                url = preview.destination,
+                                approvedDestination = preview.destination,
+                                request = requestBody
+                            )
+                        } catch (_: RemoteLocalModeChangedException) {
+                            throw AiNetworkDisabledException()
+                        }
+                        val text = response.choices.firstOrNull()?.message?.content?.trim().orEmpty()
+                        require(text.isNotBlank()) { "The remote provider returned an empty transcript." }
+                        text
+                    }
+                    else -> {
+                        val requestBody = audioBytes.toRequestBody("audio/m4a".toMediaTypeOrNull())
+                        val audioPart = MultipartBody.Part.createFormData("file", audioFile.name, requestBody)
+                        val modelBody = preview.model.toRequestBody("text/plain".toMediaTypeOrNull())
+                        val responseFormatBody = "json".toRequestBody("text/plain".toMediaTypeOrNull())
+
+                        val response = try {
+                            llmApi.transcribeAudio(
+                                url = preview.destination,
+                                approvedDestination = preview.destination,
+                                audio = audioPart,
+                                model = modelBody,
+                                responseFormat = responseFormatBody
+                            )
+                        } catch (_: RemoteLocalModeChangedException) {
+                            throw AiNetworkDisabledException()
+                        }
+                        val text = response.text?.trim().orEmpty()
+                        require(text.isNotBlank()) { "The remote provider returned an empty transcript." }
+                        text
+                    }
+                }
             }
-            val text = response.text?.trim().orEmpty()
-            require(text.isNotBlank()) { "The remote provider returned an empty transcript." }
-            text
         }
     }
 
@@ -173,11 +254,34 @@ class LlmRepository @Inject constructor(
         require(trimmedQuestion.isNotBlank()) { "A remote question cannot be blank." }
 
         val redactedQuestion = DataRedactor.redact(trimmedQuestion)
-        val boundedContext = knowledgeRepository.search(trimmedQuestion)
+        val questionTokens = LinkCandidateRanker.tokenize(trimmedQuestion)
+        val candidateConclusions = mutableListOf<KnowledgeSearchResult.Conclusion>()
+
+        val searchCandidates = run {
+            val list = mutableListOf<KnowledgeSearchResult.Conclusion>()
+            list.addAll(knowledgeRepository.searchCurrentConclusions(trimmedQuestion, limit = 10))
+            for (token in questionTokens.take(3)) {
+                if (list.size >= 20) break
+                list.addAll(knowledgeRepository.searchCurrentConclusions(token, limit = 10))
+            }
+            list
+        }
+        candidateConclusions.addAll(searchCandidates)
+
+        val boundedContext = candidateConclusions
             .asSequence()
-            .filterIsInstance<KnowledgeSearchResult.Conclusion>()
             .filter { it.isCurrent && it.text.isNotBlank() }
             .distinctBy { it.revisionId }
+            .map { conclusion ->
+                val tokens = LinkCandidateRanker.tokenize(conclusion.text)
+                val overlap = questionTokens.intersect(tokens).size
+                conclusion to overlap
+            }
+            .sortedWith(
+                compareByDescending<Pair<KnowledgeSearchResult.Conclusion, Int>> { it.second }
+                    .thenByDescending { it.first.revisionId }
+            )
+            .map { it.first }
             .map { conclusion ->
                 ConfirmedContextItem(
                     entryId = conclusion.entryId,
@@ -211,6 +315,30 @@ class LlmRepository @Inject constructor(
             pendingQuestionPreview = preview
         }
         preview
+    }
+
+    private fun readBoundedBytes(input: InputStream, maxBytes: Int): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        var totalRead = 0
+        while (true) {
+            val toRead = minOf(buffer.size, maxBytes + 1 - totalRead)
+            if (toRead <= 0) break
+            val read = input.read(buffer, 0, toRead)
+            if (read == -1) break
+            output.write(buffer, 0, read)
+            totalRead += read
+            if (totalRead > maxBytes) {
+                throw IllegalArgumentException("Audio file exceeds maximum allowed size of 10MB.")
+            }
+        }
+        return output.toByteArray()
+    }
+
+    private fun computeSha256(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(bytes)
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun computeSha256(file: File): String {
@@ -302,6 +430,7 @@ class LlmRepository @Inject constructor(
         const val TRANSCRIPTION_PURPOSE = "transcribe_audio"
         const val MAX_CONTEXT_ITEMS = 5
         const val MAX_CONTEXT_ITEM_CHARS = 600
+        const val MAX_AUDIO_BYTES = 10 * 1024 * 1024
     }
 }
 

@@ -2213,3 +2213,18 @@ profiling, and a read-only release-security review. It does not close M7.
   - `DatabaseModuleTest`: 3/3 passed (including legacy zero-key recovery & rekeying)
 - `:app:lintDebug --rerun-tasks`: **0 errors** (2m 10s)
 - `git diff --check`: clean (exit code 0)
+
+## 2026-09-11 — Remaining audit resource/retrieval repairs (issue #15)
+
+Implemented the follow-up in the existing checkout on top of Antigravity's
+uncommitted changes. See docs/AUDIT_REPAIR_2026-09-11.md for the exact scope,
+production seams, red/green evidence and remaining verification boundaries.
+The final normal-repository gate output and machine-readable results are stored
+at .audit/2026-09-10/repair-final-gate.log and repair-final-gate.json.
+
+The preceding A01–A13 entry records the earlier implementation and its reported
+counts; it is not a current claim that every audit finding is resolved. This
+follow-up fixes startup/preview cancellation ownership, bounded retrieval error
+paths and filtering before evidence LIMIT. No schema or immutable provenance
+changes, external provider requests, commit, push or milestone closure are part
+of this work.

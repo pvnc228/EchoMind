@@ -90,7 +90,7 @@ class GuidanceLiveLlmEvaluationTest {
         )
 
         val knowledgeRepository: KnowledgeRepository = mockk()
-        coEvery { knowledgeRepository.search(any()) } returns listOf(
+        coEvery { knowledgeRepository.searchCurrentConclusions(any(), any()) } returns listOf(
             KnowledgeSearchResult.Conclusion(
                 conclusionId = 8L,
                 revisionId = 9L,
@@ -101,7 +101,7 @@ class GuidanceLiveLlmEvaluationTest {
                 isCurrent = true
             )
         )
-        coEvery { knowledgeRepository.getRelatedRecords(9L) } returns listOf(
+        coEvery { knowledgeRepository.getRelatedRecords(9L, any()) } returns listOf(
             RelatedRecord(
                 rawRecordId = 100L,
                 relationship = Relationship.SUPPORTS,
@@ -111,7 +111,7 @@ class GuidanceLiveLlmEvaluationTest {
         )
 
         val knowledgeDao: KnowledgeDao = mockk()
-        coEvery { knowledgeDao.getDecisionsForSourceRevision(any()) } returns emptyList()
+        coEvery { knowledgeDao.getDecisionsForSourceRevision(any(), any()) } returns emptyList()
 
         return GuidanceRepository(
             llmApi = api,

@@ -33,6 +33,27 @@ class GuidanceRepositoryTest {
     private val baseUrlProvider = BaseUrlProvider(remoteAccessPolicy)
     private lateinit var repository: GuidanceRepository
 
+    @Test
+    fun `bounded search failure is reported without consulting legacy search`() = runTest {
+        val failure = IllegalStateException("query unavailable")
+        coEvery { knowledgeRepository.searchCurrentConclusions(any(), any()) } throws failure
+        val result = repository.requestGuidance("planning")
+        assertEquals(failure, (result as GuidanceRequestResult.Failed).error)
+        coVerify(exactly = 0) { knowledgeRepository.search(any()) }
+    }
+
+    @Test
+    fun `bounded evidence failure never retries unbounded evidence`() = runTest {
+        coEvery { knowledgeRepository.searchCurrentConclusions(any(), any()) } returns listOf(
+            KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "planning", 1, 1L, true)
+        )
+        val failure = IllegalStateException("evidence query unavailable")
+        coEvery { knowledgeRepository.getRelatedRecords(9L, 3) } throws failure
+        val result = repository.requestGuidance("planning")
+        assertEquals(failure, (result as GuidanceRequestResult.Failed).error)
+        coVerify(exactly = 0) { knowledgeRepository.getRelatedRecords(9L) }
+    }
+
     @Before
     fun setup() {
         coEvery { settingsStore.load() } returns StoredSettings(
@@ -43,6 +64,15 @@ class GuidanceRepositoryTest {
         baseUrlProvider.updateUrl("https://provider.example")
         coEvery { knowledgeDao.getConclusionForRawRecord(any()) } returns null
         coEvery { knowledgeDao.getRevisionById(any()) } returns null
+        coEvery { knowledgeDao.getDecisionsForSourceRevision(any()) } returns emptyList()
+        coEvery { knowledgeDao.getDecisionsForSourceRevision(any(), any()) } returns emptyList()
+        coEvery { knowledgeDao.getOutcomesForDecision(any()) } returns emptyList()
+        coEvery { knowledgeDao.getOutcomesForDecision(any(), any()) } returns emptyList()
+        coEvery { knowledgeDao.getConfirmedEvidenceLinksForRevision(any()) } returns emptyList()
+        coEvery { knowledgeDao.getConfirmedEvidenceLinksForRevision(any(), any()) } returns emptyList()
+        coEvery { knowledgeRepository.getRelatedRecords(any()) } returns emptyList()
+        coEvery { knowledgeRepository.getRelatedRecords(any(), any()) } returns emptyList()
+        coEvery { knowledgeRepository.searchCurrentConclusions(any(), any()) } returns emptyList()
         repository = GuidanceRepository(
             llmApi = llmApi,
             settingsStore = settingsStore,
@@ -139,8 +169,7 @@ class GuidanceRepositoryTest {
 
     @Test
     fun `insufficient evidence returns a focused refusal without a network call`() = runTest {
-        coEvery { knowledgeRepository.search("planning") } returns listOf(
-            KnowledgeSearchResult.RawRecord(41L, 7L, "RAW PRIVATE TRANSCRIPT", 1L),
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns listOf(
             KnowledgeSearchResult.Conclusion(8L, 10L, 7L, "historical private text", 1, 1L, false)
         )
 
@@ -153,10 +182,12 @@ class GuidanceRepositoryTest {
 
     @Test
     fun `ready preview includes citations counterevidence and outcomes and sends nothing yet`() = runTest {
-        coEvery { knowledgeRepository.search("planning") } returns listOf(
+        val candidates = listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
         )
-        coEvery { knowledgeRepository.getRelatedRecords(9L) } returns listOf(
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns candidates
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns candidates
+        val related = listOf(
             RelatedRecord(
                 rawRecordId = 100L,
                 relationship = Relationship.CONTRADICTS,
@@ -170,6 +201,8 @@ class GuidanceRepositoryTest {
                 recordedAt = 2L
             )
         )
+        coEvery { knowledgeRepository.getRelatedRecords(9L) } returns related
+        coEvery { knowledgeRepository.getRelatedRecords(9L, any()) } returns related
         coEvery { knowledgeDao.getConclusionForRawRecord(100L) } returns com.echomind.data.local.entity.ConclusionEntity(
             id = 1000L, rawRecordId = 100L, currentRevisionId = 2000L, createdAt = 1L
         )
@@ -182,7 +215,7 @@ class GuidanceRepositoryTest {
         coEvery { knowledgeDao.getRevisionById(2001L) } returns com.echomind.data.local.entity.ConclusionRevisionEntity(
             id = 2001L, conclusionId = 1001L, version = 1, text = "a supporting planning record", author = "user", createdAt = 2L
         )
-        coEvery { knowledgeDao.getDecisionsForSourceRevision(9L) } returns listOf(
+        val decisions = listOf(
             com.echomind.data.local.entity.DecisionEntity(
                 id = 1L,
                 question = "which plan?",
@@ -190,13 +223,17 @@ class GuidanceRepositoryTest {
                 createdAt = 1L
             )
         )
-        coEvery { knowledgeDao.getOutcomesForDecision(1L) } returns listOf(
+        coEvery { knowledgeDao.getDecisionsForSourceRevision(9L) } returns decisions
+        coEvery { knowledgeDao.getDecisionsForSourceRevision(9L, any()) } returns decisions
+        val outcomes = listOf(
             com.echomind.data.local.entity.OutcomeEntity(
                 decisionId = 1L,
                 report = "the plan worked",
                 createdAt = 2L
             )
         )
+        coEvery { knowledgeDao.getOutcomesForDecision(1L) } returns outcomes
+        coEvery { knowledgeDao.getOutcomesForDecision(1L, any()) } returns outcomes
 
         val result = repository.requestGuidance("planning")
 
@@ -217,10 +254,12 @@ class GuidanceRepositoryTest {
 
     @Test
     fun `raw related record without conclusion is redacted to local evidence stub`() = runTest {
-        coEvery { knowledgeRepository.search("planning") } returns listOf(
+        val candidates = listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
         )
-        coEvery { knowledgeRepository.getRelatedRecords(9L) } returns listOf(
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns candidates
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns candidates
+        val related = listOf(
             RelatedRecord(
                 rawRecordId = 100L,
                 relationship = Relationship.SUPPORTS,
@@ -228,8 +267,11 @@ class GuidanceRepositoryTest {
                 recordedAt = 1L
             )
         )
+        coEvery { knowledgeRepository.getRelatedRecords(9L) } returns related
+        coEvery { knowledgeRepository.getRelatedRecords(9L, any()) } returns related
         coEvery { knowledgeDao.getConclusionForRawRecord(100L) } returns null
         coEvery { knowledgeDao.getDecisionsForSourceRevision(9L) } returns emptyList()
+        coEvery { knowledgeDao.getDecisionsForSourceRevision(9L, any()) } returns emptyList()
 
         val result = repository.requestGuidance("planning")
 
@@ -242,10 +284,12 @@ class GuidanceRepositoryTest {
 
     @Test
     fun `approval is one shot and returns a cited answer`() = runTest {
-        coEvery { knowledgeRepository.search("planning") } returns listOf(
+        val candidates = listOf(
             KnowledgeSearchResult.Conclusion(8L, 9L, 7L, "confirmed planning conclusion", 2, 2L, true)
         )
-        coEvery { knowledgeRepository.getRelatedRecords(9L) } returns listOf(
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns candidates
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns candidates
+        val related = listOf(
             RelatedRecord(
                 rawRecordId = 100L,
                 relationship = Relationship.SUPPORTS,
@@ -253,7 +297,10 @@ class GuidanceRepositoryTest {
                 recordedAt = 2L
             )
         )
+        coEvery { knowledgeRepository.getRelatedRecords(9L) } returns related
+        coEvery { knowledgeRepository.getRelatedRecords(9L, any()) } returns related
         coEvery { knowledgeDao.getDecisionsForSourceRevision(9L) } returns emptyList()
+        coEvery { knowledgeDao.getDecisionsForSourceRevision(9L, any()) } returns emptyList()
         coEvery { llmApi.analyzeText(any(), any(), any()) } returns AnalysisResponse(
             choices = listOf(Choice(Message("assistant", "cautious answer")))
         )
@@ -284,5 +331,53 @@ class GuidanceRepositoryTest {
         assertEquals(GuidanceRefusalReason.LOCAL_MODE, (result as GuidanceRequestResult.Refused).reason)
         coVerify(exactly = 0) { knowledgeRepository.search(any()) }
         coVerify(exactly = 0) { llmApi.analyzeText(any(), any(), any()) }
+    }
+
+    @Test
+    fun `assembleGrounds does not drop sixth candidate with evidence when first five lack evidence`() = runTest {
+        val candidates = (1..6).map { i ->
+            KnowledgeSearchResult.Conclusion(
+                conclusionId = i.toLong(),
+                revisionId = (100 + i).toLong(),
+                entryId = (10 + i).toLong(),
+                text = "Candidate $i planning",
+                revisionVersion = 1,
+                createdAt = i.toLong(),
+                isCurrent = true
+            )
+        }
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns candidates
+        coEvery { knowledgeRepository.searchCurrentConclusions("planning", any()) } returns candidates
+
+        // Candidates 1..5 have no related records or decisions
+        for (i in 1..5) {
+            val revId = (100 + i).toLong()
+            coEvery { knowledgeRepository.getRelatedRecords(revId) } returns emptyList()
+            coEvery { knowledgeRepository.getRelatedRecords(revId, any()) } returns emptyList()
+            coEvery { knowledgeDao.getDecisionsForSourceRevision(revId) } returns emptyList()
+            coEvery { knowledgeDao.getDecisionsForSourceRevision(revId, any()) } returns emptyList()
+        }
+
+        // Candidate 6 has a supporting record
+        val revId6 = 106L
+        val related6 = listOf(
+            RelatedRecord(
+                rawRecordId = 500L,
+                relationship = Relationship.SUPPORTS,
+                sourceText = "Candidate 6 support",
+                recordedAt = 6L
+            )
+        )
+        coEvery { knowledgeRepository.getRelatedRecords(revId6) } returns related6
+        coEvery { knowledgeRepository.getRelatedRecords(revId6, any()) } returns related6
+        coEvery { knowledgeDao.getDecisionsForSourceRevision(revId6) } returns emptyList()
+        coEvery { knowledgeDao.getDecisionsForSourceRevision(revId6, any()) } returns emptyList()
+
+        val result = repository.requestGuidance("planning")
+
+        assertTrue("Expected Ready but got $result", result is GuidanceRequestResult.Ready)
+        val preview = (result as GuidanceRequestResult.Ready).preview
+        assertEquals(1, preview.grounds.size)
+        assertEquals(106L, preview.grounds.first().revisionId)
     }
 }

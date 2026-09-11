@@ -20,10 +20,14 @@ import com.echomind.domain.model.TranscriptionEngine
 import com.echomind.di.IoDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -78,9 +82,13 @@ class RecordViewModel @Inject constructor(
     private var mediaRecorder: MediaRecorder? = null
     private var startTime: Long = 0
     private var amplitudeJob: Job? = null
+    private var encryptionJob: Job? = null
+    private var transcriptionJob: Job? = null
+    private val transcriptionGeneration = AtomicLong(0L)
     private var draftSaveJob: Job? = null
     private val draftWriteMutex = Mutex()
     private var draftActionInProgress = false
+    private val pendingTranscriptionFiles = mutableMapOf<String, File>()
     private val requestedHypothesisId: Long? = savedStateHandle.get<Long>("hypothesisId")
 
     init {
@@ -96,7 +104,17 @@ class RecordViewModel @Inject constructor(
                     }
                 return@launch
             }
-            val interrupted = cleanupInterruptedRecording()
+            val interrupted = try {
+                withContext(ioDispatcher) {
+                    audioEncryptionUtil.cleanupOrphanedTempFiles()
+                    audioEncryptionUtil.consumeInterruptedRecordingNotice()
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                _uiState.value = RecordUiState(stage = ReflectionStage.ERROR, error = error.message)
+                return@launch
+            }
             runCatching { reflectionRepository.loadCaptureDraft() }
                 .onSuccess { draft ->
                     if (draft != null) {
@@ -267,20 +285,46 @@ class RecordViewModel @Inject constructor(
         val audioPath = state.audioPath ?: return
         if (state.stage != ReflectionStage.CAPTURE || state.isTranscribing) return
 
-        val audioFile = File(audioPath)
-        if (!audioFile.exists() || audioFile.length() == 0L) {
-            _uiState.value = state.copy(error = "Audio file is missing or empty.")
-            return
+        // Cancel previous pending preview and clean up its file
+        state.transcriptionPreview?.let { oldPreview ->
+            audioRepository.cancelRemoteTranscriptionPreview(oldPreview.requestId)
+            deletePreparedFile(pendingTranscriptionFiles.remove(oldPreview.requestId))
         }
 
-        viewModelScope.launch {
-            val engine = audioRepository.getEngine()
+        // Synchronously guard against concurrent requests on Main
+        _uiState.value = state.copy(isTranscribing = true, transcriptionPreview = null, error = null)
+
+        transcriptionJob?.cancel()
+        val generation = transcriptionGeneration.incrementAndGet()
+
+        transcriptionJob = viewModelScope.launch {
+            val engine = try {
+                withContext(ioDispatcher) {
+                    val audioFile = File(audioPath)
+                    require(audioFile.exists() && audioFile.length() > 0L) { "Audio file is missing or empty." }
+                    audioRepository.getEngine()
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                if (transcriptionGeneration.get() == generation) {
+                    _uiState.value = _uiState.value.copy(isTranscribing = false, error = error.message)
+                }
+                return@launch
+            }
             if (engine == TranscriptionEngine.ON_DEVICE) {
-                _uiState.value = state.copy(isTranscribing = true, error = null)
                 var tempDecryptedFile: File? = null
                 try {
-                    tempDecryptedFile = audioEncryptionUtil.decryptToTempFile(audioPath)
-                    val result = audioRepository.transcribeOffline(tempDecryptedFile)
+                    withContext(ioDispatcher) {
+                        tempDecryptedFile = audioEncryptionUtil.decryptToUniqueTempFile(audioPath)
+                    }
+                    if (transcriptionGeneration.get() != generation) {
+                        return@launch
+                    }
+                    val result = audioRepository.transcribeOffline(checkNotNull(tempDecryptedFile))
+                    if (transcriptionGeneration.get() != generation) {
+                        return@launch
+                    }
                     result.fold(
                         onSuccess = { transcript ->
                             val currentText = _uiState.value.thoughtText.trim()
@@ -302,14 +346,20 @@ class RecordViewModel @Inject constructor(
                             )
                         }
                     )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
                 } catch (e: Exception) {
-                    _uiState.value = _uiState.value.copy(
-                        isTranscribing = false,
-                        error = e.message ?: "Could not decrypt or transcribe audio."
-                    )
+                    if (transcriptionGeneration.get() == generation) {
+                        _uiState.value = _uiState.value.copy(
+                            isTranscribing = false,
+                            error = e.message ?: "Could not decrypt or transcribe audio."
+                        )
+                    }
                 } finally {
-                    tempDecryptedFile?.let {
-                        audioEncryptionUtil.deleteTempFile(it.absolutePath)
+                    withContext(NonCancellable + ioDispatcher) {
+                        tempDecryptedFile?.let {
+                            audioEncryptionUtil.deleteTempFile(it.absolutePath)
+                        }
                     }
                 }
                 return@launch
@@ -317,56 +367,103 @@ class RecordViewModel @Inject constructor(
 
             // Remote engines: WHISPER or GEMINI
             if (settingsStore.isLocalMode()) {
-                _uiState.value = state.copy(
+                _uiState.value = _uiState.value.copy(
+                    isTranscribing = false,
                     error = "Local mode is enabled. Turn off Local Mode in Settings to transcribe audio remotely, or switch to Android Speech in Settings.",
                     transcriptionPreview = null
                 )
                 return@launch
             }
 
-            _uiState.value = state.copy(error = null)
-            val result = audioRepository.previewRemoteTranscription(
-                audioFile = audioFile,
-                durationMs = state.durationMs
-            )
-            result.fold(
-                onSuccess = { preview ->
-                    _uiState.value = _uiState.value.copy(
-                        transcriptionPreview = preview,
-                        error = null
-                    )
-                },
-                onFailure = { error ->
-                    _uiState.value = _uiState.value.copy(
-                        error = error.message ?: "Could not prepare transcription preview.",
-                        transcriptionPreview = null
+            var tempDecrypted: File? = null
+            var previewRegistered = false
+            try {
+                withContext(ioDispatcher) {
+                    tempDecrypted = audioEncryptionUtil.decryptToUniqueTempFile(
+                        encryptedPath = audioPath,
+                        prefix = "transcription_${System.currentTimeMillis()}_",
+                        extension = "m4a"
                     )
                 }
-            )
+
+                if (transcriptionGeneration.get() != generation) {
+                    return@launch
+                }
+
+                val result = audioRepository.previewRemoteTranscription(
+                    audioFile = checkNotNull(tempDecrypted),
+                    durationMs = state.durationMs
+                )
+
+                if (transcriptionGeneration.get() != generation) {
+                    return@launch
+                }
+
+                result.fold(
+                    onSuccess = { preview ->
+                        pendingTranscriptionFiles[preview.requestId] = checkNotNull(tempDecrypted)
+                        previewRegistered = true
+                        _uiState.value = _uiState.value.copy(
+                            isTranscribing = false,
+                            transcriptionPreview = preview,
+                            error = null
+                        )
+                    },
+                    onFailure = { error ->
+                        _uiState.value = _uiState.value.copy(
+                            isTranscribing = false,
+                            error = error.message ?: "Could not prepare transcription preview.",
+                            transcriptionPreview = null
+                        )
+                    }
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
+                if (transcriptionGeneration.get() == generation) {
+                    _uiState.value = _uiState.value.copy(
+                        isTranscribing = false,
+                        error = e.message ?: "Could not decrypt audio for preview."
+                    )
+                }
+            } finally {
+                withContext(NonCancellable + ioDispatcher) {
+                    if (!previewRegistered) {
+                        tempDecrypted?.delete()
+                    }
+                }
+            }
         }
     }
 
     fun approveTranscription() {
         val state = _uiState.value
         val preview = state.transcriptionPreview ?: return
-        val encryptedPath = state.audioPath ?: return
+        val tempDecrypted = pendingTranscriptionFiles.remove(preview.requestId)
 
+        transcriptionJob?.cancel()
+        val generation = transcriptionGeneration.incrementAndGet()
         _uiState.value = state.copy(
             isTranscribing = true,
             transcriptionPreview = null,
             error = null
         )
 
-        viewModelScope.launch {
-            var tempDecryptedFile: File? = null
+        // Enter the owning try/finally before cancellation can prevent job dispatch.
+        transcriptionJob = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
-                tempDecryptedFile = withContext(ioDispatcher) {
-                    audioEncryptionUtil.decryptToTempFile(encryptedPath)
+                if (tempDecrypted == null || !withContext(ioDispatcher) { tempDecrypted.exists() }) {
+                    _uiState.value = _uiState.value.copy(
+                        isTranscribing = false,
+                        error = "Decrypted audio file is missing or invalid."
+                    )
+                    return@launch
                 }
                 val result = audioRepository.sendApprovedRemoteTranscription(
                     requestId = preview.requestId,
-                    audioFile = tempDecryptedFile
+                    audioFile = tempDecrypted
                 )
+                if (transcriptionGeneration.get() != generation) return@launch
                 result.fold(
                     onSuccess = { transcript ->
                         val currentText = _uiState.value.thoughtText.trim()
@@ -388,23 +485,35 @@ class RecordViewModel @Inject constructor(
                         )
                     }
                 )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isTranscribing = false,
-                    error = e.message ?: "Could not decrypt or transcribe audio."
-                )
+                if (transcriptionGeneration.get() == generation) {
+                    _uiState.value = _uiState.value.copy(
+                        isTranscribing = false,
+                        error = e.message ?: "Could not decrypt or transcribe audio."
+                    )
+                }
             } finally {
-                tempDecryptedFile?.let {
-                    audioEncryptionUtil.deleteTempFile(it.absolutePath)
+                withContext(NonCancellable + ioDispatcher) {
+                    tempDecrypted?.delete()
                 }
             }
         }
     }
 
     fun cancelTranscription() {
-        val preview = _uiState.value.transcriptionPreview ?: return
-        audioRepository.cancelRemoteTranscriptionPreview(preview.requestId)
-        _uiState.value = _uiState.value.copy(transcriptionPreview = null)
+        transcriptionGeneration.incrementAndGet()
+        transcriptionJob?.cancel()
+        val preview = _uiState.value.transcriptionPreview
+        if (preview != null) {
+            audioRepository.cancelRemoteTranscriptionPreview(preview.requestId)
+            deletePreparedFile(pendingTranscriptionFiles.remove(preview.requestId))
+        }
+        _uiState.value = _uiState.value.copy(
+            isTranscribing = false,
+            transcriptionPreview = null
+        )
     }
 
 
@@ -412,7 +521,24 @@ class RecordViewModel @Inject constructor(
         val state = _uiState.value
         val rawRecordId = state.rawRecordId
         if (rawRecordId == null) {
-            _uiState.value = state.copy(stage = ReflectionStage.CAPTURE, error = null)
+            _uiState.value = state.copy(stage = ReflectionStage.LOADING, error = null)
+            viewModelScope.launch {
+                try {
+                    withContext(ioDispatcher) { audioEncryptionUtil.cleanupOrphanedTempFiles() }
+                    val draft = reflectionRepository.loadCaptureDraft()
+                    _uiState.value = state.copy(
+                        stage = ReflectionStage.CAPTURE,
+                        thoughtText = draft?.text ?: state.thoughtText,
+                        audioPath = draft?.encryptedAudioPath ?: state.audioPath,
+                        durationMs = draft?.durationMs ?: state.durationMs,
+                        error = null
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (error: Exception) {
+                    _uiState.value = state.copy(stage = ReflectionStage.ERROR, error = error.message)
+                }
+            }
             return
         }
 
@@ -551,6 +677,8 @@ class RecordViewModel @Inject constructor(
         val state = _uiState.value
         if (state.stage != ReflectionStage.RECORDING) return
 
+        _uiState.value = state.copy(stage = ReflectionStage.PROCESSING)
+
         amplitudeJob?.cancel()
         amplitudeJob = null
         val recorder = mediaRecorder
@@ -571,28 +699,20 @@ class RecordViewModel @Inject constructor(
         }
 
         val originalPath = state.audioPath
-        viewModelScope.launch(ioDispatcher) {
-            val encryptedPath = originalPath?.let { path ->
-                val original = File(path)
-                val encrypted = File(original.parent, original.name + AudioEncryptionUtil.ENCRYPTED_EXTENSION)
-                try {
-                    audioEncryptionUtil.encryptFile(original, encrypted)
-                    encrypted.absolutePath
-                } catch (error: Exception) {
-                    original.delete()
-                    encrypted.delete()
-                    withContext(Dispatchers.Main) {
-                        _uiState.value = state.copy(
-                            stage = ReflectionStage.ERROR,
-                            audioPath = null,
-                            error = "Encryption failed: ${error.message ?: "unknown error"}."
-                        )
+        encryptionJob?.cancel()
+        encryptionJob = viewModelScope.launch {
+            val originalFile = originalPath?.let { File(it) }
+            var encryptedFile: File? = null
+            try {
+                val encryptedPath = withContext(ioDispatcher) {
+                    originalFile?.let { original ->
+                        val encrypted = File(original.parent, original.name + AudioEncryptionUtil.ENCRYPTED_EXTENSION)
+                        encryptedFile = encrypted
+                        audioEncryptionUtil.encryptFile(original, encrypted)
+                        encrypted.absolutePath
                     }
-                    return@launch
                 }
-            }
 
-            withContext(Dispatchers.Main) {
                 _uiState.value = state.copy(
                     stage = ReflectionStage.CAPTURE,
                     durationMs = System.currentTimeMillis() - startTime,
@@ -600,6 +720,22 @@ class RecordViewModel @Inject constructor(
                     amplitudes = emptyList()
                 )
                 persistDraftNow()
+            } catch (cancellation: CancellationException) {
+                withContext(NonCancellable + ioDispatcher) {
+                    encryptedFile?.takeIf { it.exists() }?.delete()
+                    originalFile?.takeIf { it.exists() }?.delete()
+                }
+                throw cancellation
+            } catch (error: Exception) {
+                withContext(NonCancellable + ioDispatcher) {
+                    encryptedFile?.takeIf { it.exists() }?.delete()
+                    originalFile?.takeIf { it.exists() }?.delete()
+                }
+                _uiState.value = state.copy(
+                    stage = ReflectionStage.ERROR,
+                    audioPath = null,
+                    error = "Encryption failed: ${error.message ?: "unknown error"}."
+                )
             }
         }
     }
@@ -627,9 +763,19 @@ class RecordViewModel @Inject constructor(
     override fun onCleared() {
         draftSaveJob?.cancel()
         amplitudeJob?.cancel()
+        encryptionJob?.cancel()
+        transcriptionJob?.cancel()
         mediaRecorder?.release()
         mediaRecorder = null
+        pendingTranscriptionFiles.values.forEach(::deletePreparedFile)
+        pendingTranscriptionFiles.clear()
         super.onCleared()
+    }
+
+    private fun deletePreparedFile(file: File?) {
+        if (file == null) return
+        // File ownership was removed on Main; deletion must survive ViewModel teardown.
+        viewModelScope.launch(NonCancellable + ioDispatcher) { file.delete() }
     }
 
     private fun scheduleDraftPersist() {
@@ -669,15 +815,6 @@ class RecordViewModel @Inject constructor(
     private suspend fun waitForPendingDraftWrite() {
         draftSaveJob?.cancelAndJoin()
         draftSaveJob = null
-    }
-
-    private fun cleanupInterruptedRecording(): Boolean {
-        val directory = File(getApplication<Application>().noBackupFilesDir, "capture_tmp")
-        val staleFiles = directory.listFiles()
-            ?.filter { it.isFile && it.extension == "m4a" }
-            .orEmpty()
-        staleFiles.forEach { it.delete() }
-        return staleFiles.isNotEmpty()
     }
 
     private companion object {

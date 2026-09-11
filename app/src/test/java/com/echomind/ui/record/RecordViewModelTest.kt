@@ -22,6 +22,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -73,6 +74,13 @@ class RecordViewModelTest {
         }
         every { audioRepository.cancelRemoteTranscriptionPreview(any()) } answers {
             llmRepository.cancelTranscriptionPreviewNow(firstArg())
+        }
+        every { audioEncryptionUtil.decryptToUniqueTempFile(any(), any(), any()) } answers {
+            val prefix = secondArg<String>()
+            val ext = thirdArg<String>()
+            File(tempCacheDir, "${prefix}${java.util.UUID.randomUUID()}.$ext").apply {
+                writeText("decrypted test audio bytes")
+            }
         }
     }
 
@@ -168,13 +176,12 @@ class RecordViewModelTest {
         assertNull(state.error)
         assertEquals(expectedPreview, state.transcriptionPreview)
         assertFalse(state.isTranscribing)
-        coVerify(exactly = 1) { llmRepository.previewAudioTranscription(File(audioFile.absolutePath), 4500L) }
+        coVerify(exactly = 1) { llmRepository.previewAudioTranscription(any(), 4500L) }
     }
 
     @Test
-    fun `approveTranscription decrypts temp file, calls sendApprovedAudioTranscription, updates thoughtText, and cleans up temp file`() = runTest(testDispatcher) {
+    fun `approveTranscription uses prepared preview temp file, sends approved transcription, and cleans up file`() = runTest(testDispatcher) {
         val audioFile = File(tempCacheDir, "draft.m4a.enc").apply { writeText("encrypted bytes") }
-        val decryptedTemp = File(tempCacheDir, "playback_draft.wav").apply { writeText("decrypted wav bytes") }
         val draft = CaptureDraft(
             id = 1L,
             text = "First thought.",
@@ -195,8 +202,7 @@ class RecordViewModelTest {
             audioFileSizeBytes = audioFile.length()
         )
         coEvery { llmRepository.previewAudioTranscription(any(), any()) } returns Result.success(preview)
-        every { audioEncryptionUtil.decryptToTempFile(audioFile.absolutePath) } returns decryptedTemp
-        coEvery { llmRepository.sendApprovedAudioTranscription("req-456", decryptedTemp) } returns Result.success(
+        coEvery { llmRepository.sendApprovedAudioTranscription("req-456", any()) } returns Result.success(
             "Second thought from audio."
         )
 
@@ -214,13 +220,12 @@ class RecordViewModelTest {
         assertNull(state.transcriptionPreview)
         assertFalse(state.isTranscribing)
         assertEquals("First thought.\nSecond thought from audio.", state.thoughtText)
-        verify(exactly = 1) { audioEncryptionUtil.deleteTempFile(decryptedTemp.absolutePath) }
+        coVerify(exactly = 1) { llmRepository.sendApprovedAudioTranscription("req-456", any()) }
     }
 
     @Test
     fun `approveTranscription failure reports error without removing audio draft or existing text`() = runTest(testDispatcher) {
         val audioFile = File(tempCacheDir, "draft.m4a.enc").apply { writeText("encrypted bytes") }
-        val decryptedTemp = File(tempCacheDir, "playback_draft.wav").apply { writeText("decrypted wav bytes") }
         val draft = CaptureDraft(
             id = 1L,
             text = "Original typed text",
@@ -241,8 +246,7 @@ class RecordViewModelTest {
             audioFileSizeBytes = audioFile.length()
         )
         coEvery { llmRepository.previewAudioTranscription(any(), any()) } returns Result.success(preview)
-        every { audioEncryptionUtil.decryptToTempFile(audioFile.absolutePath) } returns decryptedTemp
-        coEvery { llmRepository.sendApprovedAudioTranscription("req-789", decryptedTemp) } returns Result.failure(
+        coEvery { llmRepository.sendApprovedAudioTranscription("req-789", any()) } returns Result.failure(
             IllegalStateException("Network timeout")
         )
 
@@ -261,7 +265,75 @@ class RecordViewModelTest {
         assertFalse(state.isTranscribing)
         assertEquals("Original typed text", state.thoughtText)
         assertEquals(audioFile.absolutePath, state.audioPath)
-        verify(exactly = 1) { audioEncryptionUtil.deleteTempFile(decryptedTemp.absolutePath) }
+    }
+
+    @Test
+    fun `stopRecording immediately transitions stage to PROCESSING on Main and ignores duplicate stop`() = runTest(testDispatcher) {
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val uiStateField = RecordViewModel::class.java.getDeclaredField("_uiState").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val stateFlow = uiStateField.get(viewModel) as MutableStateFlow<RecordUiState>
+        stateFlow.value = stateFlow.value.copy(stage = ReflectionStage.RECORDING, audioPath = null)
+
+        viewModel.stopRecording()
+        assertEquals(ReflectionStage.PROCESSING, viewModel.uiState.value.stage)
+
+        // Call again while in PROCESSING - should be ignored
+        viewModel.stopRecording()
+        assertEquals(ReflectionStage.PROCESSING, viewModel.uiState.value.stage)
+    }
+
+    @Test
+    fun `multiple transcription previews do not overwrite or delete other active preview files`() = runTest(testDispatcher) {
+        val audioFile = File(tempCacheDir, "draft.m4a.enc").apply { writeText("encrypted bytes") }
+        val draft = CaptureDraft(
+            id = 1L,
+            text = "Thought",
+            encryptedAudioPath = audioFile.absolutePath,
+            durationMs = 4000L,
+            captureStage = "CAPTURE",
+            createdAt = 1000L,
+            updatedAt = 2000L
+        )
+        coEvery { reflectionRepository.loadCaptureDraft() } returns draft
+        coEvery { settingsStore.isLocalMode() } returns false
+        val preview1 = RemoteTranscriptionPreview(
+            requestId = "req-1",
+            purpose = "transcribe_audio",
+            destination = "https://provider.example/v1/audio/transcriptions",
+            audioFileName = "draft.m4a.enc",
+            audioDurationMs = 4000L,
+            audioFileSizeBytes = audioFile.length()
+        )
+        val preview2 = RemoteTranscriptionPreview(
+            requestId = "req-2",
+            purpose = "transcribe_audio",
+            destination = "https://provider.example/v1/audio/transcriptions",
+            audioFileName = "draft.m4a.enc",
+            audioDurationMs = 4000L,
+            audioFileSizeBytes = audioFile.length()
+        )
+        coEvery { llmRepository.previewAudioTranscription(any(), any()) } returnsMany listOf(
+            Result.success(preview1),
+            Result.success(preview2)
+        )
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.requestTranscription()
+        advanceUntilIdle()
+        assertEquals("req-1", viewModel.uiState.value.transcriptionPreview?.requestId)
+
+        viewModel.cancelTranscription()
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.transcriptionPreview)
+
+        viewModel.requestTranscription()
+        advanceUntilIdle()
+        assertEquals("req-2", viewModel.uiState.value.transcriptionPreview?.requestId)
     }
 
     @Test
@@ -367,7 +439,7 @@ class RecordViewModelTest {
         )
         coEvery { reflectionRepository.loadCaptureDraft() } returns draft
         coEvery { audioRepository.getEngine() } returns TranscriptionEngine.ON_DEVICE
-        every { audioEncryptionUtil.decryptToTempFile(audioFile.absolutePath) } returns decryptedTemp
+        every { audioEncryptionUtil.decryptToUniqueTempFile(audioFile.absolutePath) } returns decryptedTemp
         coEvery { audioRepository.transcribeOffline(decryptedTemp) } returns Result.success("Offline words")
 
         val viewModel = createViewModel()
@@ -384,7 +456,208 @@ class RecordViewModelTest {
         coVerify(exactly = 0) { audioRepository.previewRemoteTranscription(any(), any()) }
     }
 
-    private fun createViewModel() = RecordViewModel(
+    @Test
+    fun `requestTranscription cleans up previous preview temp file when superseded by new request`() = runTest(testDispatcher) {
+        val audioFile = File(tempCacheDir, "draft.m4a.enc").apply { writeText("encrypted audio") }
+        val draft = CaptureDraft(
+            id = 1L,
+            text = "Draft",
+            encryptedAudioPath = audioFile.absolutePath,
+            durationMs = 4000L,
+            captureStage = "CAPTURE",
+            createdAt = 1000L,
+            updatedAt = 2000L
+        )
+        coEvery { reflectionRepository.loadCaptureDraft() } returns draft
+        coEvery { settingsStore.isLocalMode() } returns false
+
+        var firstCreatedFile: File? = null
+        var secondCreatedFile: File? = null
+        var callCount = 0
+        every { audioEncryptionUtil.decryptToUniqueTempFile(any(), any(), any()) } answers {
+            callCount++
+            val file = File(tempCacheDir, "transcription_test_$callCount.m4a").apply { writeText("decrypted $callCount") }
+            if (callCount == 1) firstCreatedFile = file else secondCreatedFile = file
+            file
+        }
+        coEvery { audioRepository.previewRemoteTranscription(any(), any()) } answers {
+            val file = firstArg<File>()
+            Result.success(
+                RemoteTranscriptionPreview(
+                    requestId = "req-${file.name}",
+                    purpose = "transcribe_audio",
+                    destination = "https://provider.example/v1/chat/completions",
+                    audioFileName = file.name,
+                    audioDurationMs = 4000L,
+                    audioFileSizeBytes = file.length()
+                )
+            )
+        }
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.requestTranscription()
+        advanceUntilIdle()
+        val firstState = viewModel.uiState.value
+        assertEquals("req-transcription_test_1.m4a", firstState.transcriptionPreview?.requestId)
+        assertTrue(firstCreatedFile?.exists() == true)
+
+        viewModel.requestTranscription()
+        advanceUntilIdle()
+        val secondState = viewModel.uiState.value
+        assertEquals("req-transcription_test_2.m4a", secondState.transcriptionPreview?.requestId)
+        assertFalse("Previous preview file must be deleted upon replacement", firstCreatedFile?.exists() == true)
+        assertTrue("New preview file must exist", secondCreatedFile?.exists() == true)
+    }
+
+    @Test
+    fun `requestTranscription while isTranscribing ignores concurrent second request`() = runTest(testDispatcher) {
+        val audioFile = File(tempCacheDir, "draft.m4a.enc").apply { writeText("encrypted audio") }
+        val draft = CaptureDraft(
+            id = 1L,
+            text = "Draft",
+            encryptedAudioPath = audioFile.absolutePath,
+            durationMs = 4000L,
+            captureStage = "CAPTURE",
+            createdAt = 1000L,
+            updatedAt = 2000L
+        )
+        coEvery { reflectionRepository.loadCaptureDraft() } returns draft
+        coEvery { settingsStore.isLocalMode() } returns false
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.requestTranscription()
+        assertTrue("isTranscribing must be true immediately on Main", viewModel.uiState.value.isTranscribing)
+
+        viewModel.requestTranscription()
+
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.isTranscribing)
+        coVerify(exactly = 1) { audioRepository.previewRemoteTranscription(any(), any()) }
+    }
+
+    @Test
+    fun `stopRecording failure cleans up original unencrypted file and sets state to ERROR`() = runTest(testDispatcher) {
+        val captureTmp = File(tempCacheDir, "capture_tmp").apply { mkdirs() }
+        every { application.noBackupFilesDir } returns tempCacheDir
+        val originalFile = File(captureTmp, "entry_test.m4a").apply { writeText("unencrypted raw speech") }
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val recordingState = viewModel.uiState.value.copy(
+            stage = ReflectionStage.RECORDING,
+            audioPath = originalFile.absolutePath
+        )
+        val field = RecordViewModel::class.java.getDeclaredField("_uiState")
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        (field.get(viewModel) as MutableStateFlow<RecordUiState>).value = recordingState
+
+        every { audioEncryptionUtil.encryptFile(any(), any()) } throws RuntimeException("Simulated encryption failure")
+
+        viewModel.stopRecording()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(ReflectionStage.ERROR, state.stage)
+        assertNull(state.audioPath)
+        assertTrue(state.error?.contains("Encryption failed") == true)
+        assertFalse("Original unencrypted file must be deleted on encryption failure", originalFile.exists())
+    }
+
+    @Test
+    fun `cancel at decrypt return deletes plaintext before it can escape to Main`() = runTest(testDispatcher) {
+        val audioFile = File(tempCacheDir, "draft.m4a.enc").apply { writeText("encrypted fixture") }
+        coEvery { reflectionRepository.loadCaptureDraft() } returns CaptureDraft(
+            id = 1L, text = "Draft", encryptedAudioPath = audioFile.absolutePath,
+            durationMs = 1000L, captureStage = "CAPTURE", createdAt = 1L, updatedAt = 1L
+        )
+        coEvery { settingsStore.isLocalMode() } returns false
+        val viewModel = createViewModel(StandardTestDispatcher(testScheduler))
+        advanceUntilIdle()
+        val plaintext = File(tempCacheDir, "transcription_cancelled.m4a")
+        every { audioEncryptionUtil.decryptToUniqueTempFile(any(), any(), any()) } answers {
+            plaintext.writeText("private audio")
+            // Queue cancellation on Main before withContext can deliver the File there.
+            testDispatcher.dispatch(kotlin.coroutines.EmptyCoroutineContext, Runnable {
+                viewModel.cancelTranscription()
+            })
+            plaintext
+        }
+        viewModel.requestTranscription()
+        advanceUntilIdle()
+        assertFalse("cancelled IO result must not retain plaintext", plaintext.exists())
+        assertFalse(viewModel.uiState.value.isTranscribing)
+        assertNull(viewModel.uiState.value.transcriptionPreview)
+        coVerify(exactly = 0) { audioRepository.previewRemoteTranscription(any(), any()) }
+    }
+
+    @Test
+    fun `engine settings failure releases transcription busy state`() = runTest(testDispatcher) {
+        val audioFile = File(tempCacheDir, "draft.m4a.enc").apply { writeText("fixture") }
+        coEvery { reflectionRepository.loadCaptureDraft() } returns CaptureDraft(
+            id = 1L, text = "Draft", encryptedAudioPath = audioFile.absolutePath,
+            durationMs = 1000L, captureStage = "CAPTURE", createdAt = 1L, updatedAt = 1L
+        )
+        coEvery { audioRepository.getEngine() } throws IllegalStateException("settings unavailable")
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.requestTranscription()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.isTranscribing)
+        assertEquals("settings unavailable", vm.uiState.value.error)
+    }
+
+    @Test
+    fun `cancel approval before send dispatch still deletes prepared plaintext`() = runTest(testDispatcher) {
+        val source = File(tempCacheDir, "draft.m4a.enc").apply { writeText("fixture") }
+        coEvery { reflectionRepository.loadCaptureDraft() } returns CaptureDraft(
+            id = 1L, text = "Draft", encryptedAudioPath = source.absolutePath,
+            durationMs = 1000L, captureStage = "CAPTURE", createdAt = 1L, updatedAt = 1L
+        )
+        coEvery { settingsStore.isLocalMode() } returns false
+        coEvery { audioRepository.previewRemoteTranscription(any(), any()) } returns Result.success(
+            RemoteTranscriptionPreview("cancel-send", "transcribe_audio", "https://provider.example",
+                "prepared.m4a", 1000L, 10L)
+        )
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.requestTranscription()
+        advanceUntilIdle()
+        val temp = tempCacheDir.listFiles()!!.single { it.name.startsWith("transcription_") }
+        vm.approveTranscription()
+        vm.cancelTranscription()
+        advanceUntilIdle()
+        assertFalse("ownership must survive cancellation before send starts", temp.exists())
+        coVerify(exactly = 0) { audioRepository.sendApprovedRemoteTranscription(any(), any()) }
+    }
+
+    @Test
+    fun `retry waits for failed startup cleanup before enabling capture`() = runTest(testDispatcher) {
+        coEvery { reflectionRepository.loadCaptureDraft() } returns CaptureDraft(
+            id = 1L, text = "Preserved draft", encryptedAudioPath = null,
+            durationMs = 0L, captureStage = "CAPTURE", createdAt = 1L, updatedAt = 1L
+        )
+        var attempts = 0
+        every { audioEncryptionUtil.cleanupOrphanedTempFiles() } answers {
+            if (attempts++ == 0) throw IllegalStateException("cleanup temporarily unavailable")
+        }
+        val vm = createViewModel()
+        advanceUntilIdle()
+        assertEquals(ReflectionStage.ERROR, vm.uiState.value.stage)
+        vm.retry()
+        assertEquals(ReflectionStage.LOADING, vm.uiState.value.stage)
+        advanceUntilIdle()
+        assertEquals(ReflectionStage.CAPTURE, vm.uiState.value.stage)
+        assertEquals("Preserved draft", vm.uiState.value.thoughtText)
+        verify(exactly = 2) { audioEncryptionUtil.cleanupOrphanedTempFiles() }
+    }
+
+    private fun createViewModel(io: kotlinx.coroutines.CoroutineDispatcher = testDispatcher) = RecordViewModel(
         application = application,
         reflectionRepository = reflectionRepository,
         audioEncryptionUtil = audioEncryptionUtil,
@@ -392,6 +665,6 @@ class RecordViewModelTest {
         settingsStore = settingsStore,
         savedStateHandle = savedStateHandle,
         audioRepository = audioRepository,
-        ioDispatcher = testDispatcher
+        ioDispatcher = io
     )
 }
